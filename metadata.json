@@ -1,0 +1,11 @@
+{
+  "name": "XStreamX",
+  "description": "Sala grupal con avatares expresivos",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,102 @@
+import { AvatarDefinition } from '../../types';
+import { AVATAR_TRACKING_PROFILES, getAvatarTrackingProfile } from './avatarTrackingProfiles';
+
+const BASE_AVATAR_LIST: Omit<AvatarDefinition, 'trackingProfile'>[] = [
+  {
+    id: 'three_robot',
+    name: 'Robot 3D',
+    tagline: 'Robot mecha 3D interactivo con huesos esqueléticos y morph targets',
+    category: 'Robot',
+    themeColor: '#10b981',
+    accentColor: '#06b6d4',
+    badge: '3D MECHA',
+    emoji: '🤖',
+  },
+  {
+    id: 'cat_3d',
+    name: 'Gato 3D',
+    tagline: 'Felino 3D con orejas activas, bigotes, ojos expresivos y cascabel',
+    category: 'Animals',
+    themeColor: '#f59e0b',
+    accentColor: '#fbbf24',
+    badge: '3D FELINO',
+    emoji: '🐱',
+  },
+  {
+    id: 'dog_3d',
+    name: 'Perro 3D',
+    tagline: 'Cachorro 3D alegre con orejas rebotantes, hocico húmedo y lengua',
+    category: 'Animals',
+    themeColor: '#3b82f6',
+    accentColor: '#60a5fa',
+    badge: '3D CANINO',
+    emoji: '🐶',
+  },
+  {
+    id: 'female_3d',
+    name: 'Chica 3D',
+    tagline: 'Personaje 3D anime femenina con peinado dinámico y pestañas',
+    category: 'Character',
+    themeColor: '#ec4899',
+    accentColor: '#f43f5e',
+    badge: '3D ANIME',
+    emoji: '🌸',
+  },
+  {
+    id: 'horse_3d',
+    name: 'Caballo 3D',
+    tagline: 'Caballo 3D majestuoso con hocico esculpido, crin ondeante y orejas alertas',
+    category: 'Animals',
+    themeColor: '#8b5cf6',
+    accentColor: '#a855f7',
+    badge: '3D EQUINO',
+    emoji: '🐴',
+  },
+  {
+    id: 'fox_sensei',
+    name: 'Kitsune Fox 3D',
+    tagline: 'Zorro místico 3D con marcas espirituales y mandíbula animada',
+    category: 'Fantasy',
+    themeColor: '#f97316',
+    accentColor: '#ea580c',
+    badge: '3D SPIRIT',
+    emoji: '🦊',
+  },
+  {
+    id: 'mesh_outline',
+    name: 'Holo Mesh 3D',
+    tagline: 'Malla wireframe holográfica con captura completa de expresiones y puntos',
+    category: 'Sci-Fi',
+    themeColor: '#06b6d4',
+    accentColor: '#38bdf8',
+    badge: '3D MESH',
+    emoji: '🌐',
+  },
+  {
+    id: 'cyber_nova',
+    name: 'Cyber Nova 3D',
+    tagline: 'Androide cibernético con visor holográfico y circuitos reactivos',
+    category: 'Sci-Fi',
+    themeColor: '#06b6d4',
+    accentColor: '#3b82f6',
+    badge: '3D CYBER',
+    emoji: '⚡',
+  },
+  {
+    id: 'face_cap',
+    name: 'Face Cap 3D',
+    tagline: 'Rostro humano 3D de alta precisión con 52 morph targets ARKit sincronizados',
+    category: 'Character',
+    themeColor: '#38bdf8',
+    accentColor: '#818cf8',
+    badge: '52 PTS ARKIT',
+    emoji: '👤',
+  },
+];
+
+export const AVATAR_LIST: AvatarDefinition[] = BASE_AVATAR_LIST.map((avatar) => ({
+  ...avatar,
+  trackingProfile: getAvatarTrackingProfile(avatar.id),
+}));
+
+export const DEFAULT_AVATAR = AVATAR_LIST[0];
