@@ -8,8 +8,6 @@ interface AvatarCanvasProps {
   userName?: string;
   isSpeaking?: boolean;
   className?: string;
-  showLandmarkOverlay?: boolean;
-  showEmoteControls?: boolean;
   cameraOffsetX?: number;
   cameraOffsetY?: number;
 }
@@ -20,7 +18,6 @@ export const AvatarCanvas: React.FC<AvatarCanvasProps> = ({
   userName,
   isSpeaking = false,
   className = '',
-  showEmoteControls = true,
   cameraOffsetX = 0,
   cameraOffsetY = 0,
 }) => {
@@ -31,7 +28,6 @@ export const AvatarCanvas: React.FC<AvatarCanvasProps> = ({
       userName={userName}
       isSpeaking={isSpeaking}
       className={className}
-      showEmoteControls={showEmoteControls}
       cameraOffsetX={cameraOffsetX}
       cameraOffsetY={cameraOffsetY}
     />

@@ -5,7 +5,6 @@ import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { AvatarId, FaceFeatures } from '../../types';
-import { ThumbsUp, Hand, Music, Flame, Sparkles, ScanFace } from 'lucide-react';
 import { getAvatarTrackingProfile } from './avatarTrackingProfiles';
 import {
   Character3DController,
@@ -121,7 +120,6 @@ interface ThreeAvatarCanvasProps {
   userName?: string;
   isSpeaking?: boolean;
   className?: string;
-  showEmoteControls?: boolean;
   cameraOffsetX?: number;
   cameraOffsetY?: number;
 }
@@ -132,7 +130,6 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
   userName,
   isSpeaking = false,
   className = '',
-  showEmoteControls = true,
   cameraOffsetX = 0,
   cameraOffsetY = 0,
 }) => {
@@ -581,20 +578,25 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
         cur.gazeX = THREE.MathUtils.lerp(cur.gazeX, Number.isFinite(feat.gazeX) ? feat.gazeX : 0, alphaFace);
         cur.gazeY = THREE.MathUtils.lerp(cur.gazeY, Number.isFinite(feat.gazeY) ? feat.gazeY : 0, alphaFace);
       } else {
-        // Face tracking interrupted: hold pose briefly (<400ms), then smoothly glide to neutral
-        const timeSinceLost = now - cur.lastValidTime;
-        if (timeSinceLost >= 400) {
-          const decay = 0.035;
-          cur.yaw = THREE.MathUtils.lerp(cur.yaw, 0, decay);
-          cur.pitch = THREE.MathUtils.lerp(cur.pitch, 0, decay);
-          cur.roll = THREE.MathUtils.lerp(cur.roll, 0, decay);
-          cur.jawOpen = THREE.MathUtils.lerp(cur.jawOpen, 0, decay);
-          cur.mouthSmile = THREE.MathUtils.lerp(cur.mouthSmile, 0, decay);
-          cur.browRaise = THREE.MathUtils.lerp(cur.browRaise, 0, decay);
-          cur.browFurrow = THREE.MathUtils.lerp(cur.browFurrow, 0, decay);
-          cur.eyeBlinkLeft = THREE.MathUtils.lerp(cur.eyeBlinkLeft, 0, decay);
-          cur.eyeBlinkRight = THREE.MathUtils.lerp(cur.eyeBlinkRight, 0, decay);
-        }
+        // No camera or face tracking off: Head stays neutral, mouth animates dynamically with voice volume
+        const vol = Number.isFinite(feat.audioVolume) ? feat.audioVolume : 0;
+        const audioJaw = vol > 0.05 ? Math.min(1, Math.max(0, (vol - 0.05) * 3.2)) : 0;
+        const alphaJaw = audioJaw > cur.jawOpen ? 1 - Math.exp(-dt * 30) : 1 - Math.exp(-dt * 20);
+        cur.jawOpen = THREE.MathUtils.lerp(cur.jawOpen, audioJaw, alphaJaw);
+
+        // Smoothly glide head and other facial features to neutral
+        const decay = 0.04;
+        cur.yaw = THREE.MathUtils.lerp(cur.yaw, 0, decay);
+        cur.pitch = THREE.MathUtils.lerp(cur.pitch, 0, decay);
+        cur.roll = THREE.MathUtils.lerp(cur.roll, 0, decay);
+        cur.mouthSmile = THREE.MathUtils.lerp(cur.mouthSmile, 0, decay);
+        cur.mouthPucker = THREE.MathUtils.lerp(cur.mouthPucker, 0, decay);
+        cur.browRaise = THREE.MathUtils.lerp(cur.browRaise, 0, decay);
+        cur.browFurrow = THREE.MathUtils.lerp(cur.browFurrow, 0, decay);
+        cur.eyeBlinkLeft = THREE.MathUtils.lerp(cur.eyeBlinkLeft, 0, decay);
+        cur.eyeBlinkRight = THREE.MathUtils.lerp(cur.eyeBlinkRight, 0, decay);
+        cur.gazeX = THREE.MathUtils.lerp(cur.gazeX, 0, decay);
+        cur.gazeY = THREE.MathUtils.lerp(cur.gazeY, 0, decay);
       }
 
       // ========================================================
@@ -764,73 +766,6 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
       {loadError && (
         <div className="absolute inset-0 flex items-center justify-center text-rose-400 text-xs text-center px-4 z-10">
           {loadError}
-        </div>
-      )}
-
-      {/* Quick 3D Emotes & Mesh Tracking Overlay Bar */}
-      {showEmoteControls && !isLoading && (
-        <div className="absolute top-3 right-3 flex items-center gap-1.5 z-20">
-          <button
-            type="button"
-            onClick={() => setShow3DMesh(!show3DMesh)}
-            title="Alternar visualización de puntos de tracking anatómico 3D sobre este modelo"
-            className={`p-1.5 px-2 rounded-lg border text-xs font-medium transition backdrop-blur-md flex items-center gap-1.5 ${
-              show3DMesh
-                ? 'bg-lime-500/25 text-lime-300 border-lime-500/60 shadow-lg shadow-lime-500/20'
-                : 'bg-slate-900/80 text-slate-300 hover:text-white border-slate-700 hover:bg-slate-800'
-            }`}
-          >
-            <ScanFace className="w-3.5 h-3.5" />
-            <span className="text-[11px] font-mono">{trackingProfile.badge}</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => playEmote('Wave')}
-            title="Saludar (Wave)"
-            className={`p-1.5 rounded-lg border text-xs font-medium transition backdrop-blur-md flex items-center gap-1 ${
-              currentEmote === 'Wave'
-                ? 'bg-cyan-500 text-white border-cyan-400 shadow-lg shadow-cyan-500/30'
-                : 'bg-slate-900/80 text-slate-300 hover:text-white border-slate-700 hover:bg-slate-800'
-            }`}
-          >
-            <Hand className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => playEmote('ThumbsUp')}
-            title="Aprobar (Thumbs Up)"
-            className={`p-1.5 rounded-lg border text-xs font-medium transition backdrop-blur-md flex items-center gap-1 ${
-              currentEmote === 'ThumbsUp'
-                ? 'bg-emerald-500 text-white border-emerald-400 shadow-lg shadow-emerald-500/30'
-                : 'bg-slate-900/80 text-slate-300 hover:text-white border-slate-700 hover:bg-slate-800'
-            }`}
-          >
-            <ThumbsUp className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => playEmote('Dance')}
-            title="Bailar (Dance)"
-            className={`p-1.5 rounded-lg border text-xs font-medium transition backdrop-blur-md flex items-center gap-1 ${
-              currentEmote === 'Dance'
-                ? 'bg-purple-500 text-white border-purple-400 shadow-lg shadow-purple-500/30'
-                : 'bg-slate-900/80 text-slate-300 hover:text-white border-slate-700 hover:bg-slate-800'
-            }`}
-          >
-            <Music className="w-3.5 h-3.5" />
-          </button>
-          <button
-            type="button"
-            onClick={() => playEmote('Jump')}
-            title="Saltar (Jump)"
-            className={`p-1.5 rounded-lg border text-xs font-medium transition backdrop-blur-md flex items-center gap-1 ${
-              currentEmote === 'Jump'
-                ? 'bg-amber-500 text-white border-amber-400 shadow-lg shadow-amber-500/30'
-                : 'bg-slate-900/80 text-slate-300 hover:text-white border-slate-700 hover:bg-slate-800'
-            }`}
-          >
-            <Flame className="w-3.5 h-3.5" />
-          </button>
         </div>
       )}
 

@@ -80,7 +80,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
   }, [room.participants, currentUser]);
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 text-slate-100 select-none">
+    <div className="flex flex-col h-full h-[100dvh] w-full max-w-full overflow-hidden bg-slate-950 text-slate-100 select-none">
       {/* Top Bar Header */}
       <Header
         room={room}
@@ -95,10 +95,10 @@ export const RoomView: React.FC<RoomViewProps> = ({
       <div className="flex-1 flex min-h-0 relative overflow-hidden">
         
         {/* Participant Avatars Viewport */}
-        <div className="flex-1 p-3 sm:p-5 overflow-y-auto flex flex-col justify-center">
+        <div className="flex-1 p-2 sm:p-5 overflow-y-auto flex flex-col justify-center">
           
           {/* GRID / MOSAIC VIEW */}
-          <div className="w-full flex-1 flex flex-wrap gap-4 items-center justify-center overflow-y-auto p-2">
+          <div className="w-full flex-1 flex flex-wrap gap-2.5 sm:gap-4 items-center justify-center overflow-y-auto p-1 sm:p-2">
             {allParticipants.map((participant) => {
               const isSelf = participant.id === currentUser.id;
               const features = isSelf ? localFeatures : peerFeaturesMap.get(participant.id) || localFeatures;

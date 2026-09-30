@@ -16,16 +16,14 @@ import {
   Sliders,
   RotateCcw,
   Clock,
-  X,
   Camera,
-  CameraOff,
   Eye,
   EyeOff,
-  Database,
-  Cloud,
-  Key,
-  Settings,
   Radio,
+  Upload,
+  AlertCircle,
+  AlertTriangle,
+  Play,
 } from 'lucide-react';
 import { AvatarId, FaceFeatures } from '../../types';
 import { AVATAR_LIST } from '../avatars/avatarConfigs';
@@ -34,7 +32,7 @@ import { AudioWaveform } from '../common/AudioWaveform';
 import { AuthenticatedUser } from '../auth/Login';
 import { dbServiceSingleton, RoomRecord } from '../../services/dbService';
 import { getAvatarTrackingProfile, transformAvatarLandmark } from '../avatars/avatarTrackingProfiles';
-import { getSupabaseClient, setSupabaseAnonKey, SUPABASE_URL } from '../../services/supabaseClient';
+import { networkServiceSingleton } from '../../services/networkService';
 
 interface LobbyProps {
   onJoinRoom: (config: {
@@ -56,9 +54,12 @@ interface LobbyProps {
   cameraError?: string | null;
   availableCameras?: MediaDeviceInfo[];
   onSelectCamera?: (deviceId: string) => void;
+  hasMicPermission: boolean;
+  micError?: string | null;
+  onRequestMic?: () => void;
 }
 
-// Random fun anonymous handles for quick generation
+// Random fun anonymous handles generator
 const ANON_PREFIXES = [
   'Cyber',
   'Neo',
@@ -93,6 +94,16 @@ const ANON_SUFFIXES = [
   'Cipher',
 ];
 
+function generateRandomAlias(): string {
+  const p = ANON_PREFIXES[Math.floor(Math.random() * ANON_PREFIXES.length)];
+  const s = ANON_SUFFIXES[Math.floor(Math.random() * ANON_SUFFIXES.length)];
+  const num = Math.floor(Math.random() * 900) + 100;
+  return `${p}${s}_${num}`;
+}
+
+const STORAGE_AVATAR_KEY = 'xstreamx_selected_avatar';
+const SINGLE_ROOM_ID = 'main';
+
 export const Lobby: React.FC<LobbyProps> = ({
   onJoinRoom,
   localFeatures,
@@ -108,93 +119,122 @@ export const Lobby: React.FC<LobbyProps> = ({
   cameraError,
   availableCameras = [],
   onSelectCamera,
+  hasMicPermission,
+  micError,
+  onRequestMic,
 }) => {
-  // Read room query parameter if present
-  const [roomId, setRoomId] = useState<string>(() => {
+  const isAdminUser = authUser?.role === 'admin';
+
+  // Always generate a random alias unless signed in with X.com account
+  const [userName, setUserName] = useState<string>(() => {
+    if (authUser?.provider === 'x' && authUser.name) {
+      return authUser.name;
+    }
+    return generateRandomAlias();
+  });
+
+  // Remember selected avatar from localStorage
+  const [selectedAvatarId, setSelectedAvatarId] = useState<AvatarId>(() => {
     if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      const r = params.get('room');
-      if (r && r.trim()) {
-        return r.trim().toLowerCase();
+      const saved = localStorage.getItem(STORAGE_AVATAR_KEY) as AvatarId;
+      if (saved && AVATAR_LIST.some((a) => a.id === saved)) {
+        return saved;
       }
     }
-    return 'alpha';
+    return 'three_robot';
   });
 
-  const [userName, setUserName] = useState<string>(() => {
-    if (authUser?.name) return authUser.name;
-    const p = ANON_PREFIXES[Math.floor(Math.random() * ANON_PREFIXES.length)];
-    const s = ANON_SUFFIXES[Math.floor(Math.random() * ANON_SUFFIXES.length)];
-    const num = Math.floor(Math.random() * 900) + 100;
-    return `${p}${s}_${num}`;
-  });
-
-  const [selectedAvatarId, setSelectedAvatarId] = useState<AvatarId>('face_cap');
   const [error, setError] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [showCameraPip, setShowCameraPip] = useState(false);
-  const [showAdjustments, setShowAdjustments] = useState(false);
+  const [showAdjustments, setShowAdjustments] = useState(true);
 
   // Calibration & Offset Controls
   const [cameraOffsetX, setCameraOffsetX] = useState(0);
   const [cameraOffsetY, setCameraOffsetY] = useState(0);
   const [trackingSensitivity, setTrackingSensitivity] = useState(1.0);
 
-  // Active Single Room State
+  // Single Room State & Real-time Active Status
+  const [isRoomActive, setIsRoomActive] = useState<boolean>(false);
   const [activeRoomRecord, setActiveRoomRecord] = useState<RoomRecord | null>(null);
-  const [customRoomTitle, setCustomRoomTitle] = useState('Sala Principal en Vivo');
-  const [isAdminConfigOpen, setIsAdminConfigOpen] = useState(false);
+  const [isCheckingRoom, setIsCheckingRoom] = useState<boolean>(true);
+  const [isCreatingRoom, setIsCreatingRoom] = useState<boolean>(false);
 
-  // Supabase Cloud State
-  const [showDbModal, setShowDbModal] = useState(false);
-  const [showSqlHelp, setShowSqlHelp] = useState(false);
-  const [copiedSql, setCopiedSql] = useState(false);
-  const [supabaseAnonKeyInput, setSupabaseAnonKeyInput] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return (
-        (import.meta as any).env?.VITE_SUPABASE_ANON_KEY ||
-        localStorage.getItem('xstreamx_supabase_anon_key') ||
-        ''
-      );
-    }
-    return '';
-  });
-  const [hasSupabaseClient, setHasSupabaseClient] = useState(false);
-
-  useEffect(() => {
-    setHasSupabaseClient(!!getSupabaseClient());
-  }, [supabaseAnonKeyInput]);
-
-  const isAdminUser = authUser?.role === 'admin';
-
-  // Load Active Room from Database
-  const loadActiveRoom = async () => {
+  // Function to check whether the single room has been created by an admin
+  const checkSingleRoomStatus = async () => {
     try {
-      const active = await dbServiceSingleton.getActiveRoom();
-      setActiveRoomRecord(active);
-      setCustomRoomTitle(active.name || 'Sala Principal en Vivo');
-      // If URL did not specify a custom room, use active room id
-      if (typeof window !== 'undefined') {
-        const params = new URLSearchParams(window.location.search);
-        if (!params.get('room')) {
-          setRoomId(active.id);
-        }
+      // 1. Check server API status
+      const serverStatus = await fetch('/api/room/status')
+        .then((r) => r.json())
+        .catch(() => null);
+
+      if (serverStatus && serverStatus.isOpen && serverStatus.room) {
+        setIsRoomActive(true);
+        setActiveRoomRecord({
+          id: serverStatus.room.id,
+          name: serverStatus.room.name || 'Sala Principal en Vivo',
+          adminId: serverStatus.room.adminId || '',
+          isLocked: !!serverStatus.room.isLocked,
+          participantCount: serverStatus.room.userCount || 0,
+          createdAt: Date.now(),
+          lastActive: Date.now(),
+        });
+        setIsCheckingRoom(false);
+        return;
+      }
+
+      // 2. Check Database / Storage
+      const dbRoom = await dbServiceSingleton.getActiveRoom();
+      if (dbRoom && dbRoom.adminId) {
+        setIsRoomActive(true);
+        setActiveRoomRecord(dbRoom);
+      } else {
+        setIsRoomActive(false);
+        setActiveRoomRecord(null);
       }
     } catch (e) {
-      console.warn('[Lobby] Error loading active room:', e);
+      console.warn('[Lobby] Error checking room status:', e);
+    } finally {
+      setIsCheckingRoom(false);
     }
   };
 
   useEffect(() => {
-    loadActiveRoom();
+    checkSingleRoomStatus();
+
+    // Listen to real-time socket events for room opening/closing
+    networkServiceSingleton.onRoomStatusChanged = (status) => {
+      if (status && status.isOpen) {
+        setIsRoomActive(true);
+        setActiveRoomRecord({
+          id: status.room?.id || SINGLE_ROOM_ID,
+          name: status.room?.name || 'Sala Principal en Vivo',
+          adminId: status.room?.adminId || '',
+          isLocked: !!status.room?.isLocked,
+          participantCount: status.room?.userCount || 0,
+          createdAt: Date.now(),
+          lastActive: Date.now(),
+        });
+      } else {
+        setIsRoomActive(false);
+        setActiveRoomRecord(null);
+      }
+    };
+
+    // Polling interval every 3 seconds to ensure sync across different clients
+    const interval = setInterval(() => {
+      checkSingleRoomStatus();
+    }, 3000);
+
+    return () => clearInterval(interval);
   }, []);
 
-  const handleSaveSupabaseKey = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSupabaseAnonKey(supabaseAnonKeyInput.trim());
-    setHasSupabaseClient(!!getSupabaseClient());
-    await loadActiveRoom();
-    setShowDbModal(false);
+  // Handle avatar change & persist in localStorage
+  const handleSelectAvatar = (id: AvatarId) => {
+    setSelectedAvatarId(id);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_AVATAR_KEY, id);
+    }
   };
 
   // Preview video element ref for PiP
@@ -272,14 +312,13 @@ export const Lobby: React.FC<LobbyProps> = ({
   const selectedAvatar =
     AVATAR_LIST.find((a) => a.id === selectedAvatarId) || AVATAR_LIST[0];
 
-  const getPublicShareUrl = (roomCode: string) => {
+  const getPublicShareUrl = () => {
     if (typeof window === 'undefined') return '';
-    const cleanRoom = roomCode.trim().toLowerCase() || 'alpha';
-    return `${window.location.origin}${window.location.pathname}?room=${encodeURIComponent(cleanRoom)}`;
+    return `${window.location.origin}/lobby`;
   };
 
   const handleCopyLink = () => {
-    const url = getPublicShareUrl(roomId);
+    const url = getPublicShareUrl();
     if (!url) return;
     navigator.clipboard.writeText(url);
     setCopiedLink(true);
@@ -287,13 +326,13 @@ export const Lobby: React.FC<LobbyProps> = ({
   };
 
   const handleNativeShare = async () => {
-    const url = getPublicShareUrl(roomId);
+    const url = getPublicShareUrl();
     if (!url) return;
     if (navigator.share) {
       try {
         await navigator.share({
           title: 'XSTREAMX - Videollamada con Avatares 3D',
-          text: `¡Únete a mi videollamada en vivo en la sala "${(activeRoomRecord?.name || roomId).toUpperCase()}" de XSTREAMX!`,
+          text: `¡Únete a la sala en vivo de XSTREAMX!`,
           url,
         });
         return;
@@ -305,69 +344,71 @@ export const Lobby: React.FC<LobbyProps> = ({
   };
 
   const handleGenerateRandomAnon = () => {
-    const p = ANON_PREFIXES[Math.floor(Math.random() * ANON_PREFIXES.length)];
-    const s = ANON_SUFFIXES[Math.floor(Math.random() * ANON_SUFFIXES.length)];
-    const num = Math.floor(Math.random() * 900) + 100;
-    setUserName(`${p}${s}_${num}`);
+    setUserName(generateRandomAlias());
   };
 
-  const handleAdminUpdateRoom = async () => {
-    const cleanId = roomId.trim().toLowerCase() || 'alpha';
-    const cleanTitle = customRoomTitle.trim() || `Sala ${cleanId.toUpperCase()}`;
-    const updated: RoomRecord = {
-      id: cleanId,
-      name: cleanTitle,
-      adminId: authUser?.username || 'admin',
-      isLocked: false,
-      participantCount: 1,
-      createdAt: Date.now(),
-      lastActive: Date.now(),
-    };
-    await dbServiceSingleton.setActiveRoom(updated);
-    setActiveRoomRecord(updated);
-    setIsAdminConfigOpen(false);
+  // Admin action to create/activate the single room
+  const handleAdminCreateRoom = async () => {
+    setError(null);
+    setIsCreatingRoom(true);
+    try {
+      const newRoom = await dbServiceSingleton.createOrActivateRoom(
+        'Sala Principal en Vivo',
+        authUser?.username || 'admin'
+      );
+      setIsRoomActive(true);
+      setActiveRoomRecord(newRoom);
+
+      // Join room directly as admin
+      onJoinRoom({
+        userName: userName.trim() || 'Administrador',
+        roomId: SINGLE_ROOM_ID,
+        avatarId: selectedAvatarId,
+        createAsAdmin: true,
+      });
+    } catch (err: any) {
+      setError(err?.message || 'Error al crear la sala.');
+    } finally {
+      setIsCreatingRoom(false);
+    }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  // Participant or Admin submitting to enter room
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const trimmedName = userName.trim();
-    const trimmedRoom = (roomId || activeRoomRecord?.id || 'alpha').trim().toLowerCase();
 
     if (!trimmedName) {
       setError('Por favor escribe tu nombre o alias para identificarte.');
       return;
     }
 
-    setError(null);
-
-    // Save/update room in database
-    try {
-      await dbServiceSingleton.saveRoom({
-        id: trimmedRoom,
-        name: activeRoomRecord?.name || `Sala ${trimmedRoom.toUpperCase()}`,
-        adminId: authUser?.username || userName,
-        isLocked: false,
-        participantCount: 1,
-        createdAt: Date.now(),
-        lastActive: Date.now(),
-      });
-    } catch (e) {
-      console.warn('Error persisting room:', e);
+    if (!hasMicPermission) {
+      setError('No es posible ingresar a la sala sin conceder permisos de micrófono.');
+      if (onRequestMic) onRequestMic();
+      return;
     }
+
+    if (!isRoomActive && !isAdminUser) {
+      setError('No hay ninguna sala creada en este momento. Espera a que un administrador inicie la sala.');
+      return;
+    }
+
+    setError(null);
 
     onJoinRoom({
       userName: trimmedName,
-      roomId: trimmedRoom,
+      roomId: SINGLE_ROOM_ID,
       avatarId: selectedAvatarId,
       createAsAdmin: isAdminUser,
     });
   };
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex items-center justify-center p-4 md:p-8">
-      <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 text-slate-100 flex items-start sm:items-center justify-center p-3 sm:p-6 md:p-8">
+      <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8 items-center py-2">
         
-        {/* Left Column: Interactive Avatar Mirror Preview with Camera Recenter Sliders */}
+        {/* Columna Izquierda: Espejo de Avatar en Vivo y Calibración de Cámara */}
         <div className="lg:col-span-6 flex flex-col items-center">
           <div className="w-full max-w-md bg-slate-900/90 rounded-2xl border border-slate-800 p-5 shadow-2xl relative">
             <div className="flex items-center justify-between mb-3">
@@ -391,9 +432,6 @@ export const Lobby: React.FC<LobbyProps> = ({
                     {selectedAvatar.trackingProfile.badge}
                   </span>
                 )}
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950 text-cyan-400 border border-cyan-800 font-mono">
-                  {isModelReady ? 'IA ACTIVA' : 'CALIBRANDO...'}
-                </span>
               </div>
             </div>
 
@@ -413,7 +451,7 @@ export const Lobby: React.FC<LobbyProps> = ({
               />
 
               {/* PiP Camera Preview with Real-time Landmark Overlay */}
-              {showCameraPip && (
+              {showCameraPip && isCameraActive && (
                 <div className="absolute bottom-3 right-3 w-36 h-28 bg-slate-950 rounded-lg overflow-hidden border border-cyan-500/40 shadow-2xl z-30">
                   <video
                     ref={pipVideoRef}
@@ -434,18 +472,22 @@ export const Lobby: React.FC<LobbyProps> = ({
                 </div>
               )}
 
-              {/* AI Status Indicator */}
+              {/* Status Indicator */}
               <div className="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur-sm px-2.5 py-1 rounded-md text-xs font-mono text-cyan-300 flex items-center gap-1.5 border border-slate-800 z-20">
                 <span
                   className={`w-2 h-2 rounded-full ${
                     localFeatures.isFaceDetected
                       ? 'bg-emerald-400 animate-pulse'
+                      : !isCameraActive
+                      ? 'bg-cyan-400'
                       : 'bg-amber-400'
                   }`}
                 />
                 <span className="text-[11px]">
                   {localFeatures.isFaceDetected
                     ? 'Rostro Detectado (MediaPipe)'
+                    : !isCameraActive
+                    ? 'Modo Solo Voz (Lip-Sync Activo)'
                     : 'Buscando Rostro...'}
                 </span>
               </div>
@@ -506,6 +548,21 @@ export const Lobby: React.FC<LobbyProps> = ({
                     step="0.02"
                     value={cameraOffsetY}
                     onChange={(e) => setCameraOffsetY(parseFloat(e.target.value))}
+                    className="w-full accent-cyan-400 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <div className="flex justify-between text-[11px] text-slate-400">
+                    <span>Sensibilidad de Expresión</span>
+                    <span className="font-mono text-cyan-300">{trackingSensitivity.toFixed(1)}x</span>
+                  </div>
+                  <input
+                    type="range"
+                    min="0.5"
+                    max="2.0"
+                    step="0.1"
+                    value={trackingSensitivity}
+                    onChange={(e) => setTrackingSensitivity(parseFloat(e.target.value))}
                     className="w-full accent-cyan-400 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
                   />
                 </div>
@@ -580,17 +637,46 @@ export const Lobby: React.FC<LobbyProps> = ({
               </div>
             )}
 
-            {/* Camera Error / Permission Notice */}
-            {cameraError && (
-              <div className="mt-3 p-3 bg-amber-950/60 border border-amber-800/80 rounded-xl text-xs text-amber-200 flex flex-col gap-2">
-                <span>{cameraError}</span>
+            {/* Camera & Microphone Notices */}
+            {!hasMicPermission && (
+              <div className="mt-3 p-3.5 bg-rose-950/80 border border-rose-600 rounded-xl text-xs text-rose-200 flex flex-col gap-2 shadow-lg shadow-rose-950/50 animate-in fade-in">
+                <div className="flex items-center gap-2 font-bold text-rose-300">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>Permiso de micrófono no concedido</span>
+                </div>
+                <p className="text-[11px] text-rose-200/90 leading-relaxed">
+                  {micError || 'Es obligatorio conceder permisos de micrófono en tu navegador para poder ingresar y comunicarte en la sala.'}
+                </p>
+                {onRequestMic && (
+                  <button
+                    type="button"
+                    onClick={onRequestMic}
+                    className="self-start px-3 py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-lg text-xs transition cursor-pointer flex items-center gap-1.5 shadow"
+                  >
+                    <Mic className="w-3.5 h-3.5" />
+                    <span>Conceder Permiso de Micrófono</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {!isCameraActive && (
+              <div className="mt-3 p-3 bg-sky-950/40 border border-sky-800/60 rounded-xl text-xs text-sky-200 flex flex-col gap-1.5">
+                <div className="flex items-center gap-2 font-bold text-sky-300">
+                  <Radio className="w-4 h-4 text-cyan-400 shrink-0" />
+                  <span>Modo Solo Voz Activo</span>
+                </div>
+                <p className="text-[11px] text-sky-200/80 leading-relaxed">
+                  Puedes ingresar y participar en la sala sin cámara. La boca de tu avatar 3D se animará automáticamente en base a tu voz al hablar.
+                </p>
                 {onRequestCamera && (
                   <button
                     type="button"
                     onClick={onRequestCamera}
-                    className="self-start px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold rounded text-[11px] transition cursor-pointer"
+                    className="self-start mt-1 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-semibold rounded text-[11px] transition cursor-pointer flex items-center gap-1"
                   >
-                    Reintentar Conexión
+                    <Camera className="w-3 h-3" />
+                    <span>Activar Cámara</span>
                   </button>
                 )}
               </div>
@@ -598,104 +684,92 @@ export const Lobby: React.FC<LobbyProps> = ({
           </div>
         </div>
 
-        {/* Right Column: Identity & Direct Join Form */}
+        {/* Columna Derecha: Selección de Avatar, Alias y Acceso a la Sala Única */}
         <div className="lg:col-span-6 flex flex-col justify-center">
           <div className="bg-slate-900/90 rounded-2xl border border-slate-800 p-5 md:p-7 shadow-2xl space-y-5">
             
-            {/* Supabase Cloud Status Indicator */}
-            <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-xs">
-              <div className="flex items-center gap-2">
-                <div className={`w-2 h-2 rounded-full ${hasSupabaseClient ? 'bg-emerald-400 animate-pulse' : 'bg-cyan-400'}`} />
-                <span className="text-slate-300 font-semibold flex items-center gap-1.5">
-                  <Database className="w-3.5 h-3.5 text-cyan-400" />
-                  Supabase Realtime Cloud:
-                </span>
-                <span className={`font-mono text-[11px] ${hasSupabaseClient ? 'text-emerald-300' : 'text-cyan-300'}`}>
-                  {hasSupabaseClient ? 'Nube Conectada' : 'Listo'}
-                </span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowDbModal(true)}
-                className="flex items-center gap-1 px-2.5 py-1 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-medium transition cursor-pointer border border-slate-700 hover:border-cyan-500/50"
-              >
-                <Settings className="w-3 h-3 text-cyan-400" />
-                <span>Configurar DB</span>
-              </button>
-            </div>
-
-            {/* SINGLE ACTIVE ROOM BANNER */}
-            <div className="p-4 rounded-xl bg-gradient-to-r from-cyan-950/90 via-slate-900 to-indigo-950/90 border border-cyan-500/40 shadow-lg shadow-cyan-950/30 flex items-center justify-between">
+            {/* ESTADO DE LA SALA ÚNICA */}
+            <div className="p-4 rounded-xl bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 border border-slate-800 shadow-md flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <Radio className="w-6 h-6 text-cyan-400 animate-pulse" />
-                  <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full animate-ping" />
+                  <Radio className={`w-5 h-5 ${isRoomActive ? 'text-emerald-400 animate-pulse' : 'text-slate-500'}`} />
+                  {isRoomActive && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full animate-ping" />
+                  )}
                 </div>
                 <div>
-                  <div className="text-[10px] uppercase font-black text-cyan-400 tracking-wider flex items-center gap-1.5">
-                    <span>SALA ÚNICA ACTIVA</span>
-                    <span className="px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 text-[9px] font-mono">
-                      EN VIVO
+                  <div className="text-[10px] uppercase font-black tracking-wider flex items-center gap-1.5">
+                    <span className={isRoomActive ? 'text-emerald-400' : 'text-slate-400'}>
+                      {isRoomActive ? 'SALA EN VIVO ABIERTA' : 'SALA NO INICIADA'}
+                    </span>
+                    <span
+                      className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-bold border ${
+                        isRoomActive
+                          ? 'bg-emerald-950 text-emerald-300 border-emerald-800'
+                          : 'bg-amber-950 text-amber-300 border-amber-800'
+                      }`}
+                    >
+                      {isRoomActive ? 'DISPONIBLE' : 'EN ESPERA'}
                     </span>
                   </div>
-                  <div className="text-base font-black text-white">
-                    {activeRoomRecord?.name || 'Sala ALPHA en Vivo'}
+                  <div className="text-sm font-black text-white">
+                    {activeRoomRecord?.name || 'Sala Principal en Vivo'}
                   </div>
                 </div>
               </div>
 
               {isAdminUser && (
-                <button
-                  type="button"
-                  onClick={() => setIsAdminConfigOpen(!isAdminConfigOpen)}
-                  className="px-2.5 py-1 rounded-lg bg-cyan-950 hover:bg-cyan-900 border border-cyan-700 text-cyan-300 text-xs font-semibold transition cursor-pointer flex items-center gap-1"
-                >
-                  <Shield className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Admin Sala</span>
-                </button>
+                <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold flex items-center gap-1">
+                  <Shield className="w-3 h-3 text-amber-400" />
+                  Admin
+                </span>
               )}
             </div>
 
-            {/* Admin Room Editor Drawer */}
-            {isAdminUser && isAdminConfigOpen && (
-              <div className="p-3 bg-slate-950 rounded-xl border border-cyan-800/60 space-y-2.5 text-xs">
-                <span className="font-bold text-cyan-300 uppercase tracking-wider block">
-                  Configuración de Sala Única (Admin)
-                </span>
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Nombre de la Sala</label>
-                  <input
-                    type="text"
-                    value={customRoomTitle}
-                    onChange={(e) => setCustomRoomTitle(e.target.value)}
-                    placeholder="Ej. Sala de Transmisión VIP"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white"
-                  />
+            {/* AVISO PARA PARTICIPANTES SI NO HAY SALA CREADA */}
+            {!isRoomActive && !isAdminUser && (
+              <div className="p-4 rounded-xl bg-amber-950/40 border border-amber-800/60 text-amber-200 text-xs space-y-2 animate-fade-in">
+                <div className="flex items-center gap-2 font-bold text-amber-300">
+                  <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+                  <span>No hay ninguna sala creada en este momento</span>
                 </div>
-                <div>
-                  <label className="block text-[11px] text-slate-400 mb-1">Código ID de Sala</label>
-                  <input
-                    type="text"
-                    value={roomId}
-                    onChange={(e) => setRoomId(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
-                    placeholder="alpha"
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-cyan-300 uppercase"
-                  />
+                <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                  Un administrador aún no ha abierto la sala en vivo. Por favor espera en esta pantalla; el acceso se habilitará automáticamente en cuanto el administrador inicie la sala.
+                </p>
+                <div className="flex items-center gap-2 text-[10px] text-amber-400/80 font-mono pt-1">
+                  <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-ping" />
+                  <span>Esperando al administrador...</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleAdminUpdateRoom}
-                  className="w-full py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition"
-                >
-                  Guardar y Activar Sala Única en Supabase
-                </button>
               </div>
             )}
 
-            {/* Direct Join Form */}
+            {/* AVISO BLOQUEANTE: PERMISO DE MICRÓFONO REQUERIDO */}
+            {!hasMicPermission && (
+              <div className="p-4 rounded-xl bg-rose-950/70 border border-rose-600 text-rose-200 text-xs space-y-2.5 shadow-xl shadow-rose-950/50 animate-fade-in">
+                <div className="flex items-center gap-2 font-bold text-rose-300 text-sm">
+                  <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+                  <span>Micrófono obligatorio para ingresar a la sala</span>
+                </div>
+                <p className="text-xs text-rose-200/90 leading-relaxed">
+                  {micError || 'No se han concedido permisos de micrófono. No es posible ingresar a la sala sin acceso a tu micrófono.'}
+                </p>
+                {onRequestMic && (
+                  <button
+                    type="button"
+                    onClick={onRequestMic}
+                    className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs transition cursor-pointer flex items-center gap-2 shadow-lg shadow-rose-600/30"
+                  >
+                    <Mic className="w-4 h-4" />
+                    <span>Conceder Permiso de Micrófono</span>
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Direct Join / Create Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
               
-              {/* Step 1: Avatar Selector Grid */}
+              {/* Paso 1: Selector de Avatar 3D */}
               <div>
                 <label className="block text-xs font-bold uppercase tracking-wider text-slate-200 mb-2 flex items-center gap-1.5">
                   <span className="w-4 h-4 rounded-full bg-cyan-500 text-slate-950 text-[10px] font-black flex items-center justify-center">1</span>
@@ -708,7 +782,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                       <button
                         key={avatar.id}
                         type="button"
-                        onClick={() => setSelectedAvatarId(avatar.id)}
+                        onClick={() => handleSelectAvatar(avatar.id)}
                         className={`relative p-2 rounded-xl border text-left flex flex-col items-center gap-1 transition cursor-pointer ${
                           isSelected
                             ? 'bg-cyan-950/80 border-cyan-400 ring-2 ring-cyan-400/40 shadow-md shadow-cyan-500/20 scale-[1.02]'
@@ -735,10 +809,26 @@ export const Lobby: React.FC<LobbyProps> = ({
                       </button>
                     );
                   })}
+
+                  {/* Opción Futura: Subir Avatar Propio */}
+                  <div
+                    title="Próximamente: Podrás subir tu modelo o avatar personalizado"
+                    className="relative p-2 rounded-xl border border-dashed border-slate-700 bg-slate-950/40 text-left flex flex-col items-center justify-center gap-1 opacity-60 cursor-not-allowed select-none"
+                  >
+                    <div className="w-10 h-10 rounded-lg border border-dashed border-slate-700 flex items-center justify-center text-slate-400 shrink-0">
+                      <Upload className="w-4 h-4" />
+                    </div>
+                    <span className="text-[9px] font-bold text-slate-400 text-center leading-tight">
+                      Subir Propio
+                    </span>
+                    <span className="text-[8px] font-mono text-cyan-400 px-1 py-0.2 bg-cyan-950/80 rounded border border-cyan-900">
+                      Pronto
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* Step 2: Name / Alias Input */}
+              {/* Paso 2: Nombre o Alias (Aleatorio por defecto salvo cuenta de X.com) */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
@@ -758,7 +848,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                   type="text"
                   value={userName}
                   onChange={(e) => setUserName(e.target.value)}
-                  placeholder="Escribe tu nombre aquí..."
+                  placeholder="Escribe tu nombre o alias aquí..."
                   maxLength={24}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 font-semibold transition"
                 />
@@ -766,39 +856,78 @@ export const Lobby: React.FC<LobbyProps> = ({
 
               {/* Error feedback */}
               {error && (
-                <div className="p-2.5 rounded-lg bg-rose-950/70 border border-rose-800 text-xs text-rose-300">
-                  {error}
+                <div className="p-2.5 rounded-lg bg-rose-950/70 border border-rose-800 text-xs text-rose-300 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{error}</span>
                 </div>
               )}
 
-              {/* Step 3: High-Impact Direct Enter Button */}
-              <button
-                type="submit"
-                className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-cyan-400 via-sky-500 to-indigo-600 hover:from-cyan-300 hover:to-indigo-500 text-slate-950 font-black tracking-wide text-sm flex items-center justify-center gap-2 shadow-xl shadow-cyan-500/30 transition active:scale-[0.99] cursor-pointer"
-              >
-                <span>INGRESAR A LA SALA EN VIVO AHORA</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+              {/* Paso 3: Botón de Acción Dinámico */}
+              {!hasMicPermission ? (
+                <button
+                  type="button"
+                  onClick={onRequestMic}
+                  className="w-full py-3.5 px-4 rounded-xl bg-rose-900/90 hover:bg-rose-800 text-rose-100 font-black tracking-wide text-xs sm:text-sm flex items-center justify-center gap-2 border border-rose-600 shadow-xl shadow-rose-950/60 transition cursor-pointer active:scale-[0.99]"
+                >
+                  <MicOff className="w-4 h-4 text-rose-300 animate-pulse shrink-0" />
+                  <span>CONCEDER MICRÓFONO PARA PODER INGRESAR</span>
+                </button>
+              ) : isAdminUser && !isRoomActive ? (
+                <button
+                  type="button"
+                  onClick={handleAdminCreateRoom}
+                  disabled={isCreatingRoom}
+                  className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-400 via-orange-500 to-amber-600 hover:from-amber-300 hover:to-orange-400 text-slate-950 font-black tracking-wide text-sm flex items-center justify-center gap-2 shadow-xl shadow-amber-500/25 transition active:scale-[0.99] cursor-pointer disabled:opacity-50"
+                >
+                  {isCreatingRoom ? (
+                    <span className="inline-block w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      <span>CREAR Y ABRIR SALA PRINCIPAL</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              ) : isRoomActive ? (
+                <button
+                  type="submit"
+                  className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-cyan-400 via-sky-500 to-indigo-600 hover:from-cyan-300 hover:to-indigo-500 text-slate-950 font-black tracking-wide text-sm flex items-center justify-center gap-2 shadow-xl shadow-cyan-500/30 transition active:scale-[0.99] cursor-pointer"
+                >
+                  <Play className="w-4 h-4 fill-slate-950" />
+                  <span>INGRESAR A LA SALA EN VIVO AHORA</span>
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="w-full py-3.5 px-4 rounded-xl bg-slate-800 text-slate-400 font-bold tracking-wide text-xs flex items-center justify-center gap-2 border border-slate-700 opacity-70 cursor-not-allowed"
+                >
+                  <Clock className="w-4 h-4 text-amber-400 animate-spin" />
+                  <span>ESPERANDO A QUE EL ADMINISTRADOR INICIE LA SALA...</span>
+                </button>
+              )}
 
               {/* Share Public Link Bar */}
-              <div className="p-3 rounded-xl bg-slate-950/80 border border-cyan-800/40 space-y-2">
+              <div className="p-3 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] font-bold text-cyan-300 flex items-center gap-1.5 uppercase tracking-wider">
+                  <span className="text-[11px] font-bold text-slate-300 flex items-center gap-1.5 uppercase tracking-wider">
                     <Link2 className="w-3.5 h-3.5 text-cyan-400" />
-                    Enlace de Invitación
+                    Enlace de Acceso a la Sala
                   </span>
-                  <span className="text-[10px] text-emerald-400 font-semibold px-2 py-0.5 rounded-full bg-emerald-950/80 border border-emerald-800/80">
-                    Acceso Directo
+                  <span className="text-[10px] text-cyan-400 font-semibold px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-800/80">
+                    Sala Única
                   </span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <input
                     type="text"
                     readOnly
-                    value={getPublicShareUrl(roomId)}
+                    value={getPublicShareUrl()}
                     onClick={(e) => (e.target as HTMLInputElement).select()}
                     className="flex-1 min-w-0 bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-xs font-mono text-cyan-300 select-all focus:outline-none focus:border-cyan-500 truncate"
-                    title="Enlace público para invitar a cualquier persona"
+                    title="Enlace público de la sala"
                   />
                   <button
                     type="button"
@@ -808,7 +937,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                         ? 'bg-emerald-600 text-white'
                         : 'bg-cyan-600 hover:bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
                     }`}
-                    title="Copiar link público para ingresar"
+                    title="Copiar enlace"
                   >
                     {copiedLink ? (
                       <>
@@ -826,7 +955,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                     type="button"
                     onClick={handleNativeShare}
                     className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 transition shrink-0 cursor-pointer"
-                    title="Compartir enlace con otro participante"
+                    title="Compartir enlace"
                   >
                     <Share2 className="w-3.5 h-3.5 text-indigo-400" />
                   </button>
@@ -838,112 +967,6 @@ export const Lobby: React.FC<LobbyProps> = ({
         </div>
 
       </div>
-
-      {/* Supabase Cloud Connection & SQL Schema Modal */}
-      {showDbModal && (
-        <div className="fixed inset-0 bg-slate-950/85 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Database className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-base font-bold text-white">Base de Datos Supabase (Salas Persistentes)</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowDbModal(false)}
-                className="p-1 text-slate-400 hover:text-white rounded-lg transition cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Las salas y perfiles se guardan automáticamente en tu instancia en la nube de Supabase para que no se pierdan al recargar o cambiar de dispositivo.
-            </p>
-
-            <form onSubmit={handleSaveSupabaseKey} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1">
-                  URL del Proyecto Supabase
-                </label>
-                <input
-                  type="text"
-                  readOnly
-                  value={SUPABASE_URL}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-cyan-300 select-all"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 mb-1 flex items-center justify-between">
-                  <span>Supabase Public Anon Key</span>
-                  <span className="text-[10px] text-slate-500 font-normal">
-                    (Settings → API → Project API Keys → anon public)
-                  </span>
-                </label>
-                <input
-                  type="password"
-                  value={supabaseAnonKeyInput}
-                  onChange={(e) => setSupabaseAnonKeyInput(e.target.value)}
-                  placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-xs font-mono text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div className="flex items-center gap-2 pt-2">
-                <button
-                  type="submit"
-                  className="flex-1 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold text-xs transition cursor-pointer"
-                >
-                  Guardar y Sincronizar Salas
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowSqlHelp(!showSqlHelp)}
-                  className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs transition cursor-pointer"
-                >
-                  {showSqlHelp ? 'Ocultar SQL' : 'Ver Esquema SQL'}
-                </button>
-              </div>
-            </form>
-
-            {showSqlHelp && (
-              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2 text-xs">
-                <div className="flex items-center justify-between text-slate-400">
-                  <span className="font-semibold text-slate-300">Esquema SQL para Supabase:</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const sql = `CREATE TABLE IF NOT EXISTS public.rooms (id TEXT PRIMARY KEY, name TEXT NOT NULL, admin_id TEXT DEFAULT '', is_locked BOOLEAN DEFAULT false, participant_count INTEGER DEFAULT 0, created_at BIGINT, last_active BIGINT); ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY; CREATE POLICY "Allow public all on rooms" ON public.rooms FOR ALL USING (true);`;
-                      navigator.clipboard.writeText(sql);
-                      setCopiedSql(true);
-                      setTimeout(() => setCopiedSql(false), 2000);
-                    }}
-                    className="text-[11px] text-cyan-400 hover:text-cyan-300 font-bold cursor-pointer"
-                  >
-                    {copiedSql ? '¡Copiado!' : 'Copiar SQL Rápido'}
-                  </button>
-                </div>
-                <pre className="p-2 bg-slate-900 rounded text-[10px] font-mono text-cyan-300 overflow-x-auto max-h-40">
-{`-- Ejecuta esto en el SQL Editor de tu Supabase:
-CREATE TABLE IF NOT EXISTS public.rooms (
-  id TEXT PRIMARY KEY,
-  name TEXT NOT NULL,
-  admin_id TEXT DEFAULT '',
-  is_locked BOOLEAN DEFAULT false,
-  participant_count INTEGER DEFAULT 0,
-  created_at BIGINT DEFAULT (EXTRACT(epoch FROM NOW()) * 1000)::BIGINT,
-  last_active BIGINT DEFAULT (EXTRACT(epoch FROM NOW()) * 1000)::BIGINT
-);
-ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public all on rooms" ON public.rooms FOR ALL USING (true);`}
-                </pre>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
     </div>
   );
 };

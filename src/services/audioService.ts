@@ -95,7 +95,7 @@ export class AudioService {
       return this.mediaStream;
     } catch (err) {
       console.warn('[AudioService] Could not access microphone:', err);
-      return null;
+      throw err;
     }
   }
 

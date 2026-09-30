@@ -62,6 +62,22 @@ async function startServer() {
     res.json({ rooms: publicRooms });
   });
 
+  app.get('/api/room/status', (req, res) => {
+    const mainRoom = rooms.get('main') || Array.from(rooms.values())[0];
+    res.json({
+      isOpen: !!mainRoom,
+      room: mainRoom
+        ? {
+            id: mainRoom.id,
+            name: mainRoom.name,
+            adminId: mainRoom.adminId,
+            isLocked: mainRoom.isLocked,
+            userCount: mainRoom.users.size,
+          }
+        : null,
+    });
+  });
+
   // X.com (Twitter) OAuth endpoint
   app.get('/api/auth/x/status', (req, res) => {
     const clientId = process.env.X_CLIENT_ID || process.env.X_CONSUMER_KEY;
@@ -108,8 +124,64 @@ async function startServer() {
   });
 
   // OAuth Callback Handler (Popup receiver)
-  app.get(['/auth/callback', '/auth/callback/'], (req, res) => {
+  app.get(['/auth/callback', '/auth/callback/'], async (req, res) => {
     const { code, state, error } = req.query;
+    let handle = '';
+    let displayName = '';
+    let authError = error ? String(error) : '';
+
+    if (code) {
+      const clientId = process.env.X_CLIENT_ID || process.env.X_CONSUMER_KEY;
+      const clientSecret = process.env.X_CLIENT_SECRET || process.env.X_CONSUMER_SECRET;
+      const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+      const redirectUri = `${baseUrl}/auth/callback`;
+
+      try {
+        const tokenParams = new URLSearchParams({
+          code: String(code),
+          grant_type: 'authorization_code',
+          client_id: clientId || '',
+          redirect_uri: redirectUri,
+          code_verifier: 'challenge',
+        });
+
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        };
+
+        if (clientId && clientSecret) {
+          const basicAuth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+          headers['Authorization'] = `Basic ${basicAuth}`;
+        }
+
+        const tokenRes = await fetch('https://api.twitter.com/2/oauth2/token', {
+          method: 'POST',
+          headers,
+          body: tokenParams.toString(),
+        });
+
+        if (tokenRes.ok) {
+          const tokenData: any = await tokenRes.json();
+          if (tokenData.access_token) {
+            const userRes = await fetch('https://api.twitter.com/2/users/me', {
+              headers: {
+                Authorization: `Bearer ${tokenData.access_token}`,
+              },
+            });
+            if (userRes.ok) {
+              const userData: any = await userRes.json();
+              if (userData.data) {
+                handle = userData.data.username || '';
+                displayName = userData.data.name || `@${handle}`;
+              }
+            }
+          }
+        }
+      } catch (err: any) {
+        console.warn('[X OAuth] Code exchange warning:', err?.message || err);
+      }
+    }
+
     res.send(`
       <!DOCTYPE html>
       <html>
@@ -151,17 +223,21 @@ async function startServer() {
           <div class="card">
             <h3>Autenticación con X.com</h3>
             <div class="spinner"></div>
-            <p style="font-size: 13px; color: #94a3b8;">Finalizando conexión con XStreamX...</p>
+            <p style="font-size: 13px; color: #94a3b8;">
+              ${handle ? `Conectado como @${handle}. Redirigiendo...` : 'Finalizando conexión con XStreamX...'}
+            </p>
           </div>
           <script>
             if (window.opener) {
               window.opener.postMessage({
                 type: 'OAUTH_AUTH_SUCCESS',
                 provider: 'x',
-                code: '${code || ''}',
-                error: '${error || ''}'
+                handle: ${JSON.stringify(handle)},
+                name: ${JSON.stringify(displayName)},
+                code: ${JSON.stringify(code || '')},
+                error: ${JSON.stringify(authError)}
               }, '*');
-              setTimeout(() => window.close(), 600);
+              setTimeout(() => window.close(), 500);
             } else {
               window.location.href = '/';
             }
@@ -175,28 +251,95 @@ async function startServer() {
   io.on('connection', (socket: Socket) => {
     let currentUser: User | null = null;
 
-    // Join or create room
+    // Check single room status
+    socket.on('check_room_status', (callback) => {
+      const mainRoom = rooms.get('main') || Array.from(rooms.values())[0];
+      if (callback) {
+        callback({
+          isOpen: !!mainRoom,
+          room: mainRoom
+            ? {
+                id: mainRoom.id,
+                name: mainRoom.name,
+                adminId: mainRoom.adminId,
+                isLocked: mainRoom.isLocked,
+                userCount: mainRoom.users.size,
+              }
+            : null,
+        });
+      }
+    });
+
+    // Admin creates room
+    socket.on('admin_create_room', ({ roomId, name }, callback) => {
+      const cleanId = (roomId || 'main').trim().toLowerCase();
+      let room = rooms.get(cleanId);
+      if (!room) {
+        room = {
+          id: cleanId,
+          name: name || 'Sala Principal en Vivo',
+          adminId: socket.id,
+          isLocked: false,
+          users: new Map(),
+          createdAt: Date.now(),
+        };
+        rooms.set(cleanId, room);
+      }
+      io.emit('room_status_changed', {
+        isOpen: true,
+        room: {
+          id: room.id,
+          name: room.name,
+          adminId: room.adminId,
+          isLocked: room.isLocked,
+          userCount: room.users.size,
+        },
+      });
+      if (callback) callback({ success: true, room });
+    });
+
+    // Join room
     socket.on('join_room', ({ roomId, userName, avatarId, createAsAdmin }, callback) => {
-      const trimmedRoomId = (roomId || 'general').trim().toLowerCase();
+      const trimmedRoomId = (roomId || 'main').trim().toLowerCase();
       let room = rooms.get(trimmedRoomId);
 
-      if (room?.isLocked && (!room.users.has(socket.id) && createAsAdmin !== true)) {
+      const isAdmin = createAsAdmin === true;
+
+      // If no room created yet and caller is not an admin
+      if (!room && !isAdmin) {
+        if (callback) {
+          callback({
+            error: 'No hay ninguna sala creada en este momento. Espera a que un administrador inicie la sala.',
+          });
+        }
+        return;
+      }
+
+      if (room?.isLocked && (!room.users.has(socket.id) && !isAdmin)) {
         if (callback) callback({ error: 'La sala está bloqueada por el administrador.' });
         return;
       }
 
-      const isAdmin = createAsAdmin || !room || room.users.size === 0;
-
       if (!room) {
         room = {
           id: trimmedRoomId,
-          name: `Sala ${trimmedRoomId.toUpperCase()}`,
+          name: 'Sala Principal en Vivo',
           adminId: socket.id,
           isLocked: false,
           users: new Map(),
           createdAt: Date.now(),
         };
         rooms.set(trimmedRoomId, room);
+        io.emit('room_status_changed', {
+          isOpen: true,
+          room: {
+            id: room.id,
+            name: room.name,
+            adminId: room.adminId,
+            isLocked: room.isLocked,
+            userCount: 1,
+          },
+        });
       } else if (isAdmin && (!room.adminId || !room.users.has(room.adminId))) {
         room.adminId = socket.id;
       }
@@ -204,7 +347,7 @@ async function startServer() {
       currentUser = {
         id: socket.id,
         name: userName || `Usuario_${socket.id.slice(0, 4)}`,
-        avatarId: avatarId || 'cyber_ninja',
+        avatarId: avatarId || 'three_robot',
         role: isAdmin ? 'admin' : 'participant',
         roomId: trimmedRoomId,
         isMuted: false,

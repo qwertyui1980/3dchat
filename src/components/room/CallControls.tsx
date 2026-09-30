@@ -40,17 +40,17 @@ export const CallControls: React.FC<CallControlsProps> = ({
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
   return (
-    <div className="h-20 bg-slate-950/90 backdrop-blur-md border-t border-slate-800 px-6 flex items-center justify-between z-20 shrink-0">
+    <div className="h-20 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-slate-950/95 backdrop-blur-md border-t border-slate-800 px-3 sm:px-6 flex items-center justify-between z-20 shrink-0 select-none">
       {/* Left spacer to keep center controls centered */}
-      <div className="w-12 hidden sm:block" />
+      <div className="w-8 sm:w-12 hidden xs:block" />
 
       {/* Center: Core Call Toggles (Mic, Camera, Avatar Switcher, Leave) */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 sm:gap-3">
         {/* Mic Toggle */}
         <button
           type="button"
           onClick={onToggleMic}
-          className={`p-3.5 rounded-2xl border transition active:scale-95 shadow-lg cursor-pointer ${
+          className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-lg cursor-pointer ${
             isMicActive
               ? 'bg-slate-800/90 hover:bg-slate-700 text-slate-100 border-slate-600'
               : 'bg-rose-600 hover:bg-rose-500 text-white border-rose-500 shadow-rose-600/30'
@@ -64,7 +64,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
         <button
           type="button"
           onClick={onToggleCamera}
-          className={`p-3.5 rounded-2xl border transition active:scale-95 shadow-lg cursor-pointer ${
+          className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-lg cursor-pointer ${
             isCameraActive
               ? 'bg-slate-800/90 hover:bg-slate-700 text-slate-100 border-slate-600'
               : 'bg-rose-600 hover:bg-rose-500 text-white border-rose-500 shadow-rose-600/30'
@@ -79,7 +79,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
           <button
             type="button"
             onClick={() => setShowAvatarPicker(!showAvatarPicker)}
-            className={`p-3.5 rounded-2xl border transition active:scale-95 shadow-lg cursor-pointer ${
+            className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-lg cursor-pointer ${
               showAvatarPicker
                 ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-cyan-500/25'
                 : 'bg-slate-800/90 hover:bg-slate-700 text-cyan-300 border-slate-600'
@@ -91,8 +91,8 @@ export const CallControls: React.FC<CallControlsProps> = ({
 
           {showAvatarPicker && (
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setShowAvatarPicker(false)} />
-              <div className="absolute -translate-x-1/2 left-1/2 bottom-full mb-3 w-80 rounded-2xl bg-slate-900 border border-slate-700 p-3 shadow-2xl z-20">
+              <div className="fixed inset-0 z-20" onClick={() => setShowAvatarPicker(false)} />
+              <div className="absolute -translate-x-1/2 left-1/2 bottom-full mb-3 w-[calc(100vw-32px)] max-w-xs rounded-2xl bg-slate-900 border border-slate-700 p-3 shadow-2xl z-30">
                 <div className="text-xs font-bold text-slate-300 mb-2 px-1 flex items-center justify-between">
                   <span>Cambiar Avatar en Vivo</span>
                   <span className="text-[10px] text-cyan-400 font-mono">3D / WebGL</span>
@@ -136,7 +136,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
         <button
           type="button"
           onClick={onLeaveCall}
-          className="p-3.5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white border border-rose-500 transition active:scale-95 shadow-lg shadow-rose-600/30 cursor-pointer"
+          className="p-3 sm:p-3.5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white border border-rose-500 transition active:scale-95 shadow-lg shadow-rose-600/30 cursor-pointer"
           title="Salir de la videollamada"
         >
           <PhoneOff className="w-5 h-5" />
@@ -148,7 +148,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
         <button
           type="button"
           onClick={onToggleChat}
-          className={`relative p-3.5 rounded-2xl border transition cursor-pointer ${
+          className={`relative p-3 sm:p-3.5 rounded-2xl border transition cursor-pointer ${
             isChatOpen
               ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/25'
               : 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700'

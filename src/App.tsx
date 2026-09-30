@@ -56,6 +56,8 @@ export default function App() {
   const [isMicActive, setIsMicActive] = useState(true);
   const [isCameraActive, setIsCameraActive] = useState(true);
   const [isModelReady, setIsModelReady] = useState(false);
+  const [hasMicPermission, setHasMicPermission] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
 
   // Tracking state
   const [localFeatures, setLocalFeatures] = useState<FaceFeatures>({
@@ -68,7 +70,6 @@ export default function App() {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const isStartingCameraRef = useRef(false);
-  const demoIntervalRef = useRef<NodeJS.Timeout | number | null>(null);
 
   const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
@@ -84,46 +85,6 @@ export default function App() {
     }, 4000);
   }, []);
 
-  const stopDemoSimulation = useCallback(() => {
-    if (demoIntervalRef.current) {
-      clearInterval(demoIntervalRef.current);
-      demoIntervalRef.current = null;
-    }
-  }, []);
-
-  // Simulation mode fallback if no physical webcam
-  const startDemoSimulation = useCallback(() => {
-    if (demoIntervalRef.current) return;
-
-    let angle = 0;
-    const interval = setInterval(() => {
-      angle += 0.05;
-      const simFeatures: FaceFeatures = {
-        pitch: Math.sin(angle * 0.7) * 0.15,
-        yaw: Math.cos(angle * 0.5) * 0.25,
-        roll: Math.sin(angle * 0.3) * 0.1,
-        eyeBlinkLeft: Math.random() < 0.03 ? 1 : 0,
-        eyeBlinkRight: Math.random() < 0.03 ? 1 : 0,
-        eyeWideLeft: 0,
-        eyeWideRight: 0,
-        gazeX: Math.cos(angle * 0.5) * 0.3,
-        gazeY: Math.sin(angle * 0.4) * 0.2,
-        browRaise: (Math.sin(angle * 0.8) + 1) * 0.2,
-        browFurrow: 0,
-        jawOpen: Math.max(0, Math.sin(angle * 1.5) * 0.3),
-        mouthSmile: (Math.cos(angle * 0.4) + 1) * 0.3,
-        mouthPucker: 0,
-        mouthX: 0,
-        audioVolume: 0,
-        isFaceDetected: true,
-      };
-      setLocalFeatures(simFeatures);
-      networkServiceSingleton.broadcastFaceData(simFeatures);
-    }, 40);
-
-    demoIntervalRef.current = interval;
-  }, []);
-
   const refreshAvailableCameras = useCallback(async () => {
     try {
       if (!navigator?.mediaDevices?.enumerateDevices) return [];
@@ -133,6 +94,50 @@ export default function App() {
       return videoDevices;
     } catch (_) {
       return [];
+    }
+  }, []);
+
+  // Microphone start helper that verifies permissions and establishes audio analysis
+  const startMic = useCallback(async () => {
+    try {
+      const audioStream = await audioServiceSingleton.start((volume) => {
+        faceTrackerSingleton.setAudioVolume(volume);
+        setLocalFeatures((prev) => {
+          const updated: FaceFeatures = {
+            ...prev,
+            audioVolume: volume,
+          };
+          // Broadcast audio-driven lip sync if camera is inactive or no face detected
+          if (!cameraStreamRef.current || !prev.isFaceDetected) {
+            networkServiceSingleton.broadcastFaceData(updated);
+          }
+          return updated;
+        });
+      });
+
+      if (audioStream && audioStream.getAudioTracks().length > 0) {
+        networkServiceSingleton.setLocalAudioStream(audioStream);
+        setHasMicPermission(true);
+        setMicError(null);
+        setIsMicActive(true);
+        return true;
+      } else {
+        setHasMicPermission(false);
+        setMicError('No se pudo acceder al micrófono. Se requieren permisos de micrófono para ingresar a la sala.');
+        return false;
+      }
+    } catch (audioErr: any) {
+      console.warn('[App] Mic not available or permission denied:', audioErr);
+      const errName = audioErr?.name || '';
+      if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
+        setMicError('Permiso de micrófono denegado en el navegador. Es obligatorio permitir el acceso al micrófono para ingresar a la sala.');
+      } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
+        setMicError('No se detectó ningún micrófono en tu dispositivo.');
+      } else {
+        setMicError('No es posible acceder al micrófono. Por favor verifica tus permisos en el navegador.');
+      }
+      setHasMicPermission(false);
+      return false;
     }
   }, []);
 
@@ -182,8 +187,7 @@ export default function App() {
         throw lastErr || new Error('No se pudo acceder a la cámara');
       }
 
-      // Success! Stop simulation and clear any error
-      stopDemoSimulation();
+      // Success! Clear error
       setCameraError(null);
 
       cameraStreamRef.current = stream;
@@ -216,7 +220,7 @@ export default function App() {
       }
       return true;
     } catch (camErr: any) {
-      console.warn('[App] Webcam not available or permission denied:', camErr);
+      console.warn('[App] Webcam not available or permission denied (audio-only lip-sync fallback enabled):', camErr);
 
       const errName = camErr?.name || '';
       const errMsg = (camErr?.message || '').toLowerCase();
@@ -227,31 +231,35 @@ export default function App() {
         errMsg.includes('concurrent');
 
       if (isDeviceInUse) {
-        const msg = 'Cámara en uso: Otra aplicación (Zoom, Teams, OBS, Discord) o pestaña tiene bloqueada la cámara web.';
+        const msg = 'Cámara en uso por otra app o pestaña. Puedes participar en modo solo voz.';
         setCameraError(msg);
-        addToast('Cámara ocupada por otra app o pestaña. Libérala y pulsa Reintentar.', 'warning');
       } else if (errName === 'NotAllowedError') {
-        const msg = 'Permiso de cámara denegado en el navegador.';
+        const msg = 'Permiso de cámara no concedido. Podrás participar en modo solo voz (Lip-Sync).';
         setCameraError(msg);
-        addToast('Permiso de cámara denegado.', 'warning');
       } else {
-        setCameraError('Cámara no disponible. Verifica la conexión o selecciona otra cámara.');
+        setCameraError('Cámara no disponible. Participando en modo solo voz.');
       }
 
+      setIsCameraActive(false);
+      setCameraStream(null);
+      setLocalFeatures((prev) => ({
+        ...INITIAL_FACE_FEATURES,
+        audioVolume: prev.audioVolume,
+      }));
+      setLandmarks(null);
       await refreshAvailableCameras();
-      startDemoSimulation();
       return false;
     } finally {
       isStartingCameraRef.current = false;
     }
-  }, [selectedCameraId, stopDemoSimulation, refreshAvailableCameras, addToast, startDemoSimulation]);
+  }, [selectedCameraId, refreshAvailableCameras]);
 
   const handleSelectCamera = useCallback(async (deviceId: string) => {
     setSelectedCameraId(deviceId);
     await startCamera(deviceId);
   }, [startCamera]);
 
-  // 1. Initialize MediaPipe & Camera on mount
+  // 1. Initialize MediaPipe, Camera & Microphone on mount
   useEffect(() => {
     let isMounted = true;
 
@@ -263,30 +271,14 @@ export default function App() {
           setIsModelReady(loaded);
         }
       } catch (e) {
-        console.warn('[App] MediaPipe load error, continuing with fallback:', e);
+        console.warn('[App] MediaPipe load error, continuing with audio-only fallback:', e);
       }
 
-      // Initialize Webcam
+      // Initialize Webcam (optional, audio lip-sync fallback if denied)
       await startCamera();
 
-      // Initialize Microphone & Audio Analysis
-      try {
-        const audioStream = await audioServiceSingleton.start((volume) => {
-          if (isMounted) {
-            faceTrackerSingleton.setAudioVolume(volume);
-            setLocalFeatures((prev) => ({
-              ...prev,
-              audioVolume: volume,
-            }));
-          }
-        });
-
-        if (audioStream) {
-          networkServiceSingleton.setLocalAudioStream(audioStream);
-        }
-      } catch (audioErr) {
-        console.warn('[App] Mic not available:', audioErr);
-      }
+      // Initialize Microphone (mandatory to enter room)
+      await startMic();
     }
 
     initHardwareAndAI();
@@ -295,13 +287,12 @@ export default function App() {
       isMounted = false;
       faceTrackerSingleton.stopTracking();
       audioServiceSingleton.stop();
-      stopDemoSimulation();
       if (cameraStreamRef.current) {
         cameraStreamRef.current.getTracks().forEach((track) => track.stop());
         cameraStreamRef.current = null;
       }
     };
-  }, []);
+  }, [startCamera, startMic]);
 
   // 2. Set up Network Service listeners
   useEffect(() => {
@@ -384,11 +375,55 @@ export default function App() {
     };
   }, [addToast]);
 
+  // Synchronize browser URL (/lobby, /sala/nombresala, /)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    if (!authenticatedUser) {
+      if (window.location.pathname !== '/' && window.location.pathname !== '') {
+        window.history.replaceState(null, '', '/');
+      }
+    } else if (isInRoom && room?.id) {
+      const roomSlug = encodeURIComponent(room.id);
+      const targetPath = `/sala/${roomSlug}`;
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({ screen: 'room', roomId: room.id }, '', targetPath);
+      }
+    } else {
+      const targetPath = '/lobby';
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({ screen: 'lobby' }, '', targetPath);
+      }
+    }
+  }, [authenticatedUser, isInRoom, room?.id]);
+
+  // Handle browser back / forward buttons
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      if (path === '/lobby' || path === '/') {
+        if (isInRoom) {
+          networkServiceSingleton.cleanup();
+          setIsInRoom(false);
+          setRoom(null);
+          setCurrentUser(null);
+          setMessages([]);
+        }
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isInRoom]);
+
   // Handle Login
   const handleLogin = (user: AuthenticatedUser) => {
     setAuthenticatedUser(user);
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('xstreamx_auth', JSON.stringify(user));
+      window.history.pushState({ screen: 'lobby' }, '', '/lobby');
     }
     addToast(`Sesión iniciada como ${user.name} (${user.role === 'admin' ? 'Admin' : 'Participante'})`, 'success');
   };
@@ -397,6 +432,7 @@ export default function App() {
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('xstreamx_auth');
+      window.history.replaceState(null, '', '/');
     }
     handleLeaveCall();
     setAuthenticatedUser(null);
@@ -420,6 +456,10 @@ export default function App() {
 
   // Toggle Microphone
   const handleToggleMic = () => {
+    if (!hasMicPermission) {
+      startMic();
+      return;
+    }
     const nextState = !isMicActive;
     setIsMicActive(nextState);
     audioServiceSingleton.setMute(!nextState);
@@ -492,11 +532,14 @@ export default function App() {
     setRoom(null);
     setCurrentUser(null);
     setMessages([]);
+    if (typeof window !== 'undefined' && window.location.pathname !== '/lobby') {
+      window.history.pushState({ screen: 'lobby' }, '', '/lobby');
+    }
     addToast('Has salido de la sala', 'info');
   };
 
   return (
-    <div className="flex flex-col h-screen w-screen overflow-hidden bg-slate-950 font-sans antialiased text-slate-100">
+    <div className="flex flex-col h-full h-[100dvh] w-full max-w-full overflow-hidden bg-slate-950 font-sans antialiased text-slate-100">
       {/* Off-screen Master Video for MediaPipe Detection (Always active, never display:none) */}
       <video
         ref={videoRef}
@@ -516,11 +559,11 @@ export default function App() {
       />
 
       {/* Floating Toast Notification Stack */}
-      <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 pointer-events-none">
+      <div className="fixed top-3 sm:top-4 right-3 left-3 sm:left-auto sm:right-4 z-50 flex flex-col items-center sm:items-end gap-2 pointer-events-none">
         {toasts.map((toast) => (
           <div
             key={toast.id}
-            className={`pointer-events-auto flex items-center gap-2 px-4 py-2.5 rounded-xl shadow-2xl text-xs font-semibold backdrop-blur-md border animate-fade-in ${toast.type === 'success'
+            className={`pointer-events-auto max-w-full sm:max-w-md flex items-center gap-2 px-3.5 py-2.5 rounded-xl shadow-2xl text-xs font-semibold backdrop-blur-md border animate-fade-in ${toast.type === 'success'
                 ? 'bg-emerald-950/90 border-emerald-600 text-emerald-200'
                 : toast.type === 'warning'
                   ? 'bg-rose-950/90 border-rose-600 text-rose-200'
@@ -562,6 +605,9 @@ export default function App() {
             cameraError={cameraError}
             availableCameras={availableCameras}
             onSelectCamera={handleSelectCamera}
+            hasMicPermission={hasMicPermission}
+            micError={micError}
+            onRequestMic={startMic}
           />
         </div>
       ) : (

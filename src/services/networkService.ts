@@ -46,6 +46,7 @@ export class NetworkService {
   public onRoomLockChanged: ((isLocked: boolean) => void) | null = null;
   public onKicked: ((reason: string) => void) | null = null;
   public onForceMute: ((isMuted: boolean) => void) | null = null;
+  public onRoomStatusChanged: ((status: { isOpen: boolean; room: any }) => void) | null = null;
   public onError: ((error: string) => void) | null = null;
 
   constructor() {
@@ -138,6 +139,10 @@ export class NetworkService {
         this.socket.on('kicked_from_room', ({ reason }: { reason: string }) => {
           this.cleanup();
           if (this.onKicked) this.onKicked(reason);
+        });
+
+        this.socket.on('room_status_changed', (status: { isOpen: boolean; room: any }) => {
+          if (this.onRoomStatusChanged) this.onRoomStatusChanged(status);
         });
       } catch (err) {
         console.warn('[Network] Socket initialization skipped:', err);

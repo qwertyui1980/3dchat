@@ -1,6 +1,6 @@
 -- ==============================================================================
 -- XStreamX - Supabase SQL Schema for Persistent Rooms and Users
--- Run this in your Supabase SQL Editor (https://supabase.com/dashboard/project/zhlhyasefzwnecszazlf/sql)
+-- Run this in your Supabase SQL Editor
 -- ==============================================================================
 
 -- 1. Create 'rooms' table

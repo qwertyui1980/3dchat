@@ -29,7 +29,7 @@ const DEFAULT_USERS: UserRecord[] = [
   {
     id: 'user_admin',
     username: 'admin',
-    name: 'Admin',
+    name: 'Administrador',
     role: 'admin',
     provider: 'local',
     avatarId: 'three_robot',
@@ -72,24 +72,12 @@ class DatabaseService {
       DEFAULT_USERS.forEach((u) => this.localUsers.set(u.username.toLowerCase(), u));
     }
 
-    // Load local rooms
+    // Load local rooms (empty by default until an admin creates one)
     try {
       const storedRooms = localStorage.getItem(STORAGE_ROOMS_KEY);
       if (storedRooms) {
         const parsed: RoomRecord[] = JSON.parse(storedRooms);
         parsed.forEach((r) => this.localRooms.set(r.id.toLowerCase(), r));
-      } else {
-        const defaultRoom: RoomRecord = {
-          id: 'alpha',
-          name: 'Sala ALPHA',
-          adminId: 'user_admin',
-          isLocked: false,
-          participantCount: 0,
-          createdAt: Date.now(),
-          lastActive: Date.now(),
-        };
-        this.localRooms.set('alpha', defaultRoom);
-        this.saveLocalRooms();
       }
     } catch (e) {
       // Ignore
@@ -133,7 +121,7 @@ class DatabaseService {
           .order('last_active', { ascending: false })
           .limit(20);
 
-        if (!error && data && data.length > 0) {
+        if (!error && data) {
           const mapped: RoomRecord[] = data.map((row: any) => ({
             id: row.id,
             name: row.name || `Sala ${row.id.toUpperCase()}`,
@@ -145,6 +133,7 @@ class DatabaseService {
           }));
 
           // Sync local map
+          this.localRooms.clear();
           mapped.forEach((r) => this.localRooms.set(r.id.toLowerCase(), r));
           this.saveLocalRooms();
 
@@ -234,13 +223,12 @@ class DatabaseService {
     return updatedRoom;
   }
 
-  async getActiveRoom(): Promise<RoomRecord> {
+  async getActiveRoom(): Promise<RoomRecord | null> {
     this.initLocal();
     const supabase = getSupabaseClient();
 
     if (supabase) {
       try {
-        // First check if there is an explicit active_room or get the most recent room
         const { data, error } = await supabase
           .from('rooms')
           .select('*')
@@ -272,18 +260,20 @@ class DatabaseService {
       return all[0];
     }
 
+    return null;
+  }
+
+  async createOrActivateRoom(name?: string, adminId?: string): Promise<RoomRecord> {
     const defaultRoom: RoomRecord = {
-      id: 'alpha',
-      name: 'Sala ALPHA (En Vivo)',
-      adminId: 'user_admin',
+      id: 'main',
+      name: name || 'Sala Principal en Vivo',
+      adminId: adminId || 'admin',
       isLocked: false,
-      participantCount: 0,
+      participantCount: 1,
       createdAt: Date.now(),
       lastActive: Date.now(),
     };
-    this.localRooms.set('alpha', defaultRoom);
-    this.saveLocalRooms();
-    return defaultRoom;
+    return this.saveRoom(defaultRoom);
   }
 
   async setActiveRoom(room: RoomRecord): Promise<RoomRecord> {
@@ -313,8 +303,14 @@ class DatabaseService {
   async getUserByUsername(username: string): Promise<UserRecord | null> {
     this.initLocal();
     const cleanUsername = username.trim().toLowerCase();
-    const supabase = getSupabaseClient();
 
+    // Check local memory first for instant 0ms response
+    const local = this.localUsers.get(cleanUsername);
+    if (local) {
+      return local;
+    }
+
+    const supabase = getSupabaseClient();
     if (supabase) {
       try {
         const { data, error } = await supabase
@@ -342,22 +338,22 @@ class DatabaseService {
       }
     }
 
-    return this.localUsers.get(cleanUsername) || null;
+    return null;
   }
 
   async upsertUser(user: UserRecord): Promise<UserRecord> {
     this.initLocal();
     const cleanUsername = user.username.trim().toLowerCase();
 
-    // 1. Save to local cache
+    // 1. Save to local cache immediately
     this.localUsers.set(cleanUsername, user);
     this.saveLocalUsers();
 
-    // 2. Persist to Supabase
+    // 2. Non-blocking async persist to Supabase
     const supabase = getSupabaseClient();
     if (supabase) {
-      try {
-        await supabase.from('users').upsert({
+      Promise.resolve(
+        supabase.from('users').upsert({
           id: user.id,
           username: cleanUsername,
           name: user.name,
@@ -365,10 +361,12 @@ class DatabaseService {
           provider: user.provider,
           avatar_id: user.avatarId,
           created_at: user.createdAt,
-        });
-      } catch (err) {
-        console.warn('[Supabase] Error saving user:', err);
-      }
+        })
+      )
+        .then(({ error }: any) => {
+          if (error) console.warn('[Supabase] Non-blocking user sync notice:', error.message);
+        })
+        .catch(() => {});
     }
 
     return user;
@@ -377,12 +375,14 @@ class DatabaseService {
   async registerXUser(xHandle: string, displayName?: string): Promise<UserRecord> {
     this.initLocal();
     const cleanHandle = xHandle.replace(/^@/, '').trim().toLowerCase();
-    const existing = await this.getUserByUsername(cleanHandle);
-
+    
+    // 1. Check local cache first
+    const existing = this.localUsers.get(cleanHandle);
     if (existing) {
       return existing;
     }
 
+    // 2. Create new user record
     const newUser: UserRecord = {
       id: `x_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       username: cleanHandle,

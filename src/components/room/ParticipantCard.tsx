@@ -30,31 +30,22 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
 
   return (
     <div
-      className={`group relative w-[320px] h-[360px] shrink-0 rounded-2xl bg-slate-900/90 border transition-all duration-300 flex flex-col items-center justify-between overflow-hidden shadow-xl ${
+      className={`group relative w-full max-w-[340px] sm:w-[320px] h-[320px] sm:h-[360px] shrink-0 rounded-2xl bg-slate-900/90 border transition-all duration-300 flex flex-col items-center justify-between overflow-hidden shadow-xl ${
         isFocusSpeaker
           ? 'border-indigo-500 ring-2 ring-indigo-500/20'
           : 'border-slate-800 hover:border-slate-700'
       }`}
     >
 
-      {/* Avatar Canvas Rendering (Fixed 320x320 size) */}
-      <div className="w-[320px] h-[320px] shrink-0 relative flex items-center justify-center">
+      {/* Avatar Canvas Rendering */}
+      <div className="w-full flex-1 sm:w-[320px] sm:h-[320px] relative flex items-center justify-center min-h-0">
         <AvatarCanvas
           avatarId={user.avatarId}
           features={features}
           userName=""
           isSpeaking={isSpeaking}
+          className="w-full h-full"
         />
-
-        {/* Video Paused Overlay */}
-        {!user.isCameraActive && (
-          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center gap-2 text-slate-400">
-            <div className="w-10 h-10 rounded-full bg-slate-800 border border-slate-700 flex items-center justify-center">
-              <MicOff className="w-5 h-5 text-slate-400" />
-            </div>
-            <span className="text-xs font-semibold">Avatar en Pausa</span>
-          </div>
-        )}
       </div>
 
       {/* Top Bar inside Card */}
@@ -71,9 +62,12 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
               Participante
             </span>
           )}
-          {isSelf && (
-            <span className="px-1.5 py-0.5 rounded-md bg-cyan-950/80 text-cyan-300 border border-cyan-700 text-[10px] font-bold">
-              TÚ
+          {!user.isCameraActive && (
+            <span
+              className="px-1.5 py-0.5 rounded-md bg-slate-950/80 text-sky-300 border border-sky-800/60 text-[10px] font-mono"
+              title="Cámara desactivada • Animación de boca por voz (Lip-Sync)"
+            >
+              Solo Voz
             </span>
           )}
         </div>

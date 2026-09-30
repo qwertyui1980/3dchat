@@ -38,7 +38,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
   };
 
   return (
-    <div className="w-80 sm:w-96 bg-slate-900/95 backdrop-blur-md border-l border-slate-800 flex flex-col h-full z-20 shrink-0">
+    <div className="fixed inset-0 md:relative md:inset-auto w-full md:w-80 lg:w-96 bg-slate-900/98 md:bg-slate-900/95 backdrop-blur-xl border-l border-slate-800 flex flex-col h-full z-50 md:z-20 shrink-0">
       {/* Top Header */}
       <div className="h-16 px-4 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -123,7 +123,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       </div>
 
       {/* Chat Input */}
-      <form onSubmit={handleSend} className="p-3 border-t border-slate-800 flex items-center gap-2 bg-slate-950/60">
+      <form onSubmit={handleSend} className="p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-slate-800 flex items-center gap-2 bg-slate-950/80">
         <input
           type="text"
           value={inputText}
