@@ -143,15 +143,13 @@ export const AudioWaveform: React.FC<AudioWaveformProps> = ({
   }, [width, height, color]);
 
   return (
-    <div className={`flex items-center gap-1.5 ${className}`}>
-      <div className="relative rounded-lg bg-slate-950/90 px-1.5 py-1 border border-slate-800 flex items-center shadow-inner overflow-hidden">
-        <canvas
-          ref={canvasRef}
-          width={width}
-          height={height}
-          className="block"
-        />
-      </div>
+    <div className={`inline-flex items-center ${className}`}>
+      <canvas
+        ref={canvasRef}
+        width={width}
+        height={height}
+        className="block"
+      />
       {showStatusText && (
         <span className="text-[10px] font-mono text-slate-400">
           {isMuted ? 'MUTE' : effectiveVolume > 0.05 ? `${Math.round(effectiveVolume * 100)}%` : 'SILENCIO'}

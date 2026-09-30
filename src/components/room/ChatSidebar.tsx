@@ -43,7 +43,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       <div className="h-16 px-4 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-cyan-400" />
-          <h3 className="text-sm font-bold text-white">Chat de la Sala</h3>
+          <h3 className="text-sm font-bold text-white">Chat del Espacio</h3>
           <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
             En vivo
           </span>

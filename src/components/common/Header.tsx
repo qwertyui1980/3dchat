@@ -23,7 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
   const getPublicShareUrl = () => {
     if (typeof window === 'undefined') return '';
     const roomSlug = room?.id ? encodeURIComponent(room.id) : 'main';
-    return `${window.location.origin}/sala/${roomSlug}`;
+    return `${window.location.origin}/espacio/${roomSlug}`;
   };
 
   const handleCopyUrl = () => {
@@ -35,10 +35,10 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="h-14 sm:h-16 px-3 sm:px-6 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 flex items-center justify-between z-20 shrink-0 select-none">
+    <header className="h-14 sm:h-16 px-3 sm:px-6 bg-[#08080c]/90 backdrop-blur-xl border-b border-white/[0.06] flex items-center justify-between z-20 shrink-0 select-none">
       {/* Brand: Clean modern XSTREAMX */}
       <div className="flex items-center gap-1.5 min-w-0">
-        <h1 className="text-lg sm:text-xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-300 truncate">
+        <h1 className="text-lg sm:text-xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-neutral-100 via-neutral-300 to-neutral-500 truncate">
           XSTREAMX
         </h1>
       </div>
@@ -48,16 +48,16 @@ export const Header: React.FC<HeaderProps> = ({
         {room && (
           <>
             {/* Public Link Input Bar */}
-            <div className="flex items-center bg-slate-800/80 border border-cyan-800/50 rounded-lg p-1 pl-2.5 gap-1.5 shadow-sm">
+            <div className="flex items-center bg-[#121218] border border-white/[0.08] rounded-lg p-1 pl-2.5 gap-1.5 shadow-sm">
               <Link2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-              <span className="text-[11px] font-semibold text-slate-300 hidden sm:inline">Link:</span>
+              <span className="text-[11px] font-semibold text-neutral-400 hidden sm:inline">Link:</span>
               <input
                 type="text"
                 readOnly
                 value={getPublicShareUrl()}
                 onClick={(e) => (e.target as HTMLInputElement).select()}
-                className="bg-slate-950/80 text-cyan-300 font-mono text-[11px] px-2 py-0.5 rounded border border-slate-700/80 w-24 sm:w-36 lg:w-48 truncate select-all focus:outline-none focus:border-cyan-500"
-                title="Enlace público para que otro ingrese a la sala"
+                className="bg-[#08080a] text-cyan-300 font-mono text-[11px] px-2 py-0.5 rounded border border-white/[0.06] w-24 sm:w-36 lg:w-48 truncate select-all focus:outline-none focus:border-cyan-500"
+                title="Enlace público para que otro ingrese al espacio"
               />
               <button
                 type="button"
@@ -66,7 +66,7 @@ export const Header: React.FC<HeaderProps> = ({
                 className={`flex items-center gap-1 px-2 py-1 rounded text-[11px] font-bold transition shrink-0 cursor-pointer ${
                   copiedUrl
                     ? 'bg-emerald-600 text-white'
-                    : 'bg-cyan-600 hover:bg-cyan-500 text-slate-950'
+                    : 'bg-neutral-100 hover:bg-white text-neutral-950'
                 }`}
               >
                 {copiedUrl ? (
@@ -84,8 +84,8 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
 
             {/* Participants Count Badge */}
-            <div className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1 rounded-lg bg-slate-800/60 border border-slate-700/60 text-xs text-slate-300">
-              <Users className="w-3.5 h-3.5 text-indigo-400" />
+            <div className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1 rounded-lg bg-[#121218] border border-white/[0.06] text-xs text-neutral-300">
+              <Users className="w-3.5 h-3.5 text-neutral-400" />
               <span className="font-semibold">{room.participants.length}</span>
             </div>
           </>

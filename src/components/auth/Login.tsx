@@ -219,26 +219,26 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-[100dvh] w-full max-w-full bg-slate-950 flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden select-none">
-      {/* Background Glows */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute bottom-1/4 left-1/3 w-80 h-80 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+    <div className="min-h-[100dvh] w-full max-w-full bg-[#070709] flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden select-none">
+      {/* Subtle Soft Ambient Glow */}
+      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-cyan-500/[0.04] rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/3 left-1/3 w-80 h-80 bg-indigo-500/[0.03] rounded-full blur-3xl pointer-events-none" />
 
       {/* Main Login Card */}
-      <div className="w-full max-w-md bg-slate-900/90 backdrop-blur-xl border border-slate-800 rounded-3xl p-5 sm:p-8 shadow-2xl relative z-10">
+      <div className="w-full max-w-md bg-[#0d0d12]/95 backdrop-blur-2xl border border-white/[0.08] rounded-3xl p-6 sm:p-8 shadow-2xl relative z-10">
         
         {/* Header Branding */}
         <div className="text-center mb-6">
-          <h1 className="text-3xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-sky-300 to-indigo-300">
+          <h1 className="text-3xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-neutral-100 via-neutral-200 to-neutral-400">
             XSTREAMX
           </h1>
-          <p className="text-xs text-slate-400 mt-1.5 font-medium">
-            Acceso a videollamada con avatares 3D y captura facial
+          <p className="text-xs text-neutral-400 mt-1.5 font-medium">
+            Videollamadas con avatares 3D y captura biométrica privada
           </p>
         </div>
 
         {/* Tab switchers: Acceder con Usuario Propio vs Acceder con X.com */}
-        <div className="grid grid-cols-2 p-1 bg-slate-950 rounded-xl border border-slate-800 mb-6">
+        <div className="grid grid-cols-2 p-1 bg-[#070709] rounded-xl border border-white/[0.06] mb-6">
           <button
             type="button"
             onClick={() => {
@@ -247,8 +247,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             }}
             className={`py-2.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
               activeTab === 'credentials'
-                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/25'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-neutral-100 text-neutral-950 shadow-md shadow-white/10'
+                : 'text-neutral-400 hover:text-neutral-200'
             }`}
           >
             <User className="w-3.5 h-3.5" />
@@ -263,8 +263,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             }}
             className={`py-2.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
               activeTab === 'x'
-                ? 'bg-white text-black shadow-md shadow-white/20'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-neutral-100 text-neutral-950 shadow-md shadow-white/10'
+                : 'text-neutral-400 hover:text-neutral-200'
             }`}
           >
             {/* X Logo */}
@@ -287,11 +287,11 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         {activeTab === 'credentials' && (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1.5">
+              <label className="block text-xs font-bold text-neutral-300 mb-1.5">
                 Nombre de Usuario
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-500">
                   <User className="w-4 h-4" />
                 </div>
                 <input
@@ -300,18 +300,18 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   onChange={(e) => setUsername(e.target.value)}
                   placeholder="Tu nombre de usuario"
                   autoComplete="username"
-                  className="w-full pl-10 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 focus:border-cyan-500 rounded-xl text-slate-100 placeholder-slate-600 text-sm focus:outline-none transition"
+                  className="w-full pl-10 pr-4 py-2.5 bg-[#070709] border border-white/[0.08] focus:border-cyan-400 rounded-xl text-neutral-100 placeholder-neutral-600 text-sm focus:outline-none transition"
                   required
                 />
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-300 mb-1.5">
+              <label className="block text-xs font-bold text-neutral-300 mb-1.5">
                 Contraseña
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
+                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-500">
                   <Lock className="w-4 h-4" />
                 </div>
                 <input
@@ -320,13 +320,13 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Ingresa tu contraseña"
                   autoComplete="current-password"
-                  className="w-full pl-10 pr-10 py-2.5 bg-slate-950/80 border border-slate-800 focus:border-cyan-500 rounded-xl text-slate-100 placeholder-slate-600 text-sm focus:outline-none transition"
+                  className="w-full pl-10 pr-10 py-2.5 bg-[#070709] border border-white/[0.08] focus:border-cyan-400 rounded-xl text-neutral-100 placeholder-neutral-600 text-sm focus:outline-none transition"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-200 transition cursor-pointer"
+                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-neutral-500 hover:text-neutral-200 transition cursor-pointer"
                   title={showPassword ? 'Ocultar clave' : 'Mostrar clave'}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -337,10 +337,10 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full mt-3 py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-sm tracking-wide shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-50"
+              className="w-full mt-3 py-3 px-4 rounded-xl bg-neutral-100 hover:bg-white text-neutral-950 font-black text-sm tracking-wide shadow-lg shadow-white/10 flex items-center justify-center gap-2 transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-50"
             >
               {isLoading ? (
-                <span className="inline-block w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                <span className="inline-block w-4 h-4 border-2 border-neutral-950 border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
                   <span>INGRESAR</span>
@@ -359,32 +359,32 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               type="button"
               onClick={handleOAuthClick}
               disabled={isOAuthPending || isXLoading}
-              className="w-full py-3.5 px-4 rounded-2xl bg-white hover:bg-slate-100 active:bg-slate-200 text-black font-extrabold text-sm tracking-wide shadow-lg shadow-white/10 flex items-center justify-center gap-2.5 transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-50"
+              className="w-full py-3.5 px-4 rounded-2xl bg-neutral-100 hover:bg-white text-neutral-950 font-extrabold text-sm tracking-wide shadow-lg shadow-white/10 flex items-center justify-center gap-2.5 transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-50"
             >
               {isOAuthPending ? (
-                <span className="inline-block w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                <span className="inline-block w-4 h-4 border-2 border-neutral-950 border-t-transparent rounded-full animate-spin" />
               ) : (
                 <svg className="w-4 h-4 fill-black shrink-0" viewBox="0 0 24 24">
                   <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
                 </svg>
               )}
               <span>{isOAuthPending ? 'Esperando autorización en X...' : 'Autorizar con X.com (1-Clic)'}</span>
-              {!isOAuthPending && <ExternalLink className="w-3.5 h-3.5 text-slate-600" />}
+              {!isOAuthPending && <ExternalLink className="w-3.5 h-3.5 text-neutral-600" />}
             </button>
 
             {/* Divider */}
             <div className="relative flex items-center justify-center my-3">
-              <div className="border-t border-slate-800 w-full" />
-              <span className="bg-slate-900 px-3 text-[11px] font-semibold text-slate-500 uppercase tracking-wider shrink-0">
+              <div className="border-t border-white/[0.08] w-full" />
+              <span className="bg-[#0d0d12] px-3 text-[11px] font-semibold text-neutral-500 uppercase tracking-wider shrink-0">
                 o ingresa con tu @handle
               </span>
-              <div className="border-t border-slate-800 w-full" />
+              <div className="border-t border-white/[0.08] w-full" />
             </div>
 
             {/* Direct Handle Form */}
             <form onSubmit={handleXHandleSubmit} className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-slate-300 mb-1.5">
+                <label className="block text-xs font-bold text-neutral-300 mb-1.5">
                   Tu Usuario o Handle de X
                 </label>
                 <div className="relative">
@@ -396,7 +396,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     value={xHandleInput}
                     onChange={(e) => setXHandleInput(e.target.value)}
                     placeholder="ej. elonmusk o tu_usuario"
-                    className="w-full pl-8 pr-4 py-2.5 bg-slate-950/80 border border-slate-800 focus:border-cyan-400 rounded-xl text-slate-100 placeholder-slate-600 text-sm focus:outline-none transition font-mono"
+                    className="w-full pl-8 pr-4 py-2.5 bg-[#070709] border border-white/[0.08] focus:border-cyan-400 rounded-xl text-neutral-100 placeholder-neutral-600 text-sm focus:outline-none transition font-mono"
                     required
                   />
                 </div>
@@ -405,7 +405,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               <button
                 type="submit"
                 disabled={isXLoading || isOAuthPending}
-                className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs tracking-wide border border-slate-700/60 flex items-center justify-center gap-2 transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-50"
+                className="w-full py-2.5 px-4 rounded-xl bg-[#14141c] hover:bg-[#1a1a24] text-neutral-200 hover:text-white font-bold text-xs tracking-wide border border-white/[0.08] flex items-center justify-center gap-2 transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-50"
               >
                 {isXLoading ? (
                   <span className="inline-block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />

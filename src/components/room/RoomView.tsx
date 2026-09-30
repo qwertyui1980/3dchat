@@ -79,8 +79,15 @@ export const RoomView: React.FC<RoomViewProps> = ({
     return list;
   }, [room.participants, currentUser]);
 
+  // Check if all non-admin participants are muted
+  const isAllMuted = React.useMemo(() => {
+    const otherParticipants = allParticipants.filter((p) => p.id !== currentUser.id && p.role !== 'admin');
+    if (otherParticipants.length === 0) return false;
+    return otherParticipants.every((p) => p.isMuted);
+  }, [allParticipants, currentUser.id]);
+
   return (
-    <div className="flex flex-col h-full h-[100dvh] w-full max-w-full overflow-hidden bg-slate-950 text-slate-100 select-none">
+    <div className="flex flex-col h-full h-[100dvh] w-full max-w-full overflow-hidden bg-[#08080a] text-neutral-100 select-none">
       {/* Top Bar Header */}
       <Header
         room={room}
@@ -147,6 +154,9 @@ export const RoomView: React.FC<RoomViewProps> = ({
         currentAvatarId={currentUser.avatarId}
         unreadChatCount={unreadCount}
         isChatOpen={isChatOpen}
+        isAdmin={isAdmin}
+        onMuteAll={onMuteAll}
+        isAllMuted={isAllMuted}
         onToggleMic={onToggleMic}
         onToggleCamera={onToggleCamera}
         onSelectAvatar={onSelectAvatar}

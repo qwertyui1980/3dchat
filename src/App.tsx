@@ -54,6 +54,7 @@ export default function App() {
 
   // Hardware states
   const [isMicActive, setIsMicActive] = useState(true);
+  const [isAdminMuted, setIsAdminMuted] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(true);
   const [isModelReady, setIsModelReady] = useState(false);
   const [hasMicPermission, setHasMicPermission] = useState(false);
@@ -123,14 +124,14 @@ export default function App() {
         return true;
       } else {
         setHasMicPermission(false);
-        setMicError('No se pudo acceder al micrófono. Se requieren permisos de micrófono para ingresar a la sala.');
+        setMicError('No se pudo acceder al micrófono. Se requieren permisos de micrófono para ingresar al espacio.');
         return false;
       }
     } catch (audioErr: any) {
       console.warn('[App] Mic not available or permission denied:', audioErr);
       const errName = audioErr?.name || '';
       if (errName === 'NotAllowedError' || errName === 'PermissionDeniedError') {
-        setMicError('Permiso de micrófono denegado en el navegador. Es obligatorio permitir el acceso al micrófono para ingresar a la sala.');
+        setMicError('Permiso de micrófono denegado en el navegador. Es obligatorio permitir el acceso al micrófono para ingresar al espacio.');
       } else if (errName === 'NotFoundError' || errName === 'DevicesNotFoundError') {
         setMicError('No se detectó ningún micrófono en tu dispositivo.');
       } else {
@@ -300,12 +301,12 @@ export default function App() {
       setRoom(joinedRoom);
       setCurrentUser(user);
       setIsInRoom(true);
-      addToast(`Bienvenido a la sala ${joinedRoom.id.toUpperCase()}`, 'success');
+      addToast(`Bienvenido al espacio ${joinedRoom.id.toUpperCase()}`, 'success');
     };
 
     networkServiceSingleton.onUserJoined = (user, participants) => {
       setRoom((prev) => (prev ? { ...prev, participants } : null));
-      addToast(`${user.name} se ha unido a la sala`, 'info');
+      addToast(`${user.name} se ha unido al espacio`, 'info');
     };
 
     networkServiceSingleton.onUserLeft = (userId, participants) => {
@@ -315,7 +316,7 @@ export default function App() {
         next.delete(userId);
         return next;
       });
-      addToast('Un participante ha salido de la sala', 'info');
+      addToast('Un participante ha salido del espacio', 'info');
     };
 
     networkServiceSingleton.onUserUpdated = (updatedUser) => {
@@ -347,23 +348,29 @@ export default function App() {
       setRoom((prev) => (prev ? { ...prev, isLocked } : null));
       addToast(
         isLocked
-          ? 'El administrador ha bloqueado el acceso a la sala'
-          : 'El administrador ha desbloqueado la sala',
+          ? 'El administrador ha bloqueado el acceso al espacio'
+          : 'El administrador ha desbloqueado el espacio',
         'warning'
       );
     };
 
     networkServiceSingleton.onForceMute = (isMuted) => {
       setIsMicActive(!isMuted);
+      setIsAdminMuted(isMuted);
       audioServiceSingleton.setMute(isMuted);
-      addToast('El administrador ha silenciado tu micrófono', 'warning');
+      addToast(
+        isMuted
+          ? 'El administrador ha silenciado tu micrófono. No puedes desmutearte hasta que el administrador lo autorice.'
+          : 'El administrador ha reactivado tu micrófono',
+        isMuted ? 'warning' : 'success'
+      );
     };
 
     networkServiceSingleton.onKicked = (reason) => {
       setIsInRoom(false);
       setRoom(null);
       setCurrentUser(null);
-      addToast(reason || 'Has sido expulsado de la sala por el administrador', 'warning');
+      addToast(reason || 'Has sido expulsado del espacio por el administrador', 'warning');
     };
 
     networkServiceSingleton.onError = (errMsg) => {
@@ -375,7 +382,7 @@ export default function App() {
     };
   }, [addToast]);
 
-  // Synchronize browser URL (/lobby, /sala/nombresala, /)
+  // Synchronize browser URL (/lobby, /espacio/nombre, /)
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -385,7 +392,7 @@ export default function App() {
       }
     } else if (isInRoom && room?.id) {
       const roomSlug = encodeURIComponent(room.id);
-      const targetPath = `/sala/${roomSlug}`;
+      const targetPath = `/espacio/${roomSlug}`;
       if (window.location.pathname !== targetPath) {
         window.history.pushState({ screen: 'room', roomId: room.id }, '', targetPath);
       }
@@ -456,6 +463,13 @@ export default function App() {
 
   // Toggle Microphone
   const handleToggleMic = () => {
+    if (isAdminMuted && authenticatedUser?.role !== 'admin') {
+      addToast(
+        'Has sido silenciado por el administrador. Solo el administrador puede reactivar tu micrófono.',
+        'warning'
+      );
+      return;
+    }
     if (!hasMicPermission) {
       startMic();
       return;
@@ -505,10 +519,12 @@ export default function App() {
   // Admin controls
   const handleAdminMute = (targetUserId: string, state: boolean) => {
     networkServiceSingleton.adminMuteUser(targetUserId, state);
+    addToast(state ? 'Participante silenciado' : 'Micrófono de participante reactivado', 'info');
   };
 
   const handleAdminKick = (targetUserId: string) => {
     networkServiceSingleton.adminKickUser(targetUserId);
+    addToast('Participante expulsado del espacio', 'info');
   };
 
   const handleToggleLock = (locked: boolean) => {
@@ -517,12 +533,20 @@ export default function App() {
 
   const handleMuteAll = () => {
     if (!room || !currentUser) return;
-    room.participants.forEach((p) => {
-      if (p.id !== currentUser.id) {
-        networkServiceSingleton.adminMuteUser(p.id, true);
-      }
-    });
-    addToast('Todos los participantes han sido silenciados', 'info');
+    const otherParticipants = room.participants.filter(
+      (p) => p.id !== currentUser.id && p.role !== 'admin'
+    );
+    const isCurrentlyAllMuted =
+      otherParticipants.length > 0 && otherParticipants.every((p) => p.isMuted);
+    const targetMuteState = !isCurrentlyAllMuted;
+
+    networkServiceSingleton.adminMuteAll(targetMuteState);
+    addToast(
+      targetMuteState
+        ? 'Todos los participantes han sido silenciados por el administrador'
+        : 'Micrófonos de los participantes reactivados',
+      'info'
+    );
   };
 
   // Leave room
@@ -535,11 +559,11 @@ export default function App() {
     if (typeof window !== 'undefined' && window.location.pathname !== '/lobby') {
       window.history.pushState({ screen: 'lobby' }, '', '/lobby');
     }
-    addToast('Has salido de la sala', 'info');
+    addToast('Has salido del espacio', 'info');
   };
 
   return (
-    <div className="flex flex-col h-full h-[100dvh] w-full max-w-full overflow-hidden bg-slate-950 font-sans antialiased text-slate-100">
+    <div className="flex flex-col h-full h-[100dvh] w-full max-w-full overflow-hidden bg-[#08080a] font-sans antialiased text-neutral-100">
       {/* Off-screen Master Video for MediaPipe Detection (Always active, never display:none) */}
       <video
         ref={videoRef}

@@ -50,7 +50,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
             <div>
               <h3 className="text-base font-bold text-white">Panel de Administración</h3>
               <p className="text-xs text-slate-400">
-                Sala <span className="font-mono text-cyan-400 uppercase font-semibold">{room.id}</span> • Moderación en vivo
+                Espacio <span className="font-mono text-cyan-400 uppercase font-semibold">{room.id}</span> • Moderación en vivo
               </p>
             </div>
           </div>
@@ -67,7 +67,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
           {/* Quick Global Actions Bar */}
           <div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">
-              Acciones Globales de Sala
+              Acciones Globales del Espacio
             </h4>
             <div className="grid grid-cols-2 gap-3">
               {/* Mute All */}
@@ -91,7 +91,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                 {room.isLocked ? (
                   <>
                     <Lock className="w-4 h-4" />
-                    <span>Desbloquear Sala</span>
+                    <span>Desbloquear Espacio</span>
                   </>
                 ) : (
                   <>
@@ -129,7 +129,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
               {/* Other Participants */}
               {otherParticipants.length === 0 ? (
                 <div className="p-4 text-center rounded-xl bg-slate-950/40 border border-slate-800 text-slate-500 text-xs">
-                  No hay otros participantes en la sala aún. Comparte el código de sala con otros usuarios.
+                  No hay otros participantes en el espacio aún. Comparte el código de acceso con otros usuarios.
                 </div>
               ) : (
                 otherParticipants.map((participant) => (
@@ -173,7 +173,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                       <button
                         onClick={() => onAdminKick(participant.id)}
                         className="p-2 rounded-lg bg-rose-950/50 hover:bg-rose-900/70 text-rose-400 border border-rose-800/60 transition"
-                        title="Expulsar participante de la sala"
+                        title="Expulsar participante del espacio"
                       >
                         <UserX className="w-3.5 h-3.5" />
                       </button>

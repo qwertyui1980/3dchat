@@ -30,6 +30,16 @@ interface Room {
 
 const rooms = new Map<string, Room>();
 
+// Ensure default main single room is always active and open
+rooms.set('main', {
+  id: 'main',
+  name: 'Espacio Principal en Vivo',
+  adminId: 'admin',
+  isLocked: false,
+  users: new Map(),
+  createdAt: Date.now(),
+});
+
 async function startServer() {
   const app = express();
   const httpServer = createServer(app);
@@ -461,6 +471,25 @@ async function startServer() {
         io.to(targetUserId).emit('force_mute', { isMuted: target.isMuted });
         io.to(currentUser.roomId).emit('user_updated', { user: target });
       }
+    });
+
+    // ADMIN CONTROLS: Mute all participants
+    socket.on('admin_mute_all', ({ muteState }) => {
+      if (!currentUser || currentUser.role !== 'admin') return;
+      const room = rooms.get(currentUser.roomId);
+      if (!room) return;
+
+      const shouldMute = muteState !== undefined ? muteState : true;
+      room.users.forEach((user, userId) => {
+        if (user.role !== 'admin') {
+          user.isMuted = shouldMute;
+          io.to(userId).emit('force_mute', { isMuted: shouldMute });
+        }
+      });
+
+      io.to(currentUser.roomId).emit('all_users_updated', {
+        participants: Array.from(room.users.values()),
+      });
     });
 
     // ADMIN CONTROLS: Kick participant

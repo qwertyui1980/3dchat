@@ -124,7 +124,7 @@ class DatabaseService {
         if (!error && data) {
           const mapped: RoomRecord[] = data.map((row: any) => ({
             id: row.id,
-            name: row.name || `Sala ${row.id.toUpperCase()}`,
+            name: row.name || `Espacio ${row.id.toUpperCase()}`,
             adminId: row.admin_id || '',
             isLocked: !!row.is_locked,
             participantCount: row.participant_count || 0,
@@ -163,7 +163,7 @@ class DatabaseService {
         if (!error && data) {
           const room: RoomRecord = {
             id: data.id,
-            name: data.name || `Sala ${data.id.toUpperCase()}`,
+            name: data.name || `Espacio ${data.id.toUpperCase()}`,
             adminId: data.admin_id || '',
             isLocked: !!data.is_locked,
             participantCount: data.participant_count || 0,
@@ -239,7 +239,7 @@ class DatabaseService {
         if (!error && data) {
           const room: RoomRecord = {
             id: data.id,
-            name: data.name || `Sala ${data.id.toUpperCase()}`,
+            name: data.name || `Espacio ${data.id.toUpperCase()}`,
             adminId: data.admin_id || '',
             isLocked: !!data.is_locked,
             participantCount: data.participant_count || 0,
@@ -266,7 +266,7 @@ class DatabaseService {
   async createOrActivateRoom(name?: string, adminId?: string): Promise<RoomRecord> {
     const defaultRoom: RoomRecord = {
       id: 'main',
-      name: name || 'Sala Principal en Vivo',
+      name: name || 'Espacio Principal en Vivo',
       adminId: adminId || 'admin',
       isLocked: false,
       participantCount: 1,

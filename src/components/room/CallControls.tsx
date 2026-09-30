@@ -18,6 +18,9 @@ interface CallControlsProps {
   currentAvatarId: AvatarId;
   unreadChatCount: number;
   isChatOpen: boolean;
+  isAdmin?: boolean;
+  onMuteAll?: () => void;
+  isAllMuted?: boolean;
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onSelectAvatar: (id: AvatarId) => void;
@@ -31,6 +34,9 @@ export const CallControls: React.FC<CallControlsProps> = ({
   currentAvatarId,
   unreadChatCount,
   isChatOpen,
+  isAdmin = false,
+  onMuteAll,
+  isAllMuted = false,
   onToggleMic,
   onToggleCamera,
   onSelectAvatar,
@@ -40,9 +46,27 @@ export const CallControls: React.FC<CallControlsProps> = ({
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
   return (
-    <div className="h-20 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-slate-950/95 backdrop-blur-md border-t border-slate-800 px-3 sm:px-6 flex items-center justify-between z-20 shrink-0 select-none">
-      {/* Left spacer to keep center controls centered */}
-      <div className="w-8 sm:w-12 hidden xs:block" />
+    <div className="h-20 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-[#08080c]/95 backdrop-blur-xl border-t border-white/[0.06] px-3 sm:px-6 flex items-center justify-between z-20 shrink-0 select-none">
+      {/* Left side: Admin Mute All Button or Spacer */}
+      <div className="flex items-center min-w-[32px] sm:min-w-[48px]">
+        {isAdmin && onMuteAll && (
+          <button
+            type="button"
+            onClick={onMuteAll}
+            className={`px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl border transition active:scale-95 shadow-md flex items-center gap-1.5 cursor-pointer ${
+              isAllMuted
+                ? 'bg-rose-950/80 border-rose-600/70 text-rose-300 shadow-rose-950/30'
+                : 'bg-[#121218] hover:bg-[#181822] border-amber-500/40 text-amber-300'
+            }`}
+            title={isAllMuted ? 'Reactivar micrófonos de todos' : 'Mutear a todos los participantes al mismo tiempo'}
+          >
+            <MicOff className="w-4 h-4 text-amber-400" />
+            <span className="text-[11px] font-black uppercase tracking-wider hidden sm:inline">
+              {isAllMuted ? 'Desmutear Todos' : 'Mutear Todos'}
+            </span>
+          </button>
+        )}
+      </div>
 
       {/* Center: Core Call Toggles (Mic, Camera, Avatar Switcher, Leave) */}
       <div className="flex items-center gap-2 sm:gap-3">
@@ -52,10 +76,10 @@ export const CallControls: React.FC<CallControlsProps> = ({
           onClick={onToggleMic}
           className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-lg cursor-pointer ${
             isMicActive
-              ? 'bg-slate-800/90 hover:bg-slate-700 text-slate-100 border-slate-600'
+              ? 'bg-[#121218] hover:bg-[#181822] text-neutral-100 border-white/[0.08]'
               : 'bg-rose-600 hover:bg-rose-500 text-white border-rose-500 shadow-rose-600/30'
           }`}
-          title={isMicActive ? 'Silenciar micrófono' : 'Activar micrófono'}
+          title={isMicActive ? 'Silenciar mi micrófono' : 'Activar mi micrófono'}
         >
           {isMicActive ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
         </button>
@@ -66,7 +90,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
           onClick={onToggleCamera}
           className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-lg cursor-pointer ${
             isCameraActive
-              ? 'bg-slate-800/90 hover:bg-slate-700 text-slate-100 border-slate-600'
+              ? 'bg-[#121218] hover:bg-[#181822] text-neutral-100 border-white/[0.08]'
               : 'bg-rose-600 hover:bg-rose-500 text-white border-rose-500 shadow-rose-600/30'
           }`}
           title={isCameraActive ? 'Pausar captura de rostro' : 'Activar captura de rostro'}
@@ -82,7 +106,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
             className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-lg cursor-pointer ${
               showAvatarPicker
                 ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-cyan-500/25'
-                : 'bg-slate-800/90 hover:bg-slate-700 text-cyan-300 border-slate-600'
+                : 'bg-[#121218] hover:bg-[#181822] text-cyan-300 border-white/[0.08]'
             }`}
             title="Cambiar mi Avatar en vivo"
           >
@@ -92,8 +116,8 @@ export const CallControls: React.FC<CallControlsProps> = ({
           {showAvatarPicker && (
             <>
               <div className="fixed inset-0 z-20" onClick={() => setShowAvatarPicker(false)} />
-              <div className="absolute -translate-x-1/2 left-1/2 bottom-full mb-3 w-[calc(100vw-32px)] max-w-xs rounded-2xl bg-slate-900 border border-slate-700 p-3 shadow-2xl z-30">
-                <div className="text-xs font-bold text-slate-300 mb-2 px-1 flex items-center justify-between">
+              <div className="absolute -translate-x-1/2 left-1/2 bottom-full mb-3 w-[calc(100vw-32px)] max-w-xs rounded-2xl bg-[#0e0e14] border border-white/[0.1] p-3 shadow-2xl z-30">
+                <div className="text-xs font-bold text-neutral-300 mb-2 px-1 flex items-center justify-between">
                   <span>Cambiar Avatar en Vivo</span>
                   <span className="text-[10px] text-cyan-400 font-mono">3D / WebGL</span>
                 </div>
@@ -111,7 +135,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
                         className={`flex items-center gap-2 p-2 rounded-xl border text-left transition cursor-pointer ${
                           isSelected
                             ? 'bg-cyan-950/80 border-cyan-400 text-cyan-300'
-                            : 'bg-slate-950/60 border-slate-800 hover:border-slate-700 text-slate-300'
+                            : 'bg-[#14141c] border-white/[0.06] hover:border-white/[0.12] text-neutral-300'
                         }`}
                       >
                         <div
@@ -120,7 +144,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
                         />
                         <div className="flex-1 min-w-0">
                           <p className="text-xs font-bold truncate">{avatar.name}</p>
-                          <p className="text-[10px] text-slate-400 truncate">{avatar.category}</p>
+                          <p className="text-[10px] text-neutral-400 truncate">{avatar.category}</p>
                         </div>
                         {isSelected && <Check className="w-3.5 h-3.5 text-cyan-400 shrink-0" />}
                       </button>
@@ -151,13 +175,13 @@ export const CallControls: React.FC<CallControlsProps> = ({
           className={`relative p-3 sm:p-3.5 rounded-2xl border transition cursor-pointer ${
             isChatOpen
               ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/25'
-              : 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700'
+              : 'bg-[#121218] hover:bg-[#181822] text-neutral-200 border-white/[0.08]'
           }`}
-          title="Abrir chat de la sala"
+          title="Abrir chat del espacio"
         >
           <MessageSquare className="w-5 h-5" />
           {unreadChatCount > 0 && !isChatOpen && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-500 text-white font-bold text-[10px] flex items-center justify-center border-2 border-slate-950 animate-bounce">
+            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-500 text-white font-bold text-[10px] flex items-center justify-center border-2 border-[#08080c] animate-bounce">
               {unreadChatCount}
             </span>
           )}

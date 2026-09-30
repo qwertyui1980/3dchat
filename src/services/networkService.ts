@@ -141,6 +141,21 @@ export class NetworkService {
           if (this.onKicked) this.onKicked(reason);
         });
 
+        this.socket.on('all_users_updated', ({ participants }: { participants: User[] }) => {
+          if (this.currentRoom) {
+            this.currentRoom.participants = [...participants];
+          }
+          if (this.currentUser) {
+            const selfInList = participants.find((p) => p.id === this.currentUser?.id);
+            if (selfInList) {
+              this.currentUser = { ...selfInList };
+            }
+          }
+          participants.forEach((user) => {
+            if (this.onUserUpdated) this.onUserUpdated(user);
+          });
+        });
+
         this.socket.on('room_status_changed', (status: { isOpen: boolean; room: any }) => {
           if (this.onRoomStatusChanged) this.onRoomStatusChanged(status);
         });
@@ -169,7 +184,7 @@ export class NetworkService {
 
     const localRoom: RoomInfo = {
       id: cleanRoomId,
-      name: `Sala ${cleanRoomId.toUpperCase()}`,
+      name: `Espacio ${cleanRoomId.toUpperCase()}`,
       adminId: createAsAdmin ? localUser.id : '',
       isLocked: false,
       participants: [localUser],
@@ -590,7 +605,7 @@ export class NetworkService {
         if (msg.targetUserId === this.currentUser.id) {
           this.cleanup();
           if (this.onKicked) {
-            this.onKicked(msg.reason || 'Has sido expulsado de la sala');
+            this.onKicked(msg.reason || 'Has sido expulsado del espacio');
           }
         }
         break;
@@ -971,6 +986,36 @@ export class NetworkService {
     }
   }
 
+  adminMuteAll(muteState: boolean) {
+    this.publishMeshMessage({
+      type: 'force_mute_all',
+      roomId: this.currentRoom?.id,
+      isMuted: muteState,
+    });
+
+    this.supabaseChannel?.send({
+      type: 'broadcast',
+      event: 'force_mute_all',
+      payload: { isMuted: muteState },
+    });
+
+    this.socket?.emit('admin_mute_all', { muteState });
+
+    if (this.currentRoom) {
+      this.broadcastChannel?.postMessage({
+        type: 'tab_force_mute_all',
+        roomId: this.currentRoom.id,
+        isMuted: muteState,
+      });
+      this.currentRoom.participants = this.currentRoom.participants.map((p) => {
+        if (p.role !== 'admin') {
+          return { ...p, isMuted: muteState };
+        }
+        return p;
+      });
+    }
+  }
+
   adminKickUser(targetUserId: string, reason?: string) {
     this.publishMeshMessage({
       type: 'kick_user',
@@ -992,7 +1037,7 @@ export class NetworkService {
         type: 'tab_kick_user',
         roomId: this.currentRoom.id,
         targetUserId,
-        reason: reason || 'Expulsado de la sala',
+        reason: reason || 'Expulsado del espacio',
       });
       const nextList = this.currentRoom.participants.filter(
         (p) => p.id !== targetUserId
@@ -1160,7 +1205,7 @@ export class NetworkService {
         if (msg.targetUserId === this.currentUser.id) {
           this.cleanup();
           if (this.onKicked) {
-            this.onKicked(msg.reason || 'Has sido expulsado de la sala');
+            this.onKicked(msg.reason || 'Has sido expulsado del espacio');
           }
         }
         break;

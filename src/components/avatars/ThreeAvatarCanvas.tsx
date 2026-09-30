@@ -749,8 +749,7 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
   return (
     <div
       ref={mountRef}
-      style={{ width: 320, height: 320 }}
-      className={`relative w-[320px] h-[320px] shrink-0 flex items-center justify-center overflow-hidden select-none bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950 rounded-xl ${className}`}
+      className={`relative w-full h-full flex items-center justify-center overflow-hidden select-none bg-gradient-to-b from-[#0c0c12] via-[#09090e] to-[#060608] ${className}`}
     >
       {/* 3D Loading Spinner */}
       {isLoading && (
