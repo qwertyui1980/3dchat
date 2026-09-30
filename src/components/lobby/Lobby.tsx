@@ -48,7 +48,6 @@ interface LobbyProps {
   onToggleMic: () => void;
   isModelReady: boolean;
   authUser?: AuthenticatedUser | null;
-  cameraStream?: MediaStream | null;
   landmarks?: Array<{ x: number; y: number; z: number }> | null;
   onRequestCamera?: () => void;
   cameraError?: string | null;
@@ -113,7 +112,6 @@ export const Lobby: React.FC<LobbyProps> = ({
   onToggleMic,
   isModelReady,
   authUser,
-  cameraStream,
   landmarks,
   onRequestCamera,
   cameraError,
@@ -237,15 +235,8 @@ export const Lobby: React.FC<LobbyProps> = ({
     }
   };
 
-  // Preview video element ref for PiP
-  const pipVideoRef = useRef<HTMLVideoElement | null>(null);
+  // Canvas ref for real-time anatomical mesh visualization (100% private, zero video rendering)
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  useEffect(() => {
-    if (pipVideoRef.current && cameraStream) {
-      pipVideoRef.current.srcObject = cameraStream;
-    }
-  }, [cameraStream, showCameraPip]);
 
   // Real-time canvas overlay for facial landmark mesh tracking preview
   useEffect(() => {
@@ -254,14 +245,51 @@ export const Lobby: React.FC<LobbyProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const w = canvas.width;
+    const h = canvas.height;
+
+    // Dark sleek biometric HUD background
+    ctx.fillStyle = '#030712';
+    ctx.fillRect(0, 0, w, h);
+
+    // Subtle HUD grid lines
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    // Grid
+    for (let x = 20; x < w; x += 20) {
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, h);
+    }
+    for (let y = 20; y < h; y += 20) {
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+    }
+    ctx.stroke();
+
+    // Subtle center crosshair
+    ctx.strokeStyle = '#1e293b';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(w / 2 - 12, h / 2);
+    ctx.lineTo(w / 2 + 12, h / 2);
+    ctx.moveTo(w / 2, h / 2 - 12);
+    ctx.lineTo(w / 2, h / 2 + 12);
+    ctx.stroke();
 
     if (!landmarks || landmarks.length === 0 || !isCameraActive) {
+      // Empty state HUD info
+      ctx.fillStyle = '#64748b';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(
+        !isCameraActive ? 'Cámara pausada' : 'Buscando rostro...',
+        w / 2,
+        h / 2 + 25
+      );
       return;
     }
 
-    const w = canvas.width;
-    const h = canvas.height;
     const profile = getAvatarTrackingProfile(selectedAvatarId);
 
     const getPt = (idx: number) => {
@@ -274,7 +302,7 @@ export const Lobby: React.FC<LobbyProps> = ({
       };
     };
 
-    const drawPath = (indices: number[], color: string, width = 0.75, isClosed = false) => {
+    const drawPath = (indices: number[], color: string, width = 1, isClosed = false) => {
       const validPoints: Array<{ x: number; y: number }> = [];
       for (const idx of indices) {
         const pt = getPt(idx);
@@ -295,16 +323,18 @@ export const Lobby: React.FC<LobbyProps> = ({
       ctx.stroke();
     };
 
+    // Draw anatomical contours with glowing vector style
     profile.contours.forEach((c) => {
-      drawPath(c.indices, c.color || profile.color, 0.75, c.isClosed || false);
+      drawPath(c.indices, c.color || '#06b6d4', 1.0, c.isClosed || false);
     });
 
+    // Draw active key landmark points (eyes, pupils, mouth, jaw)
     profile.activeIndices.forEach((idx) => {
       const pt = getPt(idx);
       if (!pt) return;
-      ctx.fillStyle = profile.dotColor;
+      ctx.fillStyle = profile.dotColor || '#38bdf8';
       ctx.beginPath();
-      ctx.arc(pt.x, pt.y, 0.85, 0, Math.PI * 2);
+      ctx.arc(pt.x, pt.y, 1.2, 0, Math.PI * 2);
       ctx.fill();
     });
   }, [landmarks, showCameraPip, isCameraActive, selectedAvatarId]);
@@ -450,24 +480,25 @@ export const Lobby: React.FC<LobbyProps> = ({
                 className="w-full h-full"
               />
 
-              {/* PiP Camera Preview with Real-time Landmark Overlay */}
+              {/* Real-time Anatomical Mesh Overlay (100% Private - Zero Camera Image Rendered) */}
               {showCameraPip && isCameraActive && (
-                <div className="absolute bottom-3 right-3 w-36 h-28 bg-slate-950 rounded-lg overflow-hidden border border-cyan-500/40 shadow-2xl z-30">
-                  <video
-                    ref={pipVideoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover scale-x-[-1]"
-                  />
-                  <canvas
-                    ref={canvasRef}
-                    width={144}
-                    height={112}
-                    className="absolute inset-0 w-full h-full pointer-events-none"
-                  />
-                  <div className="absolute top-1 left-1 px-1 rounded bg-black/60 text-[9px] font-mono text-cyan-400">
-                    ANATOMICAL MESH
+                <div className="absolute bottom-3 right-3 w-40 h-32 bg-slate-950/95 rounded-xl overflow-hidden border border-cyan-500/50 shadow-2xl z-30 flex flex-col">
+                  <div className="flex items-center justify-between px-2 py-1 bg-slate-900/90 border-b border-slate-800">
+                    <span className="text-[9px] font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
+                      Mesh Anatómico
+                    </span>
+                    <span className="text-[8px] font-mono text-emerald-400 font-semibold">
+                      100% PRIVADO
+                    </span>
+                  </div>
+                  <div className="relative flex-1 w-full bg-slate-950">
+                    <canvas
+                      ref={canvasRef}
+                      width={160}
+                      height={108}
+                      className="w-full h-full block"
+                    />
                   </div>
                 </div>
               )}
@@ -606,7 +637,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                       ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/20'
                       : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
                   }`}
-                  title="Ver overlay anatómico de tracking"
+                  title="Ver Visor de Mesh Anatómico (100% Privado • Sin vídeo)"
                 >
                   {showCameraPip ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>

@@ -599,7 +599,6 @@ export default function App() {
             onToggleMic={handleToggleMic}
             isModelReady={isModelReady}
             authUser={authenticatedUser}
-            cameraStream={cameraStream}
             landmarks={landmarks}
             onRequestCamera={startCamera}
             cameraError={cameraError}
