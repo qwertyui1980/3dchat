@@ -48,6 +48,7 @@ interface RoomViewProps {
   onAddMediaQueueItem: (item: VideoQueueItem) => void;
   onRemoveMediaQueueItem: (itemId: string) => void;
   onSkipMedia: () => void;
+  onPlayQueueItemNow?: (itemId: string) => void;
   onToggleMediaPlayback: (isPlaying: boolean, currentTime: number) => void;
   onSeekMedia: (currentTime: number) => void;
   onRequestMediaSync?: () => void;
@@ -83,6 +84,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
   onAddMediaQueueItem,
   onRemoveMediaQueueItem,
   onSkipMedia,
+  onPlayQueueItemNow,
   onToggleMediaPlayback,
   onSeekMedia,
   onRequestMediaSync,
@@ -265,6 +267,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
         onAddVideo={onAddMediaQueueItem}
         onRemoveVideo={onRemoveMediaQueueItem}
         onSkipVideo={onSkipMedia}
+        onPlayNow={onPlayQueueItemNow}
         onRequestSync={onRequestMediaSync}
       />
 

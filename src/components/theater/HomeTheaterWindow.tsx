@@ -8,6 +8,7 @@ import {
   Volume2,
   Volume1,
   VolumeX,
+  SkipForward,
 } from 'lucide-react';
 import { RoomMediaState } from '../../types';
 import { YouTubeSyncPlayer } from './YouTubeSyncPlayer';
@@ -264,6 +265,19 @@ export const HomeTheaterWindow: React.FC<HomeTheaterWindowProps> = ({
               {isMuted ? '0%' : `${volume}%`}
             </span>
           </div>
+
+          {/* Skip / Adelantar Button for Admin */}
+          {currentUserRole === 'admin' && currentVideo && onSkip && (
+            <button
+              type="button"
+              onClick={onSkip}
+              className="px-2 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 hover:text-amber-200 border border-amber-500/30 text-xs font-semibold transition active:scale-95 flex items-center gap-1 cursor-pointer"
+              title="Adelantar / Saltar al siguiente video de la playlist (Admin)"
+            >
+              <SkipForward className="w-3.5 h-3.5" />
+              <span className="text-[11px] font-bold hidden sm:inline">Adelantar</span>
+            </button>
+          )}
 
           {/* Playlist / Queue Drawer Button */}
           <button

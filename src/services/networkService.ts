@@ -55,7 +55,7 @@ export class NetworkService {
   public onRoomLockChanged: ((isLocked: boolean) => void) | null = null;
   public onKicked: ((reason: string) => void) | null = null;
   public onForceMute: ((isMuted: boolean) => void) | null = null;
-  public onRoomStatusChanged: ((status: { isOpen: boolean; room: any }) => void) | null = null;
+  public onRoomStatusChanged: ((status: { isOpen: boolean; hasActiveAdmin?: boolean; activeAdminName?: string | null; activeAdminId?: string | null; room: any }) => void) | null = null;
   public onMediaStateChanged: ((state: RoomMediaState) => void) | null = null;
   public onWhiteboardStroke: ((stroke: WhiteboardStroke) => void) | null = null;
   public onWhiteboardClear: (() => void) | null = null;
@@ -102,18 +102,47 @@ export class NetworkService {
         this.socket.on('connect', () => {
           console.log('[XStreamX] Socket connected:', this.socket?.id);
           if (this.currentRoom && this.currentUser) {
-            this.socket?.emit('join_room', {
-              roomId: this.currentRoom.id,
-              userId: this.currentUser.id,
-              userName: this.currentUser.name,
-              avatarId: this.currentUser.avatarId,
-              createAsAdmin: this.currentUser.role === 'admin',
-            });
+            this.socket?.emit(
+              'join_room',
+              {
+                roomId: this.currentRoom.id,
+                userId: this.currentUser.id,
+                userName: this.currentUser.name,
+                avatarId: this.currentUser.avatarId,
+                createAsAdmin: this.currentUser.role === 'admin',
+              },
+              (res?: any) => {
+                if (res?.error) {
+                  this.cleanup();
+                  if (this.onKicked) {
+                    this.onKicked(res.error);
+                  } else if (this.onError) {
+                    this.onError(res.error);
+                  }
+                }
+              }
+            );
             this.socket?.emit('request_media_sync');
           }
         });
 
+        this.socket.on('join_room_error', ({ message }: { message: string }) => {
+          this.cleanup();
+          if (this.onKicked) {
+            this.onKicked(message);
+          } else if (this.onError) {
+            this.onError(message);
+          }
+        });
+
+        this.socket.on('room_status_changed', (status: any) => {
+          if (this.onRoomStatusChanged) {
+            this.onRoomStatusChanged(status);
+          }
+        });
+
         this.socket.on('user_joined', ({ user, participants }: { user: User; participants: User[] }) => {
+          this.checkAdminConflict(user);
           if (this.currentRoom) {
             this.currentRoom.participants = this.deduplicateParticipants(participants);
           }
@@ -347,17 +376,55 @@ export class NetworkService {
 
     // 5. Try socket.io emit if socket server is active
     if (this.socket?.connected) {
-      this.socket.emit('join_room', {
-        roomId: cleanRoomId,
-        userId: localUser.id,
-        userName: cleanUserName,
-        avatarId,
-        createAsAdmin,
-      });
+      this.socket.emit(
+        'join_room',
+        {
+          roomId: cleanRoomId,
+          userId: localUser.id,
+          userName: cleanUserName,
+          avatarId,
+          createAsAdmin,
+        },
+        (res?: any) => {
+          if (res?.error) {
+            this.cleanup();
+            if (this.onKicked) {
+              this.onKicked(res.error);
+            } else if (this.onError) {
+              this.onError(res.error);
+            }
+          }
+        }
+      );
     }
   }
 
-  // --- PARTICIPANT DEDUPLICATION ENGINE ---
+  // --- PARTICIPANT DEDUPLICATION & ADMIN CONFLICT ENGINE ---
+  private checkAdminConflict(incomingUser: User) {
+    if (
+      this.currentUser &&
+      this.currentUser.role === 'admin' &&
+      incomingUser.id !== this.currentUser.id &&
+      incomingUser.role === 'admin'
+    ) {
+      console.warn(
+        `[Network] Conflicto de administrador detectado ("${this.currentUser.name}" vs "${incomingUser.name}"). Cambiando rol local a participante.`
+      );
+      this.currentUser.role = 'participant';
+      if (this.currentRoom) {
+        this.currentRoom.participants = this.currentRoom.participants.map((p) =>
+          p.id === this.currentUser!.id ? { ...p, role: 'participant' } : p
+        );
+      }
+      if (this.onUserUpdated) {
+        this.onUserUpdated(this.currentUser);
+      }
+      if (this.onError) {
+        this.onError(`Ya hay un Administrador activo en la sala (${incomingUser.name}). Tu rol ha cambiado a Participante.`);
+      }
+    }
+  }
+
   public deduplicateParticipants(list: User[]): User[] {
     const seenIds = new Set<string>();
     const seenNames = new Set<string>();
@@ -384,6 +451,19 @@ export class NetworkService {
         result.push(u);
       }
     }
+
+    // STRICT ROLE ENFORCEMENT: Never allow more than 1 Admin simultaneously in the room
+    let adminFound = false;
+    for (const p of result) {
+      if (p.role === 'admin') {
+        if (!adminFound) {
+          adminFound = true;
+        } else {
+          p.role = 'participant';
+        }
+      }
+    }
+
     return result;
   }
 
@@ -759,6 +839,7 @@ export class NetworkService {
     switch (msg.type) {
       case 'who_is_here': {
         if (msg.user && msg.user.id !== this.currentUser.id && msg.user.name?.trim().toLowerCase() !== selfName) {
+          this.checkAdminConflict(msg.user);
           // Immediately respond with our presence so the new peer discovers us
           this.publishMeshMessage({
             type: 'presence_sync',
@@ -795,6 +876,7 @@ export class NetworkService {
       case 'presence_beacon':
       case 'user_joined': {
         if (msg.user && msg.user.id !== this.currentUser.id && msg.user.name?.trim().toLowerCase() !== selfName) {
+          this.checkAdminConflict(msg.user);
           const existingIdx = this.currentRoom.participants.findIndex(
             (p) => p.id === msg.user.id || (p.name && msg.user.name && p.name.trim().toLowerCase() === msg.user.name.trim().toLowerCase())
           );
@@ -1784,6 +1866,61 @@ export class NetworkService {
     }
   }
 
+  playQueueItemNow(itemId: string) {
+    const itemIndex = this.currentMediaState.queue.findIndex((q) => q.id === itemId);
+    if (itemIndex === -1) return;
+
+    const targetItem = this.currentMediaState.queue[itemIndex];
+    const nextQueue = this.currentMediaState.queue.filter((q) => q.id !== itemId);
+
+    const nextState: RoomMediaState = {
+      ...this.currentMediaState,
+      currentVideo: targetItem,
+      queue: nextQueue,
+      isPlaying: true,
+      playbackTime: 0,
+      lastSyncTimestamp: Date.now(),
+      syncedByUserId: this.currentUser?.id || '',
+    };
+
+    this.currentMediaState = { ...nextState };
+    if (this.onMediaStateChanged) {
+      this.onMediaStateChanged({ ...this.currentMediaState });
+    }
+
+    const payload = {
+      type: 'media_state_sync',
+      roomId: this.currentRoom?.id,
+      state: nextState,
+    };
+
+    this.peerDataConnections.forEach((conn) => {
+      if (conn.open) {
+        try {
+          conn.send(payload);
+        } catch (_) {}
+      }
+    });
+
+    this.publishMeshMessage(payload);
+
+    this.supabaseChannel?.send({
+      type: 'broadcast',
+      event: 'media_state_sync',
+      payload: nextState,
+    });
+
+    this.socket?.emit('media_state_sync', nextState);
+
+    if (this.currentRoom) {
+      this.broadcastChannel?.postMessage({
+        type: 'tab_media_state_sync',
+        roomId: this.currentRoom.id,
+        state: nextState,
+      });
+    }
+  }
+
   requestMediaSync() {
     if (!this.currentRoom) return;
 
@@ -1948,6 +2085,7 @@ export class NetworkService {
         const selfName = (this.currentUser.name || '').trim().toLowerCase();
         const incomingName = (msg.user?.name || '').trim().toLowerCase();
         if (msg.user && msg.user.id !== this.currentUser.id && incomingName !== selfName) {
+          this.checkAdminConflict(msg.user);
           this.broadcastChannel?.postMessage({
             type: 'tab_sync_presence',
             roomId: this.currentRoom.id,
@@ -1982,6 +2120,7 @@ export class NetworkService {
         const selfName = (this.currentUser.name || '').trim().toLowerCase();
         const incomingName = (msg.user?.name || '').trim().toLowerCase();
         if (msg.user && msg.user.id !== this.currentUser.id && incomingName !== selfName) {
+          this.checkAdminConflict(msg.user);
           const exists = this.currentRoom.participants.some(
             (p) => p.id === msg.user.id || (p.name && incomingName && p.name.trim().toLowerCase() === incomingName)
           );

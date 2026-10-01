@@ -521,7 +521,7 @@ export default function App() {
 
   // Toggle Microphone
   const handleToggleMic = () => {
-    if (isAdminMuted && authenticatedUser?.role !== 'admin') {
+    if (isAdminMuted && currentUser?.role !== 'admin') {
       addToast(
         'Has sido silenciado por el administrador. Solo el administrador puede reactivar tu micrófono.',
         'warning'
@@ -669,6 +669,10 @@ export default function App() {
     networkServiceSingleton.skipCurrentMedia();
   }, []);
 
+  const handlePlayQueueItemNow = useCallback((itemId: string) => {
+    networkServiceSingleton.playQueueItemNow(itemId);
+  }, []);
+
   const handleToggleMediaPlayback = useCallback((isPlaying: boolean, currentTime: number) => {
     networkServiceSingleton.toggleMediaPlayback(isPlaying, currentTime);
   }, []);
@@ -787,6 +791,7 @@ export default function App() {
           onAddMediaQueueItem={handleAddMediaQueueItem}
           onRemoveMediaQueueItem={handleRemoveMediaQueueItem}
           onSkipMedia={handleSkipMedia}
+          onPlayQueueItemNow={handlePlayQueueItemNow}
           onToggleMediaPlayback={handleToggleMediaPlayback}
           onSeekMedia={handleSeekMedia}
           onRequestMediaSync={handleRequestMediaSync}

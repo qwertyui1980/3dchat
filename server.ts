@@ -31,6 +31,23 @@ interface Room {
 
 const rooms = new Map<string, Room>();
 
+// Helper to determine the single active admin in a room
+function getRoomActiveAdmin(room: Room, io?: Server): { user: User; socketId: string } | undefined {
+  for (const [sId, u] of room.users.entries()) {
+    if (u.role === 'admin') {
+      if (io) {
+        const sock = io.sockets.sockets.get(sId);
+        if (sock && sock.connected) {
+          return { user: u, socketId: sId };
+        }
+      } else {
+        return { user: u, socketId: sId };
+      }
+    }
+  }
+  return undefined;
+}
+
 // Ensure default main single room is always active and open
 rooms.set('main', {
   id: 'main',
@@ -55,11 +72,44 @@ async function startServer() {
 
   const PORT = Number(process.env.PORT) || 3000;
 
+  // Broadcast real-time room status to all clients
+  function broadcastRoomStatus(room: Room) {
+    const activeAdmin = getRoomActiveAdmin(room, io);
+    io.emit('room_status_changed', {
+      isOpen: true,
+      hasActiveAdmin: !!activeAdmin,
+      activeAdminName: activeAdmin ? activeAdmin.user.name : null,
+      activeAdminId: activeAdmin ? activeAdmin.user.id : null,
+      room: {
+        id: room.id,
+        name: room.name,
+        adminId: activeAdmin ? activeAdmin.user.id : room.adminId,
+        isLocked: room.isLocked,
+        userCount: room.users.size,
+        hasActiveAdmin: !!activeAdmin,
+        activeAdminName: activeAdmin ? activeAdmin.user.name : null,
+      },
+    });
+  }
+
   app.use(express.json());
+
+  // Serve public static assets (favicon.svg, models, etc.)
+  app.use(express.static(path.resolve(__dirname, 'public')));
 
   // Static 3D model assets
   app.use('/models', express.static(path.resolve(__dirname, 'public/models')));
   app.use('/models', express.static(path.resolve(__dirname, 'models')));
+
+  // Explicit favicon handler to prevent 404s on /favicon.ico and /favicon.svg
+  app.get(['/favicon.ico', '/favicon.svg'], (_req, res) => {
+    const svgPath = path.resolve(__dirname, 'public/favicon.svg');
+    if (fs.existsSync(svgPath)) {
+      res.type('image/svg+xml').sendFile(svgPath);
+    } else {
+      res.status(204).end();
+    }
+  });
 
   // API endpoints
   app.get('/api/health', (req, res) => {
@@ -67,27 +117,38 @@ async function startServer() {
   });
 
   app.get('/api/rooms', (req, res) => {
-    const publicRooms = Array.from(rooms.values()).map(r => ({
-      id: r.id,
-      name: r.name,
-      adminId: r.adminId,
-      userCount: r.users.size,
-      isLocked: r.isLocked,
-    }));
+    const publicRooms = Array.from(rooms.values()).map(r => {
+      const activeAdmin = getRoomActiveAdmin(r, io);
+      return {
+        id: r.id,
+        name: r.name,
+        adminId: activeAdmin ? activeAdmin.user.id : r.adminId,
+        userCount: r.users.size,
+        isLocked: r.isLocked,
+        hasActiveAdmin: !!activeAdmin,
+        activeAdminName: activeAdmin ? activeAdmin.user.name : null,
+      };
+    });
     res.json({ rooms: publicRooms });
   });
 
   app.get('/api/room/status', (req, res) => {
     const mainRoom = rooms.get('main') || Array.from(rooms.values())[0];
+    const activeAdmin = mainRoom ? getRoomActiveAdmin(mainRoom, io) : undefined;
     res.json({
       isOpen: !!mainRoom,
+      hasActiveAdmin: !!activeAdmin,
+      activeAdminName: activeAdmin ? activeAdmin.user.name : null,
+      activeAdminId: activeAdmin ? activeAdmin.user.id : null,
       room: mainRoom
         ? {
             id: mainRoom.id,
             name: mainRoom.name,
-            adminId: mainRoom.adminId,
+            adminId: activeAdmin ? activeAdmin.user.id : mainRoom.adminId,
             isLocked: mainRoom.isLocked,
             userCount: mainRoom.users.size,
+            hasActiveAdmin: !!activeAdmin,
+            activeAdminName: activeAdmin ? activeAdmin.user.name : null,
           }
         : null,
     });
@@ -269,16 +330,22 @@ async function startServer() {
     // Check single room status
     socket.on('check_room_status', (callback) => {
       const mainRoom = rooms.get('main') || Array.from(rooms.values())[0];
+      const activeAdmin = mainRoom ? getRoomActiveAdmin(mainRoom, io) : undefined;
       if (callback) {
         callback({
           isOpen: !!mainRoom,
+          hasActiveAdmin: !!activeAdmin,
+          activeAdminName: activeAdmin ? activeAdmin.user.name : null,
+          activeAdminId: activeAdmin ? activeAdmin.user.id : null,
           room: mainRoom
             ? {
                 id: mainRoom.id,
                 name: mainRoom.name,
-                adminId: mainRoom.adminId,
+                adminId: activeAdmin ? activeAdmin.user.id : mainRoom.adminId,
                 isLocked: mainRoom.isLocked,
                 userCount: mainRoom.users.size,
+                hasActiveAdmin: !!activeAdmin,
+                activeAdminName: activeAdmin ? activeAdmin.user.name : null,
               }
             : null,
         });
@@ -289,6 +356,18 @@ async function startServer() {
     socket.on('admin_create_room', ({ roomId, name }, callback) => {
       const cleanId = (roomId || 'main').trim().toLowerCase();
       let room = rooms.get(cleanId);
+      if (room) {
+        const activeAdmin = getRoomActiveAdmin(room, io);
+        if (activeAdmin && activeAdmin.socketId !== socket.id) {
+          if (callback) {
+            callback({
+              success: false,
+              error: `Ya hay un Administrador activo en la sala (${activeAdmin.user.name}). No puede haber más de un Administrador al mismo tiempo.`,
+            });
+          }
+          return;
+        }
+      }
       if (!room) {
         room = {
           id: cleanId,
@@ -300,16 +379,7 @@ async function startServer() {
         };
         rooms.set(cleanId, room);
       }
-      io.emit('room_status_changed', {
-        isOpen: true,
-        room: {
-          id: room.id,
-          name: room.name,
-          adminId: room.adminId,
-          isLocked: room.isLocked,
-          userCount: room.users.size,
-        },
-      });
+      broadcastRoomStatus(room);
       if (callback) callback({ success: true, room });
     });
 
@@ -318,10 +388,10 @@ async function startServer() {
       const trimmedRoomId = (roomId || 'main').trim().toLowerCase();
       let room = rooms.get(trimmedRoomId);
 
-      const isAdmin = createAsAdmin === true;
+      const isAdminRequested = createAsAdmin === true;
 
       // If no room created yet and caller is not an admin
-      if (!room && !isAdmin) {
+      if (!room && !isAdminRequested) {
         if (callback) {
           callback({
             error: 'No hay ninguna sala creada en este momento. Espera a que un administrador inicie la sala.',
@@ -330,7 +400,7 @@ async function startServer() {
         return;
       }
 
-      if (room?.isLocked && (!room.users.has(socket.id) && !isAdmin)) {
+      if (room?.isLocked && (!room.users.has(socket.id) && !isAdminRequested)) {
         if (callback) callback({ error: 'La sala está bloqueada por el administrador.' });
         return;
       }
@@ -345,26 +415,34 @@ async function startServer() {
           createdAt: Date.now(),
         };
         rooms.set(trimmedRoomId, room);
-        io.emit('room_status_changed', {
-          isOpen: true,
-          room: {
-            id: room.id,
-            name: room.name,
-            adminId: room.adminId,
-            isLocked: room.isLocked,
-            userCount: 1,
-          },
-        });
-      } else if (isAdmin && (!room.adminId || !room.users.has(room.adminId))) {
-        room.adminId = socket.id;
       }
 
       const finalUserId = (userId && typeof userId === 'string') ? userId.trim() : socket.id;
       const cleanName = (userName || `Usuario_${finalUserId.slice(0, 4)}`).trim();
 
+      // STRICT VALIDATION: Exactly one Admin can be active at the same time in the room
+      if (isAdminRequested) {
+        const activeAdmin = getRoomActiveAdmin(room, io);
+        if (activeAdmin && activeAdmin.socketId !== socket.id) {
+          const isSameUserReconnecting = activeAdmin.user.id === finalUserId;
+          if (!isSameUserReconnecting) {
+            console.warn(
+              `[XStreamX] Intento de acceso admin rechazado para "${cleanName}": ya existe el admin "${activeAdmin.user.name}" (${activeAdmin.socketId}) en ${trimmedRoomId}`
+            );
+            const errMsg = `Ya hay un Administrador activo en la sala (${activeAdmin.user.name}). No puede haber más de un Administrador al mismo tiempo en la sala.`;
+            if (callback) {
+              callback({ success: false, error: errMsg });
+            }
+            socket.emit('join_room_error', { message: errMsg });
+            return;
+          }
+        }
+      }
+
       // Deduplicate: Purge any existing connection with the same user ID or same name
       for (const [existingSocketId, existingUser] of room.users.entries()) {
         if (
+          existingSocketId === socket.id ||
           existingUser.id === finalUserId ||
           (cleanName && existingUser.name.toLowerCase() === cleanName.toLowerCase())
         ) {
@@ -372,11 +450,16 @@ async function startServer() {
         }
       }
 
+      const finalRole: 'admin' | 'participant' = isAdminRequested ? 'admin' : 'participant';
+      if (finalRole === 'admin') {
+        room.adminId = finalUserId;
+      }
+
       currentUser = {
         id: finalUserId,
         name: cleanName,
         avatarId: avatarId || 'three_robot',
-        role: isAdmin ? 'admin' : 'participant',
+        role: finalRole,
         roomId: trimmedRoomId,
         isMuted: false,
         isCameraActive: true,
@@ -411,6 +494,8 @@ async function startServer() {
         user: currentUser,
         participants: participantsList,
       });
+
+      broadcastRoomStatus(room);
 
       console.log(`[XStreamX] User ${currentUser.name} (${currentUser.role}) joined ${trimmedRoomId}`);
     });
@@ -535,6 +620,7 @@ async function startServer() {
         userId: targetUserId,
         participants: Array.from(room.users.values()),
       });
+      broadcastRoomStatus(room);
     });
 
     // ADMIN CONTROLS: Lock room
@@ -545,6 +631,7 @@ async function startServer() {
 
       room.isLocked = isLocked;
       io.to(currentUser.roomId).emit('room_lock_changed', { isLocked });
+      broadcastRoomStatus(room);
     });
 
     // MEDIA THEATER: Synchronize video & cue playlist for all members
@@ -638,15 +725,13 @@ async function startServer() {
       if (!currentUser) return;
       const room = rooms.get(currentUser.roomId);
       if (room) {
+        const wasAdmin = currentUser.role === 'admin';
         room.users.delete(socket.id);
-        
-        // If admin left, assign new admin if any users remain
-        if (room.adminId === socket.id && room.users.size > 0) {
-          const nextAdmin = room.users.values().next().value;
-          if (nextAdmin) {
-            nextAdmin.role = 'admin';
-            room.adminId = nextAdmin.id;
-            io.to(currentUser.roomId).emit('admin_changed', { newAdminId: nextAdmin.id });
+
+        if (wasAdmin) {
+          const remainingAdmin = getRoomActiveAdmin(room, io);
+          if (!remainingAdmin) {
+            room.adminId = '';
           }
         }
 
@@ -655,7 +740,9 @@ async function startServer() {
           participants: Array.from(room.users.values()),
         });
 
-        if (room.users.size === 0) {
+        broadcastRoomStatus(room);
+
+        if (room.users.size === 0 && room.id !== 'main') {
           rooms.delete(room.id);
         }
       }

@@ -153,6 +153,8 @@ export const Lobby: React.FC<LobbyProps> = ({
   // Single Room State & Real-time Active Status
   const [isRoomActive, setIsRoomActive] = useState<boolean>(true);
   const [activeRoomRecord, setActiveRoomRecord] = useState<RoomRecord | null>(null);
+  const hasActiveAdminInRoom = !!activeRoomRecord?.hasActiveAdmin;
+  const isAnotherAdminInRoom = isAdminUser && hasActiveAdminInRoom;
   const [isCheckingRoom, setIsCheckingRoom] = useState<boolean>(false);
   const [isCreatingRoom, setIsCreatingRoom] = useState<boolean>(false);
 
@@ -193,6 +195,8 @@ export const Lobby: React.FC<LobbyProps> = ({
           participantCount: serverStatus.room.userCount || 0,
           createdAt: Date.now(),
           lastActive: Date.now(),
+          hasActiveAdmin: !!(serverStatus.hasActiveAdmin ?? serverStatus.room.hasActiveAdmin),
+          activeAdminName: serverStatus.activeAdminName || serverStatus.room.activeAdminName || '',
         });
         setIsCheckingRoom(false);
         return;
@@ -241,6 +245,8 @@ export const Lobby: React.FC<LobbyProps> = ({
           participantCount: status.room?.userCount || 0,
           createdAt: Date.now(),
           lastActive: Date.now(),
+          hasActiveAdmin: !!(status.hasActiveAdmin ?? status.room?.hasActiveAdmin),
+          activeAdminName: status.activeAdminName || status.room?.activeAdminName || '',
         });
       }
     };
@@ -376,6 +382,12 @@ export const Lobby: React.FC<LobbyProps> = ({
 
   // Admin action to create/activate the single room
   const handleAdminCreateRoom = async () => {
+    if (hasActiveAdminInRoom) {
+      setError(
+        `Ya hay un Administrador activo en la sala (${activeRoomRecord?.activeAdminName || 'Administrador'}). No puede haber más de un Admin al mismo tiempo en la sala.`
+      );
+      return;
+    }
     setError(null);
     setIsCreatingRoom(true);
     try {
@@ -400,6 +412,26 @@ export const Lobby: React.FC<LobbyProps> = ({
     }
   };
 
+  // Join as regular participant (even if authenticated as admin)
+  const handleJoinAsParticipant = () => {
+    const trimmedName = userName.trim() || 'Participante';
+
+    if (!hasMicPermission) {
+      setError('No es posible ingresar al espacio sin conceder permisos de micrófono.');
+      if (onRequestMic) onRequestMic();
+      return;
+    }
+
+    setError(null);
+
+    onJoinRoom({
+      userName: trimmedName,
+      roomId: SINGLE_ROOM_ID,
+      avatarId: selectedAvatarId,
+      createAsAdmin: false,
+    });
+  };
+
   // Participant or Admin submitting to enter room
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -413,6 +445,13 @@ export const Lobby: React.FC<LobbyProps> = ({
     if (!hasMicPermission) {
       setError('No es posible ingresar al espacio sin conceder permisos de micrófono.');
       if (onRequestMic) onRequestMic();
+      return;
+    }
+
+    if (isAdminUser && hasActiveAdminInRoom) {
+      setError(
+        `Ya hay un Administrador activo en la sala (${activeRoomRecord?.activeAdminName || 'Administrador'}). No puede haber más de un Admin al mismo tiempo en la sala. Puedes ingresar como participante.`
+      );
       return;
     }
 
@@ -730,6 +769,30 @@ export const Lobby: React.FC<LobbyProps> = ({
               </div>
             )}
 
+            {/* AVISO: REGLA DE ADMIN ÚNICO */}
+            {isAnotherAdminInRoom && (
+              <div className="p-4 rounded-xl bg-amber-950/70 border border-amber-500/70 text-amber-200 text-xs space-y-2.5 shadow-xl shadow-amber-950/40 animate-fade-in">
+                <div className="flex items-center gap-2 font-bold text-amber-300 text-sm">
+                  <AlertCircle className="w-5 h-5 text-amber-400 shrink-0" />
+                  <span>Ya hay un Administrador activo en la sala</span>
+                </div>
+                <p className="text-xs text-amber-200/90 leading-relaxed">
+                  Actualmente el administrador <strong className="text-amber-100 font-semibold">{activeRoomRecord?.activeAdminName || 'Administrador'}</strong> se encuentra en la sala. Por regla del sistema, <strong className="text-amber-100">no puede haber más de un Admin al mismo tiempo en la sala</strong>.
+                </p>
+                <div className="flex items-center gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleJoinAsParticipant}
+                    className="px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/50 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <Users className="w-4 h-4" />
+                    <span>Ingresar como Participante</span>
+                  </button>
+                  <span className="text-[11px] text-amber-300/70">(Participa sin rol de administrador)</span>
+                </div>
+              </div>
+            )}
+
             {/* Direct Join / Create Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
 
@@ -835,6 +898,21 @@ export const Lobby: React.FC<LobbyProps> = ({
                   <MicOff className="w-4 h-4 text-rose-300 animate-pulse shrink-0" />
                   <span>CONCEDER MICRÓFONO PARA PODER INGRESAR</span>
                 </button>
+              ) : isAnotherAdminInRoom ? (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={handleJoinAsParticipant}
+                    className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-slate-950 font-black tracking-wide text-sm flex items-center justify-center gap-2 shadow-xl shadow-amber-500/30 transition active:scale-[0.99] cursor-pointer"
+                  >
+                    <Users className="w-4 h-4 fill-slate-950" />
+                    <span>INGRESAR COMO PARTICIPANTE</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </button>
+                  <p className="text-[11px] text-center text-amber-300/80">
+                    La sala ya cuenta con un Admin activo. Ingresarás con rol de participante sin privilegios de administración.
+                  </p>
+                </div>
               ) : (
                 <button
                   type="submit"

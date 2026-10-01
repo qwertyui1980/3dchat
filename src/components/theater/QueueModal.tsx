@@ -23,6 +23,7 @@ interface QueueModalProps {
   onAddVideo: (item: VideoQueueItem) => void;
   onRemoveVideo: (itemId: string) => void;
   onSkipVideo: () => void;
+  onPlayNow?: (itemId: string) => void;
   onRequestSync?: () => void;
 }
 
@@ -34,6 +35,7 @@ export const QueueModal: React.FC<QueueModalProps> = ({
   onAddVideo,
   onRemoveVideo,
   onSkipVideo,
+  onPlayNow,
   onRequestSync,
 }) => {
   const [urlInput, setUrlInput] = useState('');
@@ -216,16 +218,23 @@ export const QueueModal: React.FC<QueueModalProps> = ({
           {/* Current Video Section */}
           <div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-2.5 flex items-center justify-between">
-              <span>Reproduciéndose Ahora</span>
+              <span className="flex items-center gap-2">
+                <span>Reproduciéndose Ahora</span>
+                {currentUser.role === 'admin' && (
+                  <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-bold">
+                    Admin
+                  </span>
+                )}
+              </span>
               {currentVideo && (
                 <button
                   type="button"
                   onClick={onSkipVideo}
-                  className="text-[11px] font-semibold text-neutral-400 hover:text-amber-300 flex items-center gap-1 transition"
-                  title="Saltar al siguiente video"
+                  className="px-2 py-0.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-[11px] font-semibold text-amber-300 hover:text-amber-200 flex items-center gap-1 transition cursor-pointer"
+                  title="Adelantar / Saltar al siguiente video"
                 >
                   <SkipForward className="w-3 h-3" />
-                  <span>Saltar</span>
+                  <span>Adelantar / Saltar</span>
                 </button>
               )}
             </h4>
@@ -268,7 +277,8 @@ export const QueueModal: React.FC<QueueModalProps> = ({
               <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                 {queue.map((item, index) => {
                   const isMine = item.addedByUserId === currentUser.id;
-                  const canDelete = isMine || currentUser.role === 'admin';
+                  const isAdmin = currentUser.role === 'admin';
+                  const canDelete = isMine || isAdmin;
 
                   return (
                     <div
@@ -297,16 +307,30 @@ export const QueueModal: React.FC<QueueModalProps> = ({
                         </p>
                       </div>
 
-                      {canDelete && (
-                        <button
-                          type="button"
-                          onClick={() => onRemoveVideo(item.id)}
-                          className="p-1.5 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-rose-500/10 transition active:scale-95 cursor-pointer shrink-0"
-                          title="Quitar de la lista"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {/* Admin Action: Play/Advance this item now */}
+                        {isAdmin && onPlayNow && (
+                          <button
+                            type="button"
+                            onClick={() => onPlayNow(item.id)}
+                            className="p-1.5 rounded-lg text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/30 transition active:scale-95 cursor-pointer"
+                            title="Adelantar y reproducir este video ahora (Admin)"
+                          >
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                          </button>
+                        )}
+
+                        {canDelete && (
+                          <button
+                            type="button"
+                            onClick={() => onRemoveVideo(item.id)}
+                            className="p-1.5 rounded-lg text-neutral-400 hover:text-rose-400 hover:bg-rose-500/10 transition active:scale-95 cursor-pointer"
+                            title={isAdmin ? "Eliminar de la lista (Admin)" : "Quitar mi video"}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

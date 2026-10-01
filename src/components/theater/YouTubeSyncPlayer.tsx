@@ -86,6 +86,7 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
       if (!isMounted) return;
 
       const player = new window.YT.Player(containerId.current, {
+        host: 'https://www.youtube-nocookie.com',
         height: '100%',
         width: '100%',
         videoId: currentVideo?.videoId || '',
@@ -100,6 +101,7 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
           enablejsapi: 1,
           iv_load_policy: 3,
           origin: window.location.origin,
+          widget_referrer: window.location.origin,
         },
         events: {
           onReady: (event: any) => {

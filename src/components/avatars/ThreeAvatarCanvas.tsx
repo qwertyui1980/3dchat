@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { GLTF, GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
@@ -6,6 +6,7 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { AvatarId, FaceFeatures } from '../../types';
 import { getAvatarTrackingProfile } from './avatarTrackingProfiles';
+import { AVATAR_LIST } from './avatarConfigs';
 import {
   Character3DController,
   buildCatCharacter,
@@ -108,6 +109,15 @@ function loadFaceCapGLTF(renderer: THREE.WebGLRenderer): Promise<GLTF> {
   return faceCapLoadingPromise;
 }
 
+function checkIsMobile(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const isTouch = navigator.maxTouchPoints != null && navigator.maxTouchPoints > 1;
+  const isSmallScreen = window.innerWidth <= 768;
+  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+  return isMobileUA || (isTouch && isSmallScreen);
+}
+
 interface ThreeAvatarCanvasProps {
   avatarId?: AvatarId;
   features: FaceFeatures;
@@ -135,12 +145,26 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
     (isFaceCapAvatar && !cachedFaceCapGLTF)
   );
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isWebglAvailable, setIsWebglAvailable] = useState(true);
+  const [isContextLost, setIsContextLost] = useState(false);
+  const [restoreCount, setRestoreCount] = useState(0);
   const [currentEmote, setCurrentEmote] = useState<string | null>(null);
   const [show3DMesh, setShow3DMesh] = useState(false);
   const show3DMeshRef = useRef(false);
   show3DMeshRef.current = show3DMesh;
   const trackingGroup3DRef = useRef<THREE.Group | null>(null);
   const trackingProfile = getAvatarTrackingProfile(avatarId);
+
+  const avatarDef = useMemo(() => {
+    return AVATAR_LIST.find((a) => a.id === avatarId) || {
+      id: avatarId,
+      name: 'Avatar 3D',
+      emoji: '👤',
+      themeColor: '#06b6d4',
+      accentColor: '#38bdf8',
+      badge: '3D',
+    };
+  }, [avatarId]);
 
   // References across render loop
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -250,42 +274,85 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
     const scene = new THREE.Scene();
     sceneRef.current = scene;
 
-    // 2. Camera Setup (fixed 1:1 square frame)
-    const FIXED_WIDTH = 320;
-    const FIXED_HEIGHT = 320;
+    const isMobile = checkIsMobile();
+    const FIXED_WIDTH = isMobile ? 256 : 320;
+    const FIXED_HEIGHT = isMobile ? 256 : 320;
     const aspect = 1.0;
     const camera = new THREE.PerspectiveCamera(40, aspect, 0.1, 100);
     camera.position.set(0, 4.4, 4.8);
     camera.lookAt(0, 3.8, 0);
     cameraRef.current = camera;
 
-    // 3. Renderer Setup (fixed 320x320 resolution)
-    const renderer = new THREE.WebGLRenderer({
-      alpha: true,
-      antialias: true,
-      powerPreference: 'high-performance',
-    });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    // 3. Renderer Setup (Mobile-optimized with fail-safe WebGL allocation)
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({
+        alpha: true,
+        antialias: !isMobile,
+        powerPreference: isMobile ? 'default' : 'high-performance',
+        precision: isMobile ? 'mediump' : 'highp',
+      });
+    } catch (e) {
+      console.warn('[ThreeAvatarCanvas] WebGL context allocation failed:', e);
+      setIsWebglAvailable(false);
+      return;
+    }
+
+    setIsWebglAvailable(true);
+    setIsContextLost(false);
+
+    const pixelRatio = isMobile
+      ? Math.min(window.devicePixelRatio || 1, 1.25)
+      : Math.min(window.devicePixelRatio || 1, 2);
+    renderer.setPixelRatio(pixelRatio);
     renderer.setSize(FIXED_WIDTH, FIXED_HEIGHT);
-    renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFShadowMap;
-    renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.15;
+    renderer.domElement.style.width = '100%';
+    renderer.domElement.style.height = '100%';
+    renderer.domElement.style.display = 'block';
+    renderer.domElement.style.backgroundColor = 'transparent';
+
+    if (!isMobile) {
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+    }
+
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // 4. Studio 3D Lighting
-    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, 1.8);
+    // WebGL Context Lost & Restored Protection (prevents blank/white card on mobile)
+    const canvasDom = renderer.domElement;
+    const handleContextLost = (e: Event) => {
+      e.preventDefault(); // CRITICAL: Tells browser not to permanently destroy the canvas
+      console.warn('[ThreeAvatarCanvas] WebGL context lost on avatar:', avatarId);
+      setIsContextLost(true);
+      cancelAnimationFrame(animationFrameId);
+    };
+
+    const handleContextRestored = () => {
+      console.log('[ThreeAvatarCanvas] WebGL context restored. Re-mounting avatar:', avatarId);
+      setIsContextLost(false);
+      setRestoreCount((c) => c + 1);
+    };
+
+    canvasDom.addEventListener('webglcontextlost', handleContextLost, false);
+    canvasDom.addEventListener('webglcontextrestored', handleContextRestored, false);
+
+    // 4. Studio 3D Lighting (Optimized for mobile GPU)
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x1e293b, isMobile ? 2.0 : 1.8);
     hemiLight.position.set(0, 20, 0);
     scene.add(hemiLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 2.4);
+    const dirLight = new THREE.DirectionalLight(0xffffff, isMobile ? 2.6 : 2.4);
     dirLight.position.set(4, 10, 6);
-    dirLight.castShadow = true;
-    dirLight.shadow.mapSize.width = 1024;
-    dirLight.shadow.mapSize.height = 1024;
-    dirLight.shadow.camera.near = 0.5;
-    dirLight.shadow.camera.far = 25;
+    if (!isMobile) {
+      dirLight.castShadow = true;
+      dirLight.shadow.mapSize.width = 512;
+      dirLight.shadow.mapSize.height = 512;
+      dirLight.shadow.camera.near = 0.5;
+      dirLight.shadow.camera.far = 25;
+    }
     scene.add(dirLight);
 
     // Dynamic Character Rim Light
@@ -543,11 +610,42 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
       }
     }
 
+    // Off-screen culling: only render when this avatar card is visible in the viewport
+    let isIntersecting = true;
+    let observer: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== 'undefined' && container) {
+      observer = new IntersectionObserver(
+        (entries) => {
+          if (entries[0]) {
+            isIntersecting = entries[0].isIntersecting;
+          }
+        },
+        { threshold: 0.05 }
+      );
+      observer.observe(container);
+    }
+
+    // Page visibility listener: pause rendering when tab is hidden or backgrounded
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        cancelAnimationFrame(animationFrameId);
+      } else if (!isDisposed) {
+        lastTime = performance.now();
+        animationFrameId = requestAnimationFrame(render);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     // 7. Main 60fps Three.js Render Loop with Continuous Smoothing Filter
     let lastTime = performance.now();
     const render = () => {
       if (isDisposed) return;
       animationFrameId = requestAnimationFrame(render);
+
+      // Skip GPU render passes if tab is hidden or avatar is scrolled out of view on mobile
+      if (document.hidden || !isIntersecting) {
+        return;
+      }
 
       // Synchronize 3D anatomical tracking mesh visibility
       if (trackingGroup3DRef.current) {
@@ -752,35 +850,133 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
     return () => {
       isDisposed = true;
       cancelAnimationFrame(animationFrameId);
-      if (characterControllerRef.current) {
-        characterControllerRef.current.dispose();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (observer) {
+        observer.disconnect();
       }
+      canvasDom.removeEventListener('webglcontextlost', handleContextLost);
+      canvasDom.removeEventListener('webglcontextrestored', handleContextRestored);
+
+      if (characterControllerRef.current) {
+        try {
+          characterControllerRef.current.dispose();
+        } catch (_) {}
+      }
+
+      // Systematic deep disposal of all meshes, geometries, and materials in scene
+      scene.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          if (mesh.geometry) {
+            mesh.geometry.dispose();
+          }
+          if (mesh.material) {
+            if (Array.isArray(mesh.material)) {
+              mesh.material.forEach((mat) => {
+                Object.keys(mat).forEach((key) => {
+                  const val = (mat as any)[key];
+                  if (val && typeof val === 'object' && val.isTexture) {
+                    val.dispose();
+                  }
+                });
+                mat.dispose();
+              });
+            } else {
+              const mat = mesh.material;
+              Object.keys(mat).forEach((key) => {
+                const val = (mat as any)[key];
+                if (val && typeof val === 'object' && val.isTexture) {
+                  val.dispose();
+                }
+              });
+              mat.dispose();
+            }
+          }
+        }
+      });
+      scene.clear();
+
       if (renderer.domElement && container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
-      renderer.dispose();
+
+      // Force WebGL context release so mobile browser pool immediately frees the slot
+      try {
+        if (typeof renderer.forceContextLoss === 'function') {
+          renderer.forceContextLoss();
+        }
+        if (renderer.domElement) {
+          renderer.domElement.width = 1;
+          renderer.domElement.height = 1;
+        }
+        renderer.dispose();
+      } catch (_) {}
     };
-  }, [avatarId]);
+  }, [avatarId, restoreCount]);
 
   return (
     <div
       ref={mountRef}
-      className={`relative w-full h-full flex items-center justify-center overflow-hidden select-none bg-gradient-to-b from-[#0c0c12] via-[#09090e] to-[#060608] ${className}`}
+      className={`relative w-full h-full flex items-center justify-center overflow-hidden select-none bg-[#08080c] ${className}`}
     >
       {/* 3D Loading Spinner */}
-      {isLoading && (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-slate-950/80 backdrop-blur-xs z-10">
-          <div className="w-9 h-9 rounded-full border-3 border-cyan-500/20 border-t-cyan-400 animate-spin" />
-          <span className="text-xs font-semibold text-cyan-300">
-            Cargando Three.js 3D Mesh...
+      {isLoading && isWebglAvailable && !isContextLost && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-[#08080c]/85 backdrop-blur-xs z-10">
+          <div className="w-8 h-8 rounded-full border-2 border-cyan-500/20 border-t-cyan-400 animate-spin" />
+          <span className="text-[11px] font-medium text-cyan-300">
+            Cargando 3D...
           </span>
         </div>
       )}
 
       {/* Error State */}
-      {loadError && (
-        <div className="absolute inset-0 flex items-center justify-center text-rose-400 text-xs text-center px-4 z-10">
-          {loadError}
+      {loadError && isWebglAvailable && !isContextLost && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-rose-400 text-xs text-center z-10 bg-[#08080c]/90">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={() => setRestoreCount((c) => c + 1)}
+            className="mt-2 px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-cyan-300 border border-slate-700 cursor-pointer"
+          >
+            Reintentar
+          </button>
+        </div>
+      )}
+
+      {/* WebGL Fallback / Context Lost Recovery View (Prevents Blank/White Screen on Mobile) */}
+      {(!isWebglAvailable || isContextLost) && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center p-3 bg-[#08080c] text-center z-10 animate-in fade-in">
+          <div
+            className={`relative w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center text-3xl sm:text-4xl shadow-xl border mb-2 transition-transform duration-200 ${
+              isSpeaking ? 'scale-105 ring-2 ring-cyan-400' : ''
+            }`}
+            style={{
+              backgroundColor: `${avatarDef.themeColor}18`,
+              borderColor: `${avatarDef.themeColor}50`,
+            }}
+          >
+            {avatarDef.emoji}
+            {isSpeaking && (
+              <span className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full animate-ping" />
+            )}
+          </div>
+          <span className="text-xs font-bold text-slate-200 truncate max-w-[160px]">
+            {avatarDef.name}
+          </span>
+          <span className="text-[10px] text-slate-400 mt-0.5">
+            {isContextLost ? 'Restaurando GPU...' : 'Modo Ligero (Ahorro GPU)'}
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setIsContextLost(false);
+              setIsWebglAvailable(true);
+              setRestoreCount((c) => c + 1);
+            }}
+            className="mt-2.5 px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-cyan-300 text-[11px] font-semibold rounded-lg cursor-pointer transition shadow"
+          >
+            Reconectar 3D
+          </button>
         </div>
       )}
 
@@ -794,7 +990,7 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           />
           <span className="truncate max-w-[120px]">{userName}</span>
           <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-mono">
-            3D WEBGL
+            {isWebglAvailable && !isContextLost ? '3D WEBGL' : '2D LITE'}
           </span>
         </div>
       )}

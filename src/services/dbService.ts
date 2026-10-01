@@ -19,6 +19,8 @@ export interface RoomRecord {
   participantCount: number;
   createdAt: number;
   lastActive: number;
+  hasActiveAdmin?: boolean;
+  activeAdminName?: string;
 }
 
 const STORAGE_USERS_KEY = 'xstreamx_db_users';
