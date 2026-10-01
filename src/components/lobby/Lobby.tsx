@@ -158,10 +158,29 @@ export const Lobby: React.FC<LobbyProps> = ({
 
   // Function to check whether the single room has been created by an admin
   const checkSingleRoomStatus = async () => {
+    const isStaticDeploy =
+      typeof window !== 'undefined' &&
+      (window.location.hostname.endsWith('github.io') || window.location.protocol === 'file:');
+
+    if (isStaticDeploy) {
+      setIsRoomActive(true);
+      setActiveRoomRecord({
+        id: SINGLE_ROOM_ID,
+        name: 'Espacio Principal en Vivo',
+        adminId: 'admin',
+        isLocked: false,
+        participantCount: 1,
+        createdAt: Date.now(),
+        lastActive: Date.now(),
+      });
+      setIsCheckingRoom(false);
+      return;
+    }
+
     try {
       // 1. Check server API status
       const serverStatus = await fetch('/api/room/status')
-        .then((r) => r.json())
+        .then((r) => (r.ok ? r.json() : null))
         .catch(() => null);
 
       if (serverStatus && serverStatus.isOpen && serverStatus.room) {
@@ -181,21 +200,33 @@ export const Lobby: React.FC<LobbyProps> = ({
 
       // 2. Check Database / Storage
       const dbRoom = await dbServiceSingleton.getActiveRoom();
-      if (dbRoom && dbRoom.adminId) {
+      if (dbRoom) {
         setIsRoomActive(true);
         setActiveRoomRecord(dbRoom);
       } else {
-        setIsRoomActive(false);
-        setActiveRoomRecord(null);
+        setIsRoomActive(true);
+        setActiveRoomRecord({
+          id: SINGLE_ROOM_ID,
+          name: 'Espacio Principal en Vivo',
+          adminId: 'admin',
+          isLocked: false,
+          participantCount: 1,
+          createdAt: Date.now(),
+          lastActive: Date.now(),
+        });
       }
     } catch (e) {
-      console.warn('[Lobby] Error checking room status:', e);
+      setIsRoomActive(true);
     } finally {
       setIsCheckingRoom(false);
     }
   };
 
   useEffect(() => {
+    const isStaticDeploy =
+      typeof window !== 'undefined' &&
+      (window.location.hostname.endsWith('github.io') || window.location.protocol === 'file:');
+
     checkSingleRoomStatus();
 
     // Listen to real-time socket events for room opening/closing
@@ -211,13 +242,12 @@ export const Lobby: React.FC<LobbyProps> = ({
           createdAt: Date.now(),
           lastActive: Date.now(),
         });
-      } else {
-        setIsRoomActive(false);
-        setActiveRoomRecord(null);
       }
     };
 
-    // Polling interval every 3 seconds to ensure sync across different clients
+    if (isStaticDeploy) return;
+
+    // Polling interval every 3 seconds to ensure sync across different clients on server environments
     const interval = setInterval(() => {
       checkSingleRoomStatus();
     }, 3000);
