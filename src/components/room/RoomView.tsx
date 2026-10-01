@@ -84,12 +84,12 @@ export const RoomView: React.FC<RoomViewProps> = ({
   const [lastReadMessageCount, setLastReadMessageCount] = useState(messages.length);
 
   // Home Theater & Cue Modal States
-  const [isTheaterOpen, setIsTheaterOpen] = useState(false);
+  const [isTheaterOpen, setIsTheaterOpen] = useState(() => !!mediaState.currentVideo);
   const [isQueueModalOpen, setIsQueueModalOpen] = useState(false);
 
-  // Automatically open theater when a new video starts if not currently open
+  // Automatically open theater for all members whenever an active video starts or changes
   useEffect(() => {
-    if (mediaState.currentVideo?.id) {
+    if (mediaState.currentVideo) {
       setIsTheaterOpen(true);
     }
   }, [mediaState.currentVideo?.id]);

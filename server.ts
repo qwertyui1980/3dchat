@@ -26,6 +26,7 @@ interface Room {
   isLocked: boolean;
   users: Map<string, User>;
   createdAt: number;
+  mediaState?: any;
 }
 
 const rooms = new Map<string, Room>();
@@ -383,6 +384,11 @@ async function startServer() {
         });
       }
 
+      // Send active media state to newcomer
+      if (room.mediaState) {
+        socket.emit('media_state_sync', room.mediaState);
+      }
+
       // Notify others in room
       socket.to(trimmedRoomId).emit('user_joined', {
         user: currentUser,
@@ -522,6 +528,16 @@ async function startServer() {
 
       room.isLocked = isLocked;
       io.to(currentUser.roomId).emit('room_lock_changed', { isLocked });
+    });
+
+    // MEDIA THEATER: Synchronize video & cue playlist for all members
+    socket.on('media_state_sync', (state) => {
+      if (!currentUser?.roomId) return;
+      const room = rooms.get(currentUser.roomId);
+      if (room) {
+        room.mediaState = state;
+      }
+      socket.to(currentUser.roomId).emit('media_state_sync', state);
     });
 
     // Handle disconnect

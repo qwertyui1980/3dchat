@@ -338,6 +338,15 @@ export class NetworkService {
   private setupDataConnection(conn: DataConnection) {
     conn.on('open', () => {
       this.peerDataConnections.set(conn.peer, conn);
+      // Immediately send active media state to newcomer via WebRTC
+      if (this.currentMediaState.currentVideo || this.currentMediaState.queue.length > 0) {
+        try {
+          conn.send({
+            type: 'media_state_sync',
+            state: this.currentMediaState,
+          });
+        } catch (_) {}
+      }
     });
 
     conn.on('data', (data: any) => {
@@ -345,6 +354,11 @@ export class NetworkService {
       if (data.type === 'peer_face_data' && data.userId && data.features) {
         if (this.onPeerFaceData) {
           this.onPeerFaceData(data.userId, data.features);
+        }
+      } else if (data.type === 'media_state_sync' && data.state) {
+        this.currentMediaState = { ...data.state };
+        if (this.onMediaStateChanged) {
+          this.onMediaStateChanged(this.currentMediaState);
         }
       }
     });
@@ -591,6 +605,15 @@ export class NetworkService {
               this.onUserJoined(msg.user, nextList);
             }
           }
+
+          // Sync active media to newcomer
+          if (this.currentMediaState.currentVideo || this.currentMediaState.queue.length > 0) {
+            this.publishMeshMessage({
+              type: 'media_state_sync',
+              roomId: this.currentRoom.id,
+              state: this.currentMediaState,
+            });
+          }
         }
         break;
       }
@@ -606,6 +629,15 @@ export class NetworkService {
             this.connectToPeerP2P(msg.user);
             if (this.onUserJoined) {
               this.onUserJoined(msg.user, nextList);
+            }
+
+            // Sync active media to newly joined peer
+            if (this.currentMediaState.currentVideo || this.currentMediaState.queue.length > 0) {
+              this.publishMeshMessage({
+                type: 'media_state_sync',
+                roomId: this.currentRoom.id,
+                state: this.currentMediaState,
+              });
             }
           } else {
             // Update participant details if changed
@@ -1265,20 +1297,36 @@ export class NetworkService {
       this.onMediaStateChanged(this.currentMediaState);
     }
 
+    // 1. Direct WebRTC DataChannels to all connected peers
+    this.peerDataConnections.forEach((conn) => {
+      if (conn.open) {
+        try {
+          conn.send({
+            type: 'media_state_sync',
+            state: this.currentMediaState,
+          });
+        } catch (_) {}
+      }
+    });
+
+    // 2. Global Real-time Mesh (MQTT)
     this.publishMeshMessage({
       type: 'media_state_sync',
       roomId: this.currentRoom?.id,
       state: this.currentMediaState,
     });
 
+    // 3. Supabase Realtime
     this.supabaseChannel?.send({
       type: 'broadcast',
       event: 'media_state_sync',
       payload: { state: this.currentMediaState },
     });
 
+    // 4. Socket.io
     this.socket?.emit('media_state_sync', this.currentMediaState);
 
+    // 5. Cross-tab BroadcastChannel
     if (this.currentRoom) {
       this.broadcastChannel?.postMessage({
         type: 'tab_media_state_sync',
@@ -1395,6 +1443,15 @@ export class NetworkService {
             if (this.onUserJoined) {
               this.onUserJoined(msg.user, nextList);
             }
+          }
+
+          // Sync media across tabs to newcomer
+          if (this.currentMediaState.currentVideo || this.currentMediaState.queue.length > 0) {
+            this.broadcastChannel?.postMessage({
+              type: 'tab_media_state_sync',
+              roomId: this.currentRoom.id,
+              state: this.currentMediaState,
+            });
           }
         }
         break;
