@@ -53,14 +53,14 @@ export const CallControls: React.FC<CallControlsProps> = ({
           <button
             type="button"
             onClick={onMuteAll}
-            className={`px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl border transition active:scale-95 shadow-md flex items-center gap-1.5 cursor-pointer ${
+            className={`px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl border transition active:scale-95 shadow-md flex items-center gap-1.5 cursor-pointer font-bold ${
               isAllMuted
-                ? 'bg-rose-950/80 border-rose-600/70 text-rose-300 shadow-rose-950/30'
+                ? 'bg-rose-600 hover:bg-rose-500 border-rose-500 text-white shadow-lg shadow-rose-600/30 ring-1 ring-rose-400/50'
                 : 'bg-[#121218] hover:bg-[#181822] border-amber-500/40 text-amber-300'
             }`}
             title={isAllMuted ? 'Reactivar micrófonos de todos' : 'Mutear a todos los participantes al mismo tiempo'}
           >
-            <MicOff className="w-4 h-4 text-amber-400" />
+            <MicOff className={`w-4 h-4 ${isAllMuted ? 'text-white' : 'text-amber-400'}`} />
             <span className="text-[11px] font-black uppercase tracking-wider hidden sm:inline">
               {isAllMuted ? 'Desmutear Todos' : 'Mutear Todos'}
             </span>

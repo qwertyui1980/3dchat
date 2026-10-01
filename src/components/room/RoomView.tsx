@@ -82,10 +82,11 @@ export const RoomView: React.FC<RoomViewProps> = ({
 
   // Check if all non-admin participants are muted
   const isAllMuted = React.useMemo(() => {
+    if (room.isAllMuted) return true;
     const otherParticipants = allParticipants.filter((p) => p.id !== currentUser.id && p.role !== 'admin');
     if (otherParticipants.length === 0) return false;
     return otherParticipants.every((p) => p.isMuted);
-  }, [allParticipants, currentUser.id]);
+  }, [room.isAllMuted, allParticipants, currentUser.id]);
 
   return (
     <div className="relative flex flex-col h-full h-[100dvh] w-full max-w-full overflow-hidden bg-[#050508] text-neutral-100 select-none">

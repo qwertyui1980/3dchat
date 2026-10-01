@@ -106,6 +106,7 @@ export interface RoomInfo {
   name: string;
   adminId: string;
   isLocked: boolean;
+  isAllMuted?: boolean;
   participants: User[];
 }
 

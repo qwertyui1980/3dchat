@@ -152,6 +152,7 @@ export class NetworkService {
 
         this.socket.on('force_mute_all', ({ isMuted }: { isMuted: boolean }) => {
           if (this.currentRoom) {
+            this.currentRoom.isAllMuted = isMuted;
             this.currentRoom.participants = this.currentRoom.participants.map((p) => {
               if (p.role !== 'admin') {
                 const updated = { ...p, isMuted };
@@ -678,6 +679,7 @@ export class NetworkService {
 
       case 'force_mute_all': {
         if (this.currentRoom) {
+          this.currentRoom.isAllMuted = !!msg.isMuted;
           this.currentRoom.participants = this.currentRoom.participants.map((p) => {
             if (p.role !== 'admin') {
               const updated = { ...p, isMuted: !!msg.isMuted };
@@ -781,6 +783,7 @@ export class NetworkService {
         })
         .on('broadcast', { event: 'force_mute_all' }, ({ payload }) => {
           if (this.currentRoom) {
+            this.currentRoom.isAllMuted = !!payload.isMuted;
             this.currentRoom.participants = this.currentRoom.participants.map((p) => {
               if (p.role !== 'admin') {
                 const updated = { ...p, isMuted: !!payload.isMuted };
@@ -1124,6 +1127,7 @@ export class NetworkService {
 
   adminMuteAll(muteState: boolean) {
     if (this.currentRoom) {
+      this.currentRoom.isAllMuted = muteState;
       this.currentRoom.participants = this.currentRoom.participants.map((p) => {
         if (p.role !== 'admin') {
           const updated = { ...p, isMuted: muteState };
@@ -1356,6 +1360,7 @@ export class NetworkService {
 
       case 'tab_force_mute_all': {
         if (this.currentRoom) {
+          this.currentRoom.isAllMuted = !!msg.isMuted;
           this.currentRoom.participants = this.currentRoom.participants.map((p) => {
             if (p.role !== 'admin') {
               const updated = { ...p, isMuted: !!msg.isMuted };

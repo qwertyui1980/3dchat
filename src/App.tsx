@@ -585,7 +585,7 @@ export default function App() {
       (p) => p.id !== currentUser.id && p.role !== 'admin'
     );
     const isCurrentlyAllMuted =
-      otherParticipants.length > 0 && otherParticipants.every((p) => p.isMuted);
+      !!room.isAllMuted || (otherParticipants.length > 0 && otherParticipants.every((p) => p.isMuted));
     const targetMuteState = !isCurrentlyAllMuted;
 
     networkServiceSingleton.adminMuteAll(targetMuteState);
@@ -593,6 +593,7 @@ export default function App() {
       if (!prev) return prev;
       return {
         ...prev,
+        isAllMuted: targetMuteState,
         participants: prev.participants.map((p) =>
           p.role !== 'admin' && p.id !== currentUser.id
             ? { ...p, isMuted: targetMuteState }
