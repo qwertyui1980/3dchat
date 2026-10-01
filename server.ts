@@ -605,6 +605,17 @@ async function startServer() {
       }
     });
 
+    // WHITEBOARD: Synchronize drawing strokes and board clear across room members
+    socket.on('whiteboard_stroke', (stroke) => {
+      if (!currentUser?.roomId) return;
+      socket.to(currentUser.roomId).emit('whiteboard_stroke', stroke);
+    });
+
+    socket.on('whiteboard_clear', () => {
+      if (!currentUser?.roomId) return;
+      socket.to(currentUser.roomId).emit('whiteboard_clear');
+    });
+
     // Handle disconnect
     socket.on('disconnect', () => {
       if (!currentUser) return;

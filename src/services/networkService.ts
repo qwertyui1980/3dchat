@@ -2,7 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import mqtt, { MqttClient } from 'mqtt';
 import { Peer, DataConnection, MediaConnection } from 'peerjs';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { User, RoomInfo, FaceFeatures, ChatMessage, AvatarId, VideoQueueItem, RoomMediaState } from '../types';
+import { User, RoomInfo, FaceFeatures, ChatMessage, AvatarId, VideoQueueItem, RoomMediaState, WhiteboardStroke } from '../types';
 import { getSupabaseClient } from './supabaseClient';
 
 const PUBLIC_MQTT_BROKERS = [
@@ -57,6 +57,8 @@ export class NetworkService {
   public onForceMute: ((isMuted: boolean) => void) | null = null;
   public onRoomStatusChanged: ((status: { isOpen: boolean; room: any }) => void) | null = null;
   public onMediaStateChanged: ((state: RoomMediaState) => void) | null = null;
+  public onWhiteboardStroke: ((stroke: WhiteboardStroke) => void) | null = null;
+  public onWhiteboardClear: (() => void) | null = null;
   public onError: ((error: string) => void) | null = null;
 
   constructor() {
@@ -270,6 +272,18 @@ export class NetworkService {
         this.socket.on('room_status_changed', (status: { isOpen: boolean; room: any }) => {
           if (this.onRoomStatusChanged) this.onRoomStatusChanged(status);
         });
+
+        this.socket.on('whiteboard_stroke', (stroke: WhiteboardStroke) => {
+          if (stroke && stroke.userId !== this.currentUser?.id && this.onWhiteboardStroke) {
+            this.onWhiteboardStroke(stroke);
+          }
+        });
+
+        this.socket.on('whiteboard_clear', () => {
+          if (this.onWhiteboardClear) {
+            this.onWhiteboardClear();
+          }
+        });
       } catch (err) {
         console.warn('[Network] Socket initialization skipped:', err);
       }
@@ -473,6 +487,14 @@ export class NetworkService {
               state: this.currentMediaState,
             });
           } catch (_) {}
+        }
+      } else if (data.type === 'whiteboard_stroke' && data.stroke) {
+        if (data.stroke.userId !== this.currentUser?.id && this.onWhiteboardStroke) {
+          this.onWhiteboardStroke(data.stroke);
+        }
+      } else if (data.type === 'whiteboard_clear') {
+        if (this.onWhiteboardClear) {
+          this.onWhiteboardClear();
         }
       }
     });
@@ -952,6 +974,22 @@ export class NetworkService {
         }
         break;
       }
+
+      case 'whiteboard_stroke': {
+        if (msg.stroke && msg.stroke.userId !== this.currentUser?.id) {
+          if (this.onWhiteboardStroke) {
+            this.onWhiteboardStroke(msg.stroke);
+          }
+        }
+        break;
+      }
+
+      case 'whiteboard_clear': {
+        if (this.onWhiteboardClear) {
+          this.onWhiteboardClear();
+        }
+        break;
+      }
     }
   }
 
@@ -1057,6 +1095,18 @@ export class NetworkService {
             if (this.onKicked) {
               this.onKicked(payload.reason || 'Has sido expulsado por el administrador');
             }
+          }
+        })
+        .on('broadcast', { event: 'whiteboard_stroke' }, ({ payload }) => {
+          if (payload && payload.stroke && payload.stroke.userId !== this.currentUser?.id) {
+            if (this.onWhiteboardStroke) {
+              this.onWhiteboardStroke(payload.stroke);
+            }
+          }
+        })
+        .on('broadcast', { event: 'whiteboard_clear' }, () => {
+          if (this.onWhiteboardClear) {
+            this.onWhiteboardClear();
           }
         })
         .on('presence', { event: 'sync' }, () => {
@@ -1745,6 +1795,89 @@ export class NetworkService {
     });
   }
 
+  // --- 5. WHITEBOARD SYNCHRONIZATION ---
+  broadcastWhiteboardStroke(stroke: WhiteboardStroke) {
+    if (!this.currentRoom) return;
+
+    // 1. PeerJS WebRTC DataChannels
+    this.peerDataConnections.forEach((conn) => {
+      if (conn.open) {
+        try {
+          conn.send({
+            type: 'whiteboard_stroke',
+            stroke,
+          });
+        } catch (_) {}
+      }
+    });
+
+    // 2. Global MQTT Mesh
+    this.publishMeshMessage({
+      type: 'whiteboard_stroke',
+      roomId: this.currentRoom.id,
+      stroke,
+    });
+
+    // 3. Supabase Realtime
+    this.supabaseChannel?.send({
+      type: 'broadcast',
+      event: 'whiteboard_stroke',
+      payload: { stroke },
+    });
+
+    // 4. Socket.io
+    if (this.socket?.connected) {
+      this.socket.emit('whiteboard_stroke', stroke);
+    }
+
+    // 5. Cross-tab BroadcastChannel
+    this.broadcastChannel?.postMessage({
+      type: 'tab_whiteboard_stroke',
+      roomId: this.currentRoom.id,
+      stroke,
+    });
+  }
+
+  broadcastWhiteboardClear() {
+    if (!this.currentRoom) return;
+
+    // 1. PeerJS WebRTC DataChannels
+    this.peerDataConnections.forEach((conn) => {
+      if (conn.open) {
+        try {
+          conn.send({
+            type: 'whiteboard_clear',
+            roomId: this.currentRoom?.id,
+          });
+        } catch (_) {}
+      }
+    });
+
+    // 2. Global MQTT Mesh
+    this.publishMeshMessage({
+      type: 'whiteboard_clear',
+      roomId: this.currentRoom.id,
+    });
+
+    // 3. Supabase Realtime
+    this.supabaseChannel?.send({
+      type: 'broadcast',
+      event: 'whiteboard_clear',
+      payload: {},
+    });
+
+    // 4. Socket.io
+    if (this.socket?.connected) {
+      this.socket.emit('whiteboard_clear');
+    }
+
+    // 5. Cross-tab BroadcastChannel
+    this.broadcastChannel?.postMessage({
+      type: 'tab_whiteboard_clear',
+      roomId: this.currentRoom.id,
+    });
+  }
+
   private closePeer(userId: string) {
     if (this.currentRoom) {
       const peerId = this.getPeerJsId(this.currentRoom.id, userId);
@@ -1998,6 +2131,22 @@ export class NetworkService {
           if (this.onKicked) {
             this.onKicked(msg.reason || 'Has sido expulsado del espacio');
           }
+        }
+        break;
+      }
+
+      case 'tab_whiteboard_stroke': {
+        if (msg.stroke && msg.stroke.userId !== this.currentUser?.id) {
+          if (this.onWhiteboardStroke) {
+            this.onWhiteboardStroke(msg.stroke);
+          }
+        }
+        break;
+      }
+
+      case 'tab_whiteboard_clear': {
+        if (this.onWhiteboardClear) {
+          this.onWhiteboardClear();
         }
         break;
       }

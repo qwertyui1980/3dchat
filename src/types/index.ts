@@ -142,3 +142,13 @@ export interface RoomMediaState {
   lastSyncTimestamp: number; // Date.now() when playbackTime was reported
   syncedByUserId: string;
 }
+
+export interface WhiteboardStroke {
+  id: string;
+  tool: 'pencil' | 'eraser' | 'rect' | 'circle' | 'line' | 'arrow' | 'triangle';
+  color: string;
+  lineWidth: number;
+  points: Array<{ x: number; y: number }>;
+  userId: string;
+}
+

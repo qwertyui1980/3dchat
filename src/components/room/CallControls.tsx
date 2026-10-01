@@ -1,4 +1,3 @@
-import React, { useState } from 'react';
 import {
   Mic,
   MicOff,
@@ -10,6 +9,7 @@ import {
   Check,
   Tv,
   ListVideo,
+  PenTool,
 } from 'lucide-react';
 import { AvatarId } from '../../types';
 import { AVATAR_LIST } from '../avatars/avatarConfigs';
@@ -36,6 +36,8 @@ interface CallControlsProps {
   isUserPlayingNow?: boolean;
   hasActiveMedia?: boolean;
   queueCount?: number;
+  onToggleWhiteboard?: () => void;
+  isWhiteboardOpen?: boolean;
 }
 
 export const CallControls: React.FC<CallControlsProps> = ({
@@ -60,6 +62,8 @@ export const CallControls: React.FC<CallControlsProps> = ({
   isUserPlayingNow = false,
   hasActiveMedia = false,
   queueCount = 0,
+  onToggleWhiteboard,
+  isWhiteboardOpen = false,
 }) => {
   const [showAvatarPicker, setShowAvatarPicker] = useState(false);
 
@@ -238,6 +242,23 @@ export const CallControls: React.FC<CallControlsProps> = ({
                 {queueCount}
               </span>
             ) : null}
+          </button>
+        )}
+
+        {/* Pizarra / Canvas Whiteboard Button */}
+        {onToggleWhiteboard && (
+          <button
+            type="button"
+            onClick={onToggleWhiteboard}
+            className={`relative p-2.5 sm:py-3 sm:px-3 rounded-2xl border transition active:scale-95 flex items-center gap-2 cursor-pointer ${
+              isWhiteboardOpen
+                ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md shadow-amber-400/25'
+                : 'bg-[#121218] hover:bg-[#181822] text-amber-300 hover:text-white border-white/[0.08]'
+            }`}
+            title={isWhiteboardOpen ? 'Pizarra activa (clic para ocultar)' : 'Abrir pizarra colaborativa'}
+          >
+            <PenTool className="w-5 h-5 shrink-0 text-amber-400" />
+            <span className="text-xs font-bold hidden sm:inline">Pizarra</span>
           </button>
         )}
 

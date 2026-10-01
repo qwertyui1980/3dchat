@@ -8,6 +8,7 @@ import {
   AvatarId,
   RoomMediaState,
   VideoQueueItem,
+  WhiteboardStroke,
 } from '../../types';
 import { Header } from '../common/Header';
 import { ParticipantCard } from './ParticipantCard';
@@ -19,6 +20,7 @@ import { StarfieldBackground } from '../common/StarfieldBackground';
 import { HomeTheaterWindow } from '../theater/HomeTheaterWindow';
 import { TvFloatingLauncher } from '../theater/TvFloatingLauncher';
 import { QueueModal } from '../theater/QueueModal';
+import { WhiteboardPanel } from '../whiteboard/WhiteboardPanel';
 
 interface RoomViewProps {
   room: RoomInfo;
@@ -49,6 +51,10 @@ interface RoomViewProps {
   onToggleMediaPlayback: (isPlaying: boolean, currentTime: number) => void;
   onSeekMedia: (currentTime: number) => void;
   onRequestMediaSync?: () => void;
+  onBroadcastStroke?: (stroke: WhiteboardStroke) => void;
+  onBroadcastClear?: () => void;
+  remoteStroke?: WhiteboardStroke | null;
+  remoteClearTimestamp?: number;
 }
 
 export const RoomView: React.FC<RoomViewProps> = ({
@@ -80,9 +86,14 @@ export const RoomView: React.FC<RoomViewProps> = ({
   onToggleMediaPlayback,
   onSeekMedia,
   onRequestMediaSync,
+  onBroadcastStroke,
+  onBroadcastClear,
+  remoteStroke,
+  remoteClearTimestamp,
 }) => {
   const [viewMode] = useState<ViewLayoutMode>('grid');
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
   const [lastReadMessageCount, setLastReadMessageCount] = useState(messages.length);
 
   // Home Theater & Cue Modal States
@@ -174,6 +185,17 @@ export const RoomView: React.FC<RoomViewProps> = ({
 
         </div>
 
+        {/* Collaborative Whiteboard Canvas - Placed beside the chat */}
+        <WhiteboardPanel
+          isOpen={isWhiteboardOpen}
+          onClose={() => setIsWhiteboardOpen(false)}
+          currentUser={currentUser}
+          onBroadcastStroke={onBroadcastStroke}
+          onBroadcastClear={onBroadcastClear}
+          remoteStroke={remoteStroke}
+          remoteClearTimestamp={remoteClearTimestamp}
+        />
+
         {/* Live Chat Sidebar */}
         <ChatSidebar
           isOpen={isChatOpen}
@@ -250,6 +272,8 @@ export const RoomView: React.FC<RoomViewProps> = ({
         isUserPlayingNow={isUserPlayingNow}
         hasActiveMedia={hasActiveMedia}
         queueCount={mediaState.queue.length}
+        onToggleWhiteboard={() => setIsWhiteboardOpen((prev) => !prev)}
+        isWhiteboardOpen={isWhiteboardOpen}
       />
     </div>
   );

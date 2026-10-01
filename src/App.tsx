@@ -12,6 +12,7 @@ import {
   ChatMessage,
   RoomMediaState,
   VideoQueueItem,
+  WhiteboardStroke,
 } from './types';
 import {
   faceTrackerSingleton,
@@ -63,6 +64,8 @@ export default function App() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [mediaState, setMediaState] = useState<RoomMediaState>(INITIAL_MEDIA_STATE);
+  const [remoteStroke, setRemoteStroke] = useState<WhiteboardStroke | null>(null);
+  const [remoteClearTimestamp, setRemoteClearTimestamp] = useState<number>(0);
 
   // Hardware states
   const [isMicActive, setIsMicActive] = useState(true);
@@ -394,6 +397,14 @@ export default function App() {
       setMediaState(nextMedia);
     };
 
+    networkServiceSingleton.onWhiteboardStroke = (stroke) => {
+      setRemoteStroke(stroke);
+    };
+
+    networkServiceSingleton.onWhiteboardClear = () => {
+      setRemoteClearTimestamp(Date.now());
+    };
+
     networkServiceSingleton.onKicked = (reason) => {
       setIsInRoom(false);
       setRoom(null);
@@ -670,6 +681,14 @@ export default function App() {
     networkServiceSingleton.requestMediaSync();
   }, []);
 
+  const handleBroadcastStroke = useCallback((stroke: WhiteboardStroke) => {
+    networkServiceSingleton.broadcastWhiteboardStroke(stroke);
+  }, []);
+
+  const handleBroadcastClear = useCallback(() => {
+    networkServiceSingleton.broadcastWhiteboardClear();
+  }, []);
+
   return (
     <div className="flex flex-col h-full h-[100dvh] w-full max-w-full overflow-hidden bg-[#08080a] font-sans antialiased text-neutral-100">
       {/* Off-screen Master Video for MediaPipe Detection (Always active, never display:none) */}
@@ -771,6 +790,10 @@ export default function App() {
           onToggleMediaPlayback={handleToggleMediaPlayback}
           onSeekMedia={handleSeekMedia}
           onRequestMediaSync={handleRequestMediaSync}
+          onBroadcastStroke={handleBroadcastStroke}
+          onBroadcastClear={handleBroadcastClear}
+          remoteStroke={remoteStroke}
+          remoteClearTimestamp={remoteClearTimestamp}
         />
       )}
     </div>
