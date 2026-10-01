@@ -391,6 +391,126 @@ export const AVATAR_TRACKING_PROFILES: Record<AvatarId, AvatarTrackingProfile> =
       { name: 'jawline', indices: [234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 379, 365, 397, 288, 361, 323, 454], color: '#60a5fa', width: 1.4 },
     ],
   },
+
+  // 12. Trump 3D: Escultura Presidencial (32 Puntos)
+  trump_3d: {
+    avatarId: 'trump_3d',
+    name: 'Trump 3D (Busto)',
+    pointsCount: 32,
+    badge: '32 Pts Busto',
+    description: 'Orientación de cabeza y gesticulación facial para escultura 3D',
+    color: '#e11d48',
+    dotColor: '#f59e0b',
+    glowColor: 'rgba(225, 29, 72, 0.4)',
+    activeIndices: [
+      10, 1, 152, 234, 454,
+      33, 133, 362, 263, 468, 473,
+      70, 105, 300, 334,
+      168, 197, 2,
+      61, 291, 13, 14, 0, 17, 78, 308, 82, 312, 87, 317,
+    ],
+    contours: [
+      { name: 'brows', indices: [70, 105, 300, 334], color: '#f59e0b', width: 2.0 },
+      { name: 'eyes', indices: [33, 133, 168, 362, 263], color: '#e11d48', width: 2.0 },
+      { name: 'lips', indices: [61, 82, 13, 312, 291, 317, 14, 87, 61], isClosed: true, color: '#f59e0b', width: 2.2 },
+    ],
+  },
+
+  // 13. Putin 3D: Escultura Fotorealista (32 Puntos)
+  putin_3d: {
+    avatarId: 'putin_3d',
+    name: 'Putin 3D (Busto)',
+    pointsCount: 32,
+    badge: '32 Pts Busto',
+    description: 'Seguimiento de pose y rotación de busto 3D con textura original',
+    color: '#2563eb',
+    dotColor: '#38bdf8',
+    glowColor: 'rgba(37, 99, 235, 0.4)',
+    activeIndices: [
+      10, 1, 152, 234, 454,
+      33, 133, 362, 263, 468, 473,
+      70, 105, 300, 334,
+      168, 197, 2,
+      61, 291, 13, 14, 0, 17, 78, 308, 82, 312, 87, 317,
+    ],
+    contours: [
+      { name: 'brows', indices: [70, 105, 300, 334], color: '#38bdf8', width: 2.0 },
+      { name: 'eyes', indices: [33, 133, 168, 362, 263], color: '#2563eb', width: 2.0 },
+      { name: 'lips', indices: [61, 82, 13, 312, 291, 317, 14, 87, 61], isClosed: true, color: '#38bdf8', width: 2.2 },
+    ],
+  },
+
+  // 14. Xi Jinping 3D: Escultura Ceremonial (32 Puntos)
+  jinping_3d: {
+    avatarId: 'jinping_3d',
+    name: 'Xi Jinping 3D (Busto)',
+    pointsCount: 32,
+    badge: '32 Pts Busto',
+    description: 'Seguimiento de orientación y rotación tridimensional en mármol',
+    color: '#dc2626',
+    dotColor: '#fbbf24',
+    glowColor: 'rgba(220, 38, 38, 0.4)',
+    activeIndices: [
+      10, 1, 152, 234, 454,
+      33, 133, 362, 263, 468, 473,
+      70, 105, 300, 334,
+      168, 197, 2,
+      61, 291, 13, 14, 0, 17, 78, 308, 82, 312, 87, 317,
+    ],
+    contours: [
+      { name: 'brows', indices: [70, 105, 300, 334], color: '#fbbf24', width: 2.0 },
+      { name: 'eyes', indices: [33, 133, 168, 362, 263], color: '#dc2626', width: 2.0 },
+      { name: 'lips', indices: [61, 82, 13, 312, 291, 317, 14, 87, 61], isClosed: true, color: '#fbbf24', width: 2.2 },
+    ],
+  },
+
+  // 15. Bush 3D: Escultura Presidencial (32 Puntos)
+  bush_3d: {
+    avatarId: 'bush_3d',
+    name: 'Bush 3D (Busto)',
+    pointsCount: 32,
+    badge: '32 Pts Busto',
+    description: 'Seguimiento de orientación y rotación en vivo de busto clásico',
+    color: '#1d4ed8',
+    dotColor: '#60a5fa',
+    glowColor: 'rgba(29, 78, 216, 0.4)',
+    activeIndices: [
+      10, 1, 152, 234, 454,
+      33, 133, 362, 263, 468, 473,
+      70, 105, 300, 334,
+      168, 197, 2,
+      61, 291, 13, 14, 0, 17, 78, 308, 82, 312, 87, 317,
+    ],
+    contours: [
+      { name: 'brows', indices: [70, 105, 300, 334], color: '#60a5fa', width: 2.0 },
+      { name: 'eyes', indices: [33, 133, 168, 362, 263], color: '#1d4ed8', width: 2.0 },
+      { name: 'lips', indices: [61, 82, 13, 312, 291, 317, 14, 87, 61], isClosed: true, color: '#60a5fa', width: 2.2 },
+    ],
+  },
+
+  // 16. Thatcher 3D: Escultura Histórica (32 Puntos)
+  thatcher_3d: {
+    avatarId: 'thatcher_3d',
+    name: 'Thatcher 3D (Busto)',
+    pointsCount: 32,
+    badge: '32 Pts Busto',
+    description: 'Seguimiento tridimensional de busto histórico con textura',
+    color: '#7c3aed',
+    dotColor: '#c084fc',
+    glowColor: 'rgba(124, 58, 237, 0.4)',
+    activeIndices: [
+      10, 1, 152, 234, 454,
+      33, 133, 362, 263, 468, 473,
+      70, 105, 300, 334,
+      168, 197, 2,
+      61, 291, 13, 14, 0, 17, 78, 308, 82, 312, 87, 317,
+    ],
+    contours: [
+      { name: 'brows', indices: [70, 105, 300, 334], color: '#c084fc', width: 2.0 },
+      { name: 'eyes', indices: [33, 133, 168, 362, 263], color: '#7c3aed', width: 2.0 },
+      { name: 'lips', indices: [61, 82, 13, 312, 291, 317, 14, 87, 61], isClosed: true, color: '#c084fc', width: 2.2 },
+    ],
+  },
 };
 
 /**

@@ -57,6 +57,10 @@ async function startServer() {
 
   app.use(express.json());
 
+  // Static 3D model assets
+  app.use('/models', express.static(path.resolve(__dirname, 'public/models')));
+  app.use('/models', express.static(path.resolve(__dirname, 'models')));
+
   // API endpoints
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', activeRooms: rooms.size, timestamp: Date.now() });

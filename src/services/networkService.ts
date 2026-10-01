@@ -102,14 +102,14 @@ export class NetworkService {
         this.socket.on('connect', () => {
           console.log('[XStreamX] Socket connected:', this.socket?.id);
           if (this.currentRoom && this.currentUser) {
-            this.socket.emit('join_room', {
+            this.socket?.emit('join_room', {
               roomId: this.currentRoom.id,
               userId: this.currentUser.id,
               userName: this.currentUser.name,
               avatarId: this.currentUser.avatarId,
               createAsAdmin: this.currentUser.role === 'admin',
             });
-            this.socket.emit('request_media_sync');
+            this.socket?.emit('request_media_sync');
           }
         });
 

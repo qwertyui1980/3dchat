@@ -17,6 +17,13 @@ import {
   buildMeshOutlineCharacter,
   buildFaceCapCharacter,
 } from './threeCharacterBuilder';
+import { getAssetUrl } from '../../utils/assetUrl';
+import {
+  isLeaderAvatar,
+  hasCachedLeaderModel,
+  loadCustomLeaderModel,
+  buildCustomLeaderCharacter,
+} from './customLeaderAvatars';
 
 const ROBOT_GLB_URL =
   'https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/examples/models/gltf/RobotExpressive/RobotExpressive.glb';
@@ -50,18 +57,6 @@ function loadRobotGLTF(): Promise<GLTF> {
 }
 
 
-function getAssetUrl(relPath: string): string {
-  const clean = relPath.replace(/^\//, '');
-  if (typeof window === 'undefined') return `/${clean}`;
-
-  const origin = window.location.origin;
-  const pathname = window.location.pathname;
-
-  // Preserve repo basePath for GitHub Pages (/3dchat)
-  const basePath = pathname.startsWith('/3dchat') ? '/3dchat' : '';
-
-  return `${origin}${basePath}/${clean}`;
-}
 
 // Cache for loaded FaceCap GLTF
 let cachedFaceCapGLTF: GLTF | null = null;
@@ -301,6 +296,11 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
       female_3d: 0xa855f7,
       horse_3d: 0xf97316,
       face_cap: 0x38bdf8,
+      trump_3d: 0xe11d48,
+      putin_3d: 0x2563eb,
+      jinping_3d: 0xdc2626,
+      bush_3d: 0x3b82f6,
+      thatcher_3d: 0x8b5cf6,
     };
     const rimColor = themeRimColors[avatarId] || 0x06b6d4;
 
@@ -483,6 +483,23 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           if (!isDisposed) {
             setIsLoading(false);
             setLoadError('Error al cargar Face Cap 3D');
+          }
+        });
+    } else if (isLeaderAvatar(avatarId)) {
+      setIsLoading(!hasCachedLeaderModel(avatarId));
+      loadCustomLeaderModel(avatarId)
+        .then((model) => {
+          if (isDisposed) return;
+          setIsLoading(false);
+          const controller = buildCustomLeaderCharacter(avatarId, model);
+          characterControllerRef.current = controller;
+          scene.add(controller.group);
+        })
+        .catch((err) => {
+          console.error(`[ThreeAvatarCanvas] Error loading leader ${avatarId}:`, err);
+          if (!isDisposed) {
+            setIsLoading(false);
+            setLoadError(`Error al cargar modelo 3D (${avatarId})`);
           }
         });
     } else {

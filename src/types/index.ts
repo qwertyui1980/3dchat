@@ -10,7 +10,12 @@ export type AvatarId =
   | 'bot_9000'
   | 'pixel_punk'
   | 'astro_cadet'
-  | 'face_cap';
+  | 'face_cap'
+  | 'trump_3d'
+  | 'putin_3d'
+  | 'jinping_3d'
+  | 'bush_3d'
+  | 'thatcher_3d';
 
 export interface AvatarTrackingProfile {
   avatarId: AvatarId;
@@ -43,7 +48,7 @@ export interface AvatarDefinition {
   id: AvatarId;
   name: string;
   tagline: string;
-  category: 'Sci-Fi' | 'Anime' | 'Robot' | 'Retro' | 'Fantasy' | 'Animals' | 'Character';
+  category: 'Sci-Fi' | 'Anime' | 'Robot' | 'Retro' | 'Fantasy' | 'Animals' | 'Character' | 'Líderes';
   themeColor: string;
   accentColor: string;
   badge: string;
