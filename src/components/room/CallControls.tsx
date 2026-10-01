@@ -66,7 +66,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
   onToggleWhiteboard,
   isWhiteboardOpen = false,
 }) => {
-  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const [showAvatarPicker, setShowAvatarPicker] = React.useState(false);
 
   return (
     <div className="h-20 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-[#08080c]/95 backdrop-blur-xl border-t border-white/[0.06] px-3 sm:px-6 flex items-center justify-between z-20 shrink-0 select-none">
