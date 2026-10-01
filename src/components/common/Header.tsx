@@ -23,7 +23,8 @@ export const Header: React.FC<HeaderProps> = ({
   const getPublicShareUrl = () => {
     if (typeof window === 'undefined') return '';
     const roomSlug = room?.id ? encodeURIComponent(room.id) : 'main';
-    return `${window.location.origin}/espacio/${roomSlug}`;
+    const basePath = window.location.pathname.startsWith('/3dchat') ? '/3dchat' : '';
+    return `${window.location.origin}${basePath}/espacio/${roomSlug}`;
   };
 
   const handleCopyUrl = () => {

@@ -58,7 +58,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
         const handle = event.data.handle || (xHandleInput ? xHandleInput.replace(/^@/, '').trim() : 'x_user');
         const displayName = event.data.name || `@${handle}`;
-        
+
         try {
           const user = await dbServiceSingleton.registerXUser(handle, displayName);
           onLogin({
@@ -108,7 +108,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     try {
       // Check admin credentials
       const isAdmin = cleanUser === 'admin' && trimmedPass === 'pass2000';
-      
+
       // If user typed admin but wrong password
       if (cleanUser === 'admin' && trimmedPass !== 'pass2000') {
         setError('Contraseña incorrecta para la cuenta de Administrador.');
@@ -184,7 +184,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         const height = 700;
         const left = window.screenX + (window.outerWidth - width) / 2;
         const top = window.screenY + (window.outerHeight - height) / 2;
-        
+
         const popup = window.open(
           data.url,
           'x_oauth_popup',
@@ -228,14 +228,14 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
       {/* Main Login Card */}
       <div className="w-full max-w-md bg-[#0d0d12]/95 backdrop-blur-2xl border border-white/[0.08] rounded-3xl p-6 sm:p-8 shadow-2xl relative z-10">
-        
+
         {/* Header Branding */}
         <div className="text-center mb-6">
           <h1 className="text-3xl font-black tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-neutral-100 via-neutral-200 to-neutral-400">
             XSTREAMX
           </h1>
           <p className="text-xs text-neutral-400 mt-1.5 font-medium">
-            Videollamadas con avatares 3D y captura biométrica privada
+            Videollamadas con avatares 3D y seguimiento biométrico
           </p>
         </div>
 
@@ -247,27 +247,25 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               setActiveTab('credentials');
               setError(null);
             }}
-            className={`py-2.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeTab === 'credentials'
+            className={`py-2.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${activeTab === 'credentials'
                 ? 'bg-neutral-100 text-neutral-950 shadow-md shadow-white/10'
                 : 'text-neutral-400 hover:text-neutral-200'
-            }`}
+              }`}
           >
             <User className="w-3.5 h-3.5" />
             <span>Usuario Propio</span>
           </button>
-          
+
           <button
             type="button"
             onClick={() => {
               setActiveTab('x');
               setError(null);
             }}
-            className={`py-2.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
-              activeTab === 'x'
+            className={`py-2.5 rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${activeTab === 'x'
                 ? 'bg-neutral-100 text-neutral-950 shadow-md shadow-white/10'
                 : 'text-neutral-400 hover:text-neutral-200'
-            }`}
+              }`}
           >
             {/* X Logo */}
             <svg className="w-3 h-3 fill-current" viewBox="0 0 24 24">

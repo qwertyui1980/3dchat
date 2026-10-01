@@ -382,22 +382,31 @@ export default function App() {
     };
   }, [addToast]);
 
+  // Helper to preserve subpath when hosted on GitHub Pages (e.g. /3dchat)
+  const getBasePath = () => {
+    if (typeof window === 'undefined') return '';
+    return window.location.pathname.startsWith('/3dchat') ? '/3dchat' : '';
+  };
+
   // Synchronize browser URL (/lobby, /espacio/nombre, /)
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    const basePath = getBasePath();
 
     if (!authenticatedUser) {
-      if (window.location.pathname !== '/' && window.location.pathname !== '') {
-        window.history.replaceState(null, '', '/');
+      const rootPath = basePath ? `${basePath}/` : '/';
+      const curPath = window.location.pathname;
+      if (curPath !== rootPath && curPath !== basePath && curPath !== '/' && curPath !== '') {
+        window.history.replaceState(null, '', rootPath);
       }
     } else if (isInRoom && room?.id) {
       const roomSlug = encodeURIComponent(room.id);
-      const targetPath = `/espacio/${roomSlug}`;
+      const targetPath = `${basePath}/espacio/${roomSlug}`;
       if (window.location.pathname !== targetPath) {
         window.history.pushState({ screen: 'room', roomId: room.id }, '', targetPath);
       }
     } else {
-      const targetPath = '/lobby';
+      const targetPath = `${basePath}/lobby`;
       if (window.location.pathname !== targetPath) {
         window.history.pushState({ screen: 'lobby' }, '', targetPath);
       }
@@ -407,10 +416,17 @@ export default function App() {
   // Handle browser back / forward buttons
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    const basePath = getBasePath();
 
     const handlePopState = () => {
       const path = window.location.pathname;
-      if (path === '/lobby' || path === '/') {
+      if (
+        path === `${basePath}/lobby` ||
+        path === `${basePath}/` ||
+        path === basePath ||
+        path === '/lobby' ||
+        path === '/'
+      ) {
         if (isInRoom) {
           networkServiceSingleton.cleanup();
           setIsInRoom(false);
@@ -430,7 +446,8 @@ export default function App() {
     setAuthenticatedUser(user);
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('xstreamx_auth', JSON.stringify(user));
-      window.history.pushState({ screen: 'lobby' }, '', '/lobby');
+      const basePath = getBasePath();
+      window.history.pushState({ screen: 'lobby' }, '', `${basePath}/lobby`);
     }
     addToast(`Sesión iniciada como ${user.name} (${user.role === 'admin' ? 'Admin' : 'Participante'})`, 'success');
   };
@@ -439,7 +456,8 @@ export default function App() {
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('xstreamx_auth');
-      window.history.replaceState(null, '', '/');
+      const basePath = getBasePath();
+      window.history.replaceState(null, '', basePath ? `${basePath}/` : '/');
     }
     handleLeaveCall();
     setAuthenticatedUser(null);
@@ -556,8 +574,12 @@ export default function App() {
     setRoom(null);
     setCurrentUser(null);
     setMessages([]);
-    if (typeof window !== 'undefined' && window.location.pathname !== '/lobby') {
-      window.history.pushState({ screen: 'lobby' }, '', '/lobby');
+    if (typeof window !== 'undefined') {
+      const basePath = getBasePath();
+      const targetPath = `${basePath}/lobby`;
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState({ screen: 'lobby' }, '', targetPath);
+      }
     }
     addToast('Has salido del espacio', 'info');
   };
