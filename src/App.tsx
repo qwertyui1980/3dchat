@@ -666,6 +666,10 @@ export default function App() {
     networkServiceSingleton.seekMedia(currentTime);
   }, []);
 
+  const handleRequestMediaSync = useCallback(() => {
+    networkServiceSingleton.requestMediaSync();
+  }, []);
+
   return (
     <div className="flex flex-col h-full h-[100dvh] w-full max-w-full overflow-hidden bg-[#08080a] font-sans antialiased text-neutral-100">
       {/* Off-screen Master Video for MediaPipe Detection (Always active, never display:none) */}
@@ -766,6 +770,7 @@ export default function App() {
           onSkipMedia={handleSkipMedia}
           onToggleMediaPlayback={handleToggleMediaPlayback}
           onSeekMedia={handleSeekMedia}
+          onRequestMediaSync={handleRequestMediaSync}
         />
       )}
     </div>

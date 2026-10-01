@@ -9,6 +9,7 @@ import {
   PhoneOff,
   Check,
   Tv,
+  ListVideo,
 } from 'lucide-react';
 import { AvatarId } from '../../types';
 import { AVATAR_LIST } from '../avatars/avatarConfigs';
@@ -28,7 +29,9 @@ interface CallControlsProps {
   onToggleChat: () => void;
   onLeaveCall: () => void;
   onOpenTheater?: () => void;
+  onOpenPlaylist?: () => void;
   isTheaterOpen?: boolean;
+  isPlaylistOpen?: boolean;
   userTurnNumber?: number | null;
   isUserPlayingNow?: boolean;
   hasActiveMedia?: boolean;
@@ -50,7 +53,9 @@ export const CallControls: React.FC<CallControlsProps> = ({
   onToggleChat,
   onLeaveCall,
   onOpenTheater,
+  onOpenPlaylist,
   isTheaterOpen = false,
+  isPlaylistOpen = false,
   userTurnNumber = null,
   isUserPlayingNow = false,
   hasActiveMedia = false,
@@ -180,8 +185,9 @@ export const CallControls: React.FC<CallControlsProps> = ({
         </button>
       </div>
 
-      {/* Right: Cine / YouTube & Chat Toggle */}
+      {/* Right: Screen & Playlist & Chat Buttons */}
       <div className="flex items-center gap-2">
+        {/* 1. Dedicated Button: Re-open Theater Video Screen */}
         {onOpenTheater && (
           <button
             type="button"
@@ -190,13 +196,33 @@ export const CallControls: React.FC<CallControlsProps> = ({
               isTheaterOpen
                 ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/25'
                 : hasActiveMedia
-                ? 'bg-gradient-to-r from-[#141424] to-[#10101c] hover:bg-[#1a1a2e] text-cyan-300 border-cyan-500/40 shadow-sm'
+                ? 'bg-gradient-to-r from-[#141424] to-[#10101c] hover:bg-[#1a1a2e] text-cyan-300 border-cyan-500/40 shadow-sm animate-pulse'
                 : 'bg-[#121218] hover:bg-[#181822] text-neutral-200 border-white/[0.08]'
             }`}
-            title="Abrir pantalla Home Theater y lista de videos"
+            title={isTheaterOpen ? 'Pantalla de Cine activa (clic para ocultar)' : 'Abrir pantalla de Cine'}
           >
             <Tv className="w-5 h-5 shrink-0" />
-            <span className="text-xs font-bold hidden sm:inline">Cine</span>
+            <span className="text-xs font-bold hidden sm:inline">Pantalla</span>
+            {hasActiveMedia && !isTheaterOpen && (
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
+            )}
+          </button>
+        )}
+
+        {/* 2. Dedicated Button: Open Synchronized Cue Playlist */}
+        {onOpenPlaylist && (
+          <button
+            type="button"
+            onClick={onOpenPlaylist}
+            className={`relative p-2.5 sm:py-3 sm:px-3.5 rounded-2xl border transition active:scale-95 flex items-center gap-2 cursor-pointer ${
+              isPlaylistOpen
+                ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/25'
+                : 'bg-[#121218] hover:bg-[#181822] text-cyan-300 hover:text-white border-white/[0.08]'
+            }`}
+            title="Abrir Playlist compartida y ver tu turno"
+          >
+            <ListVideo className="w-5 h-5 shrink-0 text-cyan-400" />
+            <span className="text-xs font-bold hidden sm:inline">Playlist</span>
 
             {/* Turn or Queue Badge */}
             {isUserPlayingNow ? (

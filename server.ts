@@ -540,6 +540,71 @@ async function startServer() {
       socket.to(currentUser.roomId).emit('media_state_sync', state);
     });
 
+    socket.on('media_queue_add', ({ item, state }) => {
+      if (!currentUser?.roomId) return;
+      const room = rooms.get(currentUser.roomId);
+      if (room) {
+        if (state) {
+          room.mediaState = state;
+        } else if (item) {
+          if (!room.mediaState?.currentVideo) {
+            room.mediaState = {
+              currentVideo: item,
+              queue: [],
+              isPlaying: true,
+              playbackTime: 0,
+              lastSyncTimestamp: Date.now(),
+              syncedByUserId: item.addedByUserId,
+            };
+          } else {
+            const queue = room.mediaState.queue || [];
+            if (!queue.some((q: any) => q.id === item.id)) {
+              room.mediaState.queue = [...queue, item];
+            }
+          }
+        }
+        io.to(currentUser.roomId).emit('media_state_sync', room.mediaState);
+      }
+    });
+
+    socket.on('media_queue_remove', ({ itemId, state }) => {
+      if (!currentUser?.roomId) return;
+      const room = rooms.get(currentUser.roomId);
+      if (room) {
+        if (state) {
+          room.mediaState = state;
+        } else if (itemId && room.mediaState?.queue) {
+          room.mediaState.queue = room.mediaState.queue.filter((q: any) => q.id !== itemId);
+        }
+        io.to(currentUser.roomId).emit('media_state_sync', room.mediaState);
+      }
+    });
+
+    socket.on('media_queue_skip', ({ state }) => {
+      if (!currentUser?.roomId) return;
+      const room = rooms.get(currentUser.roomId);
+      if (room) {
+        if (state) {
+          room.mediaState = state;
+        } else if (room.mediaState?.queue) {
+          const next = room.mediaState.queue.shift() || null;
+          room.mediaState.currentVideo = next;
+          room.mediaState.isPlaying = !!next;
+          room.mediaState.playbackTime = 0;
+          room.mediaState.lastSyncTimestamp = Date.now();
+        }
+        io.to(currentUser.roomId).emit('media_state_sync', room.mediaState);
+      }
+    });
+
+    socket.on('request_media_sync', () => {
+      if (!currentUser?.roomId) return;
+      const room = rooms.get(currentUser.roomId);
+      if (room?.mediaState) {
+        socket.emit('media_state_sync', room.mediaState);
+      }
+    });
+
     // Handle disconnect
     socket.on('disconnect', () => {
       if (!currentUser) return;

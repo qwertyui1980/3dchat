@@ -99,6 +99,15 @@ export class NetworkService {
 
         this.socket.on('connect', () => {
           console.log('[XStreamX] Socket connected:', this.socket?.id);
+          if (this.currentRoom && this.currentUser) {
+            this.socket.emit('join_room', {
+              roomId: this.currentRoom.id,
+              userName: this.currentUser.name,
+              avatarId: this.currentUser.avatarId,
+              createAsAdmin: this.currentUser.role === 'admin',
+            });
+            this.socket.emit('request_media_sync');
+          }
         });
 
         this.socket.on('user_joined', ({ user, participants }: { user: User; participants: User[] }) => {
@@ -202,8 +211,60 @@ export class NetworkService {
         this.socket.on('media_state_sync', (state: RoomMediaState) => {
           if (state && typeof state === 'object') {
             this.currentMediaState = { ...state };
-            if (this.onMediaStateChanged) this.onMediaStateChanged(this.currentMediaState);
+            if (this.onMediaStateChanged) this.onMediaStateChanged({ ...this.currentMediaState });
           }
+        });
+
+        this.socket.on('media_queue_add', ({ item, state }: { item?: VideoQueueItem; state?: RoomMediaState }) => {
+          if (state) {
+            this.currentMediaState = { ...state };
+          } else if (item) {
+            if (!this.currentMediaState.currentVideo) {
+              this.currentMediaState = {
+                ...this.currentMediaState,
+                currentVideo: item,
+                isPlaying: true,
+                playbackTime: 0,
+                lastSyncTimestamp: Date.now(),
+                syncedByUserId: item.addedByUserId,
+              };
+            } else if (!this.currentMediaState.queue.some((q) => q.id === item.id)) {
+              this.currentMediaState = {
+                ...this.currentMediaState,
+                queue: [...this.currentMediaState.queue, item],
+              };
+            }
+          }
+          if (this.onMediaStateChanged) this.onMediaStateChanged({ ...this.currentMediaState });
+        });
+
+        this.socket.on('media_queue_remove', ({ itemId, state }: { itemId?: string; state?: RoomMediaState }) => {
+          if (state) {
+            this.currentMediaState = { ...state };
+          } else if (itemId) {
+            this.currentMediaState = {
+              ...this.currentMediaState,
+              queue: this.currentMediaState.queue.filter((q) => q.id !== itemId),
+            };
+          }
+          if (this.onMediaStateChanged) this.onMediaStateChanged({ ...this.currentMediaState });
+        });
+
+        this.socket.on('media_queue_skip', ({ state }: { state?: RoomMediaState }) => {
+          if (state) {
+            this.currentMediaState = { ...state };
+          } else {
+            const next = this.currentMediaState.queue.shift() || null;
+            this.currentMediaState = {
+              ...this.currentMediaState,
+              currentVideo: next,
+              queue: this.currentMediaState.queue,
+              isPlaying: !!next,
+              playbackTime: 0,
+              lastSyncTimestamp: Date.now(),
+            };
+          }
+          if (this.onMediaStateChanged) this.onMediaStateChanged({ ...this.currentMediaState });
         });
 
         this.socket.on('room_status_changed', (status: { isOpen: boolean; room: any }) => {
@@ -358,7 +419,60 @@ export class NetworkService {
       } else if (data.type === 'media_state_sync' && data.state) {
         this.currentMediaState = { ...data.state };
         if (this.onMediaStateChanged) {
-          this.onMediaStateChanged(this.currentMediaState);
+          this.onMediaStateChanged({ ...this.currentMediaState });
+        }
+      } else if (data.type === 'media_queue_add') {
+        const item = data.item as VideoQueueItem;
+        if (item) {
+          if (!this.currentMediaState.currentVideo) {
+            this.currentMediaState = {
+              ...this.currentMediaState,
+              currentVideo: item,
+              isPlaying: true,
+              playbackTime: 0,
+              lastSyncTimestamp: Date.now(),
+              syncedByUserId: item.addedByUserId,
+            };
+          } else if (!this.currentMediaState.queue.some((q) => q.id === item.id)) {
+            this.currentMediaState = {
+              ...this.currentMediaState,
+              queue: [...this.currentMediaState.queue, item],
+            };
+          }
+          if (this.onMediaStateChanged) {
+            this.onMediaStateChanged({ ...this.currentMediaState });
+          }
+        }
+      } else if (data.type === 'media_queue_remove' && data.itemId) {
+        this.currentMediaState = {
+          ...this.currentMediaState,
+          queue: this.currentMediaState.queue.filter((q) => q.id !== data.itemId),
+        };
+        if (this.onMediaStateChanged) {
+          this.onMediaStateChanged({ ...this.currentMediaState });
+        }
+      } else if (data.type === 'media_queue_skip') {
+        const nextQueue = [...this.currentMediaState.queue];
+        const nextVideo = nextQueue.shift() || null;
+        this.currentMediaState = {
+          ...this.currentMediaState,
+          currentVideo: nextVideo,
+          queue: nextQueue,
+          isPlaying: !!nextVideo,
+          playbackTime: 0,
+          lastSyncTimestamp: Date.now(),
+        };
+        if (this.onMediaStateChanged) {
+          this.onMediaStateChanged({ ...this.currentMediaState });
+        }
+      } else if (data.type === 'request_media_sync') {
+        if (this.currentMediaState.currentVideo || this.currentMediaState.queue.length > 0) {
+          try {
+            conn.send({
+              type: 'media_state_sync',
+              state: this.currentMediaState,
+            });
+          } catch (_) {}
         }
       }
     });
@@ -701,8 +815,79 @@ export class NetworkService {
         if (msg.state && typeof msg.state === 'object') {
           this.currentMediaState = { ...msg.state };
           if (this.onMediaStateChanged) {
-            this.onMediaStateChanged(this.currentMediaState);
+            this.onMediaStateChanged({ ...this.currentMediaState });
           }
+        }
+        break;
+      }
+
+      case 'media_queue_add': {
+        const item = msg.item as VideoQueueItem;
+        if (item) {
+          if (!this.currentMediaState.currentVideo) {
+            this.currentMediaState = {
+              ...this.currentMediaState,
+              currentVideo: item,
+              isPlaying: true,
+              playbackTime: 0,
+              lastSyncTimestamp: Date.now(),
+              syncedByUserId: item.addedByUserId,
+            };
+          } else if (!this.currentMediaState.queue.some((q) => q.id === item.id)) {
+            this.currentMediaState = {
+              ...this.currentMediaState,
+              queue: [...this.currentMediaState.queue, item],
+            };
+          }
+          if (this.onMediaStateChanged) {
+            this.onMediaStateChanged({ ...this.currentMediaState });
+          }
+        } else if (msg.state) {
+          this.currentMediaState = { ...msg.state };
+          if (this.onMediaStateChanged) {
+            this.onMediaStateChanged({ ...this.currentMediaState });
+          }
+        }
+        break;
+      }
+
+      case 'media_queue_remove': {
+        if (msg.itemId) {
+          this.currentMediaState = {
+            ...this.currentMediaState,
+            queue: this.currentMediaState.queue.filter((q) => q.id !== msg.itemId),
+          };
+          if (this.onMediaStateChanged) {
+            this.onMediaStateChanged({ ...this.currentMediaState });
+          }
+        }
+        break;
+      }
+
+      case 'media_queue_skip': {
+        const nextQueue = [...this.currentMediaState.queue];
+        const nextVideo = nextQueue.shift() || null;
+        this.currentMediaState = {
+          ...this.currentMediaState,
+          currentVideo: nextVideo,
+          queue: nextQueue,
+          isPlaying: !!nextVideo,
+          playbackTime: 0,
+          lastSyncTimestamp: Date.now(),
+        };
+        if (this.onMediaStateChanged) {
+          this.onMediaStateChanged({ ...this.currentMediaState });
+        }
+        break;
+      }
+
+      case 'request_media_sync': {
+        if (this.currentMediaState.currentVideo || this.currentMediaState.queue.length > 0) {
+          this.publishMeshMessage({
+            type: 'media_state_sync',
+            roomId: this.currentRoom?.id,
+            state: this.currentMediaState,
+          });
         }
         break;
       }
@@ -1344,10 +1529,12 @@ export class NetworkService {
     if (isFirstVideo) {
       nextCurrent = item;
     } else {
-      nextQueue.push(item);
+      if (!nextQueue.some((it) => it.id === item.id)) {
+        nextQueue.push(item);
+      }
     }
 
-    this.syncMediaState({
+    const nextState: RoomMediaState = {
       ...this.currentMediaState,
       currentVideo: nextCurrent,
       queue: nextQueue,
@@ -1355,24 +1542,110 @@ export class NetworkService {
       playbackTime: isFirstVideo ? 0 : this.currentMediaState.playbackTime,
       lastSyncTimestamp: Date.now(),
       syncedByUserId: this.currentUser?.id || '',
+    };
+
+    this.currentMediaState = { ...nextState };
+    if (this.onMediaStateChanged) {
+      this.onMediaStateChanged({ ...this.currentMediaState });
+    }
+
+    const payload = {
+      type: 'media_queue_add',
+      roomId: this.currentRoom?.id,
+      item,
+      state: nextState,
+    };
+
+    // 1. Direct WebRTC DataChannels to all peers
+    this.peerDataConnections.forEach((conn) => {
+      if (conn.open) {
+        try {
+          conn.send(payload);
+          conn.send({ type: 'media_state_sync', state: nextState });
+        } catch (_) {}
+      }
     });
+
+    // 2. Global MQTT Mesh
+    this.publishMeshMessage(payload);
+
+    // 3. Supabase Realtime
+    this.supabaseChannel?.send({
+      type: 'broadcast',
+      event: 'media_queue_add',
+      payload: { item, state: nextState },
+    });
+
+    // 4. Socket.io
+    this.socket?.emit('media_queue_add', { item, state: nextState });
+    this.socket?.emit('media_state_sync', nextState);
+
+    // 5. BroadcastChannel
+    if (this.currentRoom) {
+      this.broadcastChannel?.postMessage({
+        type: 'tab_media_queue_add',
+        roomId: this.currentRoom.id,
+        item,
+        state: nextState,
+      });
+    }
   }
 
   removeMediaQueueItem(itemId: string) {
     const nextQueue = this.currentMediaState.queue.filter((it) => it.id !== itemId);
-    this.syncMediaState({
+    const nextState: RoomMediaState = {
       ...this.currentMediaState,
       queue: nextQueue,
       lastSyncTimestamp: Date.now(),
       syncedByUserId: this.currentUser?.id || '',
+    };
+
+    this.currentMediaState = { ...nextState };
+    if (this.onMediaStateChanged) {
+      this.onMediaStateChanged({ ...this.currentMediaState });
+    }
+
+    const payload = {
+      type: 'media_queue_remove',
+      roomId: this.currentRoom?.id,
+      itemId,
+      state: nextState,
+    };
+
+    this.peerDataConnections.forEach((conn) => {
+      if (conn.open) {
+        try {
+          conn.send(payload);
+          conn.send({ type: 'media_state_sync', state: nextState });
+        } catch (_) {}
+      }
     });
+
+    this.publishMeshMessage(payload);
+
+    this.supabaseChannel?.send({
+      type: 'broadcast',
+      event: 'media_queue_remove',
+      payload: { itemId, state: nextState },
+    });
+
+    this.socket?.emit('media_queue_remove', { itemId, state: nextState });
+    this.socket?.emit('media_state_sync', nextState);
+
+    if (this.currentRoom) {
+      this.broadcastChannel?.postMessage({
+        type: 'tab_media_queue_remove',
+        roomId: this.currentRoom.id,
+        itemId,
+        state: nextState,
+      });
+    }
   }
 
   skipCurrentMedia() {
     const nextQueue = [...this.currentMediaState.queue];
     const nextVideo = nextQueue.shift() || null;
-
-    this.syncMediaState({
+    const nextState: RoomMediaState = {
       ...this.currentMediaState,
       currentVideo: nextVideo,
       queue: nextQueue,
@@ -1380,6 +1653,76 @@ export class NetworkService {
       playbackTime: 0,
       lastSyncTimestamp: Date.now(),
       syncedByUserId: this.currentUser?.id || '',
+    };
+
+    this.currentMediaState = { ...nextState };
+    if (this.onMediaStateChanged) {
+      this.onMediaStateChanged({ ...this.currentMediaState });
+    }
+
+    const payload = {
+      type: 'media_queue_skip',
+      roomId: this.currentRoom?.id,
+      state: nextState,
+    };
+
+    this.peerDataConnections.forEach((conn) => {
+      if (conn.open) {
+        try {
+          conn.send(payload);
+          conn.send({ type: 'media_state_sync', state: nextState });
+        } catch (_) {}
+      }
+    });
+
+    this.publishMeshMessage(payload);
+
+    this.supabaseChannel?.send({
+      type: 'broadcast',
+      event: 'media_queue_skip',
+      payload: { state: nextState },
+    });
+
+    this.socket?.emit('media_queue_skip', { state: nextState });
+    this.socket?.emit('media_state_sync', nextState);
+
+    if (this.currentRoom) {
+      this.broadcastChannel?.postMessage({
+        type: 'tab_media_queue_skip',
+        roomId: this.currentRoom.id,
+        state: nextState,
+      });
+    }
+  }
+
+  requestMediaSync() {
+    if (!this.currentRoom) return;
+
+    this.peerDataConnections.forEach((conn) => {
+      if (conn.open) {
+        try {
+          conn.send({ type: 'request_media_sync' });
+        } catch (_) {}
+      }
+    });
+
+    this.publishMeshMessage({
+      type: 'request_media_sync',
+      roomId: this.currentRoom.id,
+      userId: this.currentUser?.id,
+    });
+
+    this.supabaseChannel?.send({
+      type: 'broadcast',
+      event: 'request_media_sync',
+      payload: { roomId: this.currentRoom.id },
+    });
+
+    this.socket?.emit('request_media_sync');
+
+    this.broadcastChannel?.postMessage({
+      type: 'tab_request_media_sync',
+      roomId: this.currentRoom.id,
     });
   }
 
@@ -1521,8 +1864,79 @@ export class NetworkService {
         if (msg.state && typeof msg.state === 'object') {
           this.currentMediaState = { ...msg.state };
           if (this.onMediaStateChanged) {
-            this.onMediaStateChanged(this.currentMediaState);
+            this.onMediaStateChanged({ ...this.currentMediaState });
           }
+        }
+        break;
+      }
+
+      case 'tab_media_queue_add': {
+        const item = msg.item as VideoQueueItem;
+        if (item) {
+          if (!this.currentMediaState.currentVideo) {
+            this.currentMediaState = {
+              ...this.currentMediaState,
+              currentVideo: item,
+              isPlaying: true,
+              playbackTime: 0,
+              lastSyncTimestamp: Date.now(),
+              syncedByUserId: item.addedByUserId,
+            };
+          } else if (!this.currentMediaState.queue.some((q) => q.id === item.id)) {
+            this.currentMediaState = {
+              ...this.currentMediaState,
+              queue: [...this.currentMediaState.queue, item],
+            };
+          }
+          if (this.onMediaStateChanged) {
+            this.onMediaStateChanged({ ...this.currentMediaState });
+          }
+        } else if (msg.state) {
+          this.currentMediaState = { ...msg.state };
+          if (this.onMediaStateChanged) {
+            this.onMediaStateChanged({ ...this.currentMediaState });
+          }
+        }
+        break;
+      }
+
+      case 'tab_media_queue_remove': {
+        if (msg.itemId) {
+          this.currentMediaState = {
+            ...this.currentMediaState,
+            queue: this.currentMediaState.queue.filter((q) => q.id !== msg.itemId),
+          };
+          if (this.onMediaStateChanged) {
+            this.onMediaStateChanged({ ...this.currentMediaState });
+          }
+        }
+        break;
+      }
+
+      case 'tab_media_queue_skip': {
+        const nextQueue = [...this.currentMediaState.queue];
+        const nextVideo = nextQueue.shift() || null;
+        this.currentMediaState = {
+          ...this.currentMediaState,
+          currentVideo: nextVideo,
+          queue: nextQueue,
+          isPlaying: !!nextVideo,
+          playbackTime: 0,
+          lastSyncTimestamp: Date.now(),
+        };
+        if (this.onMediaStateChanged) {
+          this.onMediaStateChanged({ ...this.currentMediaState });
+        }
+        break;
+      }
+
+      case 'tab_request_media_sync': {
+        if (this.currentMediaState.currentVideo || this.currentMediaState.queue.length > 0) {
+          this.broadcastChannel?.postMessage({
+            type: 'tab_media_state_sync',
+            roomId: this.currentRoom?.id,
+            state: this.currentMediaState,
+          });
         }
         break;
       }

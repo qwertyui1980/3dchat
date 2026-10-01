@@ -48,6 +48,7 @@ interface RoomViewProps {
   onSkipMedia: () => void;
   onToggleMediaPlayback: (isPlaying: boolean, currentTime: number) => void;
   onSeekMedia: (currentTime: number) => void;
+  onRequestMediaSync?: () => void;
 }
 
 export const RoomView: React.FC<RoomViewProps> = ({
@@ -78,6 +79,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
   onSkipMedia,
   onToggleMediaPlayback,
   onSeekMedia,
+  onRequestMediaSync,
 }) => {
   const [viewMode] = useState<ViewLayoutMode>('grid');
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -222,6 +224,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
         onAddVideo={onAddMediaQueueItem}
         onRemoveVideo={onRemoveMediaQueueItem}
         onSkipVideo={onSkipMedia}
+        onRequestSync={onRequestMediaSync}
       />
 
       {/* Bottom Controls Bar */}
@@ -239,14 +242,10 @@ export const RoomView: React.FC<RoomViewProps> = ({
         onSelectAvatar={onSelectAvatar}
         onToggleChat={handleToggleChat}
         onLeaveCall={onLeaveCall}
-        onOpenTheater={() => {
-          if (!isTheaterOpen && hasActiveMedia) {
-            setIsTheaterOpen(true);
-          } else {
-            setIsQueueModalOpen(true);
-          }
-        }}
+        onOpenTheater={() => setIsTheaterOpen((prev) => !prev)}
+        onOpenPlaylist={() => setIsQueueModalOpen(true)}
         isTheaterOpen={isTheaterOpen}
+        isPlaylistOpen={isQueueModalOpen}
         userTurnNumber={userTurnNumber}
         isUserPlayingNow={isUserPlayingNow}
         hasActiveMedia={hasActiveMedia}

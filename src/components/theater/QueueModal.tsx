@@ -23,6 +23,7 @@ interface QueueModalProps {
   onAddVideo: (item: VideoQueueItem) => void;
   onRemoveVideo: (itemId: string) => void;
   onSkipVideo: () => void;
+  onRequestSync?: () => void;
 }
 
 export const QueueModal: React.FC<QueueModalProps> = ({
@@ -33,10 +34,17 @@ export const QueueModal: React.FC<QueueModalProps> = ({
   onAddVideo,
   onRemoveVideo,
   onSkipVideo,
+  onRequestSync,
 }) => {
   const [urlInput, setUrlInput] = useState('');
   const [isLoadingInfo, setIsLoadingInfo] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen && onRequestSync) {
+      onRequestSync();
+    }
+  }, [isOpen, onRequestSync]);
 
   if (!isOpen) return null;
 
