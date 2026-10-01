@@ -11,11 +11,10 @@ export type AvatarId =
   | 'pixel_punk'
   | 'astro_cadet'
   | 'face_cap'
-  | 'trump_3d'
-  | 'putin_3d'
-  | 'jinping_3d'
-  | 'bush_3d'
-  | 'thatcher_3d';
+  | 'lincoln_3d'
+  | 'biden_3d'
+  | 'obama_3d'
+  | 'trump_3d';
 
 export interface AvatarTrackingProfile {
   avatarId: AvatarId;

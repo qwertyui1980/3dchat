@@ -1885,3 +1885,404 @@ export function buildFaceCapCharacter(gltf: GLTF): Character3DController {
     },
   };
 }
+
+export function buildLincolnCharacter(gltf: GLTF): Character3DController {
+  const root = new THREE.Group();
+  root.position.set(0, 0, 0);
+
+  const model = SkeletonUtils.clone(gltf.scene) as THREE.Group;
+
+  const bbox = new THREE.Box3().setFromObject(model);
+  const center = new THREE.Vector3();
+  bbox.getCenter(center);
+  const size = new THREE.Vector3();
+  bbox.getSize(size);
+
+  const targetHeight = 2.25;
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const scale = targetHeight / (maxDim || 1);
+  model.scale.set(scale, scale, scale);
+
+  model.position.x = -center.x * scale;
+  model.position.y = -center.y * scale;
+  model.position.z = -center.z * scale;
+
+  model.traverse((child) => {
+    if ((child as THREE.Mesh).isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    }
+  });
+
+  const modelWrapper = new THREE.Group();
+  modelWrapper.rotation.y = Math.PI;
+  modelWrapper.add(model);
+
+  const headPivot = new THREE.Group();
+  headPivot.position.set(0, 3.75, 0);
+  headPivot.add(modelWrapper);
+  root.add(headPivot);
+
+  const pedGeo = new THREE.CylinderGeometry(1.25, 1.45, 0.42, 32);
+  const pedMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    roughness: 0.35,
+    metalness: 0.8,
+  });
+  const ped = new THREE.Mesh(pedGeo, pedMat);
+  ped.position.set(0, 0.21, 0);
+  ped.receiveShadow = true;
+  root.add(ped);
+
+  const ringGeo = new THREE.RingGeometry(1.48, 1.56, 48);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0x3b82f6,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.7,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.set(0, 0.43, 0);
+  root.add(ring);
+
+  return {
+    group: root,
+    headPivot,
+    update: (features: FaceFeatures, _dt: number, now: number) => {
+      const targetPitch = (features.pitch || 0) * 0.85;
+      const targetYaw = (features.yaw || 0) * 0.85;
+      const targetRoll = (features.roll || 0) * 0.85;
+
+      headPivot.rotation.x = THREE.MathUtils.lerp(headPivot.rotation.x, targetPitch, 0.25);
+      headPivot.rotation.y = THREE.MathUtils.lerp(headPivot.rotation.y, targetYaw, 0.25);
+      headPivot.rotation.z = THREE.MathUtils.lerp(headPivot.rotation.z, targetRoll, 0.25);
+
+      const breath = Math.sin(now * 0.002) * 0.012;
+      const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
+      headPivot.position.y = 3.75 + breath + voiceNod;
+    },
+    dispose: () => {
+      pedGeo.dispose();
+      pedMat.dispose();
+      ringGeo.dispose();
+      ringMat.dispose();
+      root.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const m = child as THREE.Mesh;
+          m.geometry?.dispose();
+          if (Array.isArray(m.material)) {
+            m.material.forEach((mat) => mat.dispose());
+          } else if (m.material) {
+            m.material.dispose();
+          }
+        }
+      });
+    },
+  };
+}
+
+export function buildBidenCharacter(gltf: GLTF): Character3DController {
+  const root = new THREE.Group();
+  root.position.set(0, 0, 0);
+
+  const model = SkeletonUtils.clone(gltf.scene) as THREE.Group;
+
+  let headBone: THREE.Bone | null = null;
+  let neckBone: THREE.Bone | null = null;
+  let leftEye: THREE.Bone | null = null;
+  let rightEye: THREE.Bone | null = null;
+  let initialHeadRot: THREE.Euler | null = null;
+  let initialNeckRot: THREE.Euler | null = null;
+
+  model.traverse((child) => {
+    if ((child as THREE.Bone).isBone) {
+      const b = child as THREE.Bone;
+      if (b.name === 'Head_08' || b.name.toLowerCase().includes('head')) {
+        headBone = b;
+        initialHeadRot = b.rotation.clone();
+      }
+      if (b.name === 'Neck_05' || b.name.toLowerCase().includes('neck')) {
+        neckBone = b;
+        initialNeckRot = b.rotation.clone();
+      }
+      if (b.name === 'LeftEye_09' || b.name.toLowerCase().includes('lefteye')) {
+        leftEye = b;
+      }
+      if (b.name === 'RightEye_010' || b.name.toLowerCase().includes('righteye')) {
+        rightEye = b;
+      }
+    }
+    if ((child as THREE.Mesh).isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    }
+  });
+
+  const scale = 2.4;
+  model.scale.set(scale, scale, scale);
+  model.position.set(0, -0.2, 0);
+
+  const headPivot = new THREE.Group();
+  headPivot.position.set(0, 3.75, 0);
+  root.add(model);
+  root.add(headPivot);
+
+  const pedGeo = new THREE.CylinderGeometry(1.25, 1.45, 0.42, 32);
+  const pedMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    roughness: 0.35,
+    metalness: 0.8,
+  });
+  const ped = new THREE.Mesh(pedGeo, pedMat);
+  ped.position.set(0, 0.21, 0);
+  ped.receiveShadow = true;
+  root.add(ped);
+
+  const ringGeo = new THREE.RingGeometry(1.48, 1.56, 48);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0x2563eb,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.7,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.set(0, 0.43, 0);
+  root.add(ring);
+
+  return {
+    group: root,
+    headPivot: (headBone as any) || headPivot,
+    update: (features: FaceFeatures, _dt: number, now: number) => {
+      const pitch = features.pitch || 0;
+      const yaw = features.yaw || 0;
+      const roll = features.roll || 0;
+
+      if (headBone && initialHeadRot) {
+        headBone.rotation.x = initialHeadRot.x + pitch * 0.85;
+        headBone.rotation.y = initialHeadRot.y + yaw * 0.85;
+        headBone.rotation.z = initialHeadRot.z + roll * 0.85;
+      }
+      if (neckBone && initialNeckRot) {
+        neckBone.rotation.x = initialNeckRot.x + pitch * 0.2;
+        neckBone.rotation.y = initialNeckRot.y + yaw * 0.2;
+        neckBone.rotation.z = initialNeckRot.z + roll * 0.2;
+      }
+      if (leftEye) {
+        leftEye.rotation.y = (features.gazeX || 0) * 0.15;
+        leftEye.rotation.x = -(features.gazeY || 0) * 0.15;
+      }
+      if (rightEye) {
+        rightEye.rotation.y = (features.gazeX || 0) * 0.15;
+        rightEye.rotation.x = -(features.gazeY || 0) * 0.15;
+      }
+
+      const breath = Math.sin(now * 0.002) * 0.015;
+      const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
+      model.position.y = -0.2 + breath + voiceNod;
+    },
+    dispose: () => {
+      pedGeo.dispose();
+      pedMat.dispose();
+      ringGeo.dispose();
+      ringMat.dispose();
+      root.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const m = child as THREE.Mesh;
+          m.geometry?.dispose();
+          if (Array.isArray(m.material)) {
+            m.material.forEach((mat) => mat.dispose());
+          } else if (m.material) {
+            m.material.dispose();
+          }
+        }
+      });
+    },
+  };
+}
+
+export function buildObamaCharacter(gltf: GLTF): Character3DController {
+  const root = new THREE.Group();
+  root.position.set(0, 0, 0);
+
+  const model = SkeletonUtils.clone(gltf.scene) as THREE.Group;
+
+  const bbox = new THREE.Box3().setFromObject(model);
+  const center = new THREE.Vector3();
+  bbox.getCenter(center);
+  const size = new THREE.Vector3();
+  bbox.getSize(size);
+
+  const targetHeight = 2.2;
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const scale = targetHeight / (maxDim || 1);
+  model.scale.set(scale, scale, scale);
+
+  model.position.x = -center.x * scale;
+  model.position.y = -center.y * scale;
+  model.position.z = -center.z * scale;
+
+  model.traverse((child) => {
+    if ((child as THREE.Mesh).isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    }
+  });
+
+  const headPivot = new THREE.Group();
+  headPivot.position.set(0, 3.75, 0);
+  headPivot.add(model);
+  root.add(headPivot);
+
+  const pedGeo = new THREE.CylinderGeometry(1.25, 1.45, 0.42, 32);
+  const pedMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    roughness: 0.35,
+    metalness: 0.8,
+  });
+  const ped = new THREE.Mesh(pedGeo, pedMat);
+  ped.position.set(0, 0.21, 0);
+  ped.receiveShadow = true;
+  root.add(ped);
+
+  const ringGeo = new THREE.RingGeometry(1.48, 1.56, 48);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0x0ea5e9,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.7,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.set(0, 0.43, 0);
+  root.add(ring);
+
+  return {
+    group: root,
+    headPivot,
+    update: (features: FaceFeatures, _dt: number, now: number) => {
+      const targetPitch = (features.pitch || 0) * 0.85;
+      const targetYaw = (features.yaw || 0) * 0.85;
+      const targetRoll = (features.roll || 0) * 0.85;
+
+      headPivot.rotation.x = THREE.MathUtils.lerp(headPivot.rotation.x, targetPitch, 0.25);
+      headPivot.rotation.y = THREE.MathUtils.lerp(headPivot.rotation.y, targetYaw, 0.25);
+      headPivot.rotation.z = THREE.MathUtils.lerp(headPivot.rotation.z, targetRoll, 0.25);
+
+      const breath = Math.sin(now * 0.002) * 0.012;
+      const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
+      headPivot.position.y = 3.75 + breath + voiceNod;
+    },
+    dispose: () => {
+      pedGeo.dispose();
+      pedMat.dispose();
+      ringGeo.dispose();
+      ringMat.dispose();
+      root.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const m = child as THREE.Mesh;
+          m.geometry?.dispose();
+          if (Array.isArray(m.material)) {
+            m.material.forEach((mat) => mat.dispose());
+          } else if (m.material) {
+            m.material.dispose();
+          }
+        }
+      });
+    },
+  };
+}
+
+export function buildTrumpCharacter(gltf: GLTF): Character3DController {
+  const root = new THREE.Group();
+  root.position.set(0, 0, 0);
+
+  const model = SkeletonUtils.clone(gltf.scene) as THREE.Group;
+
+  const bbox = new THREE.Box3().setFromObject(model);
+  const center = new THREE.Vector3();
+  bbox.getCenter(center);
+  const size = new THREE.Vector3();
+  bbox.getSize(size);
+
+  const targetHeight = 2.25;
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const scale = targetHeight / (maxDim || 1);
+  model.scale.set(scale, scale, scale);
+
+  model.position.x = -center.x * scale;
+  model.position.y = -center.y * scale;
+  model.position.z = -center.z * scale;
+
+  model.traverse((child) => {
+    if ((child as THREE.Mesh).isMesh) {
+      child.castShadow = true;
+      child.receiveShadow = true;
+    }
+  });
+
+  const headPivot = new THREE.Group();
+  headPivot.position.set(0, 3.75, 0);
+  headPivot.add(model);
+  root.add(headPivot);
+
+  const pedGeo = new THREE.CylinderGeometry(1.25, 1.45, 0.42, 32);
+  const pedMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    roughness: 0.35,
+    metalness: 0.8,
+  });
+  const ped = new THREE.Mesh(pedGeo, pedMat);
+  ped.position.set(0, 0.21, 0);
+  ped.receiveShadow = true;
+  root.add(ped);
+
+  const ringGeo = new THREE.RingGeometry(1.48, 1.56, 48);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0xe11d48,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.7,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.set(0, 0.43, 0);
+  root.add(ring);
+
+  return {
+    group: root,
+    headPivot,
+    update: (features: FaceFeatures, _dt: number, now: number) => {
+      const targetPitch = (features.pitch || 0) * 0.85;
+      const targetYaw = (features.yaw || 0) * 0.85;
+      const targetRoll = (features.roll || 0) * 0.85;
+
+      headPivot.rotation.x = THREE.MathUtils.lerp(headPivot.rotation.x, targetPitch, 0.25);
+      headPivot.rotation.y = THREE.MathUtils.lerp(headPivot.rotation.y, targetYaw, 0.25);
+      headPivot.rotation.z = THREE.MathUtils.lerp(headPivot.rotation.z, targetRoll, 0.25);
+
+      const breath = Math.sin(now * 0.002) * 0.012;
+      const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
+      headPivot.position.y = 3.75 + breath + voiceNod;
+    },
+    dispose: () => {
+      pedGeo.dispose();
+      pedMat.dispose();
+      ringGeo.dispose();
+      ringMat.dispose();
+      root.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const m = child as THREE.Mesh;
+          m.geometry?.dispose();
+          if (Array.isArray(m.material)) {
+            m.material.forEach((mat) => mat.dispose());
+          } else if (m.material) {
+            m.material.dispose();
+          }
+        }
+      });
+    },
+  };
+}
+

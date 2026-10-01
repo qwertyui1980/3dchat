@@ -17,14 +17,12 @@ import {
   buildProceduralRobotCharacter,
   buildMeshOutlineCharacter,
   buildFaceCapCharacter,
+  buildLincolnCharacter,
+  buildBidenCharacter,
+  buildObamaCharacter,
+  buildTrumpCharacter,
 } from './threeCharacterBuilder';
 import { getAssetUrl } from '../../utils/assetUrl';
-import {
-  isLeaderAvatar,
-  hasCachedLeaderModel,
-  loadCustomLeaderModel,
-  buildCustomLeaderCharacter,
-} from './customLeaderAvatars';
 
 const ROBOT_GLB_URL =
   'https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/examples/models/gltf/RobotExpressive/RobotExpressive.glb';
@@ -56,8 +54,6 @@ function loadRobotGLTF(): Promise<GLTF> {
 
   return loadingPromise;
 }
-
-
 
 // Cache for loaded FaceCap GLTF
 let cachedFaceCapGLTF: GLTF | null = null;
@@ -109,6 +105,122 @@ function loadFaceCapGLTF(renderer: THREE.WebGLRenderer): Promise<GLTF> {
   return faceCapLoadingPromise;
 }
 
+// Cache for loaded Lincoln GLTF
+let cachedLincolnGLTF: GLTF | null = null;
+let lincolnLoadingPromise: Promise<GLTF> | null = null;
+
+function loadLincolnGLTF(): Promise<GLTF> {
+  if (cachedLincolnGLTF) return Promise.resolve(cachedLincolnGLTF);
+  if (lincolnLoadingPromise) return lincolnLoadingPromise;
+
+  lincolnLoadingPromise = new Promise((resolve, reject) => {
+    const loader = new GLTFLoader();
+    const url = getAssetUrl('models/stylized_lincoln.glb');
+    loader.load(
+      url,
+      (gltf) => {
+        cachedLincolnGLTF = gltf;
+        resolve(gltf);
+      },
+      undefined,
+      (err) => {
+        console.error('[ThreeAvatarCanvas] Error loading stylized_lincoln.glb:', err);
+        lincolnLoadingPromise = null;
+        reject(err);
+      }
+    );
+  });
+
+  return lincolnLoadingPromise;
+}
+
+// Cache for loaded Biden GLTF
+let cachedBidenGLTF: GLTF | null = null;
+let bidenLoadingPromise: Promise<GLTF> | null = null;
+
+function loadBidenGLTF(): Promise<GLTF> {
+  if (cachedBidenGLTF) return Promise.resolve(cachedBidenGLTF);
+  if (bidenLoadingPromise) return bidenLoadingPromise;
+
+  bidenLoadingPromise = new Promise((resolve, reject) => {
+    const loader = new GLTFLoader();
+    const url = getAssetUrl('models/joe_b.glb');
+    loader.load(
+      url,
+      (gltf) => {
+        cachedBidenGLTF = gltf;
+        resolve(gltf);
+      },
+      undefined,
+      (err) => {
+        console.error('[ThreeAvatarCanvas] Error loading joe_b.glb:', err);
+        bidenLoadingPromise = null;
+        reject(err);
+      }
+    );
+  });
+
+  return bidenLoadingPromise;
+}
+
+// Cache for loaded Obama GLTF
+let cachedObamaGLTF: GLTF | null = null;
+let obamaLoadingPromise: Promise<GLTF> | null = null;
+
+function loadObamaGLTF(): Promise<GLTF> {
+  if (cachedObamaGLTF) return Promise.resolve(cachedObamaGLTF);
+  if (obamaLoadingPromise) return obamaLoadingPromise;
+
+  obamaLoadingPromise = new Promise((resolve, reject) => {
+    const loader = new GLTFLoader();
+    const url = getAssetUrl('models/president_obama.glb');
+    loader.load(
+      url,
+      (gltf) => {
+        cachedObamaGLTF = gltf;
+        resolve(gltf);
+      },
+      undefined,
+      (err) => {
+        console.error('[ThreeAvatarCanvas] Error loading president_obama.glb:', err);
+        obamaLoadingPromise = null;
+        reject(err);
+      }
+    );
+  });
+
+  return obamaLoadingPromise;
+}
+
+// Cache for loaded Trump GLTF
+let cachedTrumpGLTF: GLTF | null = null;
+let trumpLoadingPromise: Promise<GLTF> | null = null;
+
+function loadTrumpGLTF(): Promise<GLTF> {
+  if (cachedTrumpGLTF) return Promise.resolve(cachedTrumpGLTF);
+  if (trumpLoadingPromise) return trumpLoadingPromise;
+
+  trumpLoadingPromise = new Promise((resolve, reject) => {
+    const loader = new GLTFLoader();
+    const url = getAssetUrl('models/president_trump.glb');
+    loader.load(
+      url,
+      (gltf) => {
+        cachedTrumpGLTF = gltf;
+        resolve(gltf);
+      },
+      undefined,
+      (err) => {
+        console.error('[ThreeAvatarCanvas] Error loading president_trump.glb:', err);
+        trumpLoadingPromise = null;
+        reject(err);
+      }
+    );
+  });
+
+  return trumpLoadingPromise;
+}
+
 function checkIsMobile(): boolean {
   if (typeof window === 'undefined') return false;
   const ua = navigator.userAgent || '';
@@ -140,9 +252,17 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
   const mountRef = useRef<HTMLDivElement | null>(null);
   const isGLBRobot = avatarId === 'three_robot';
   const isFaceCapAvatar = avatarId === 'face_cap';
+  const isLincolnAvatar = avatarId === 'lincoln_3d';
+  const isBidenAvatar = avatarId === 'biden_3d';
+  const isObamaAvatar = avatarId === 'obama_3d';
+  const isTrumpAvatar = avatarId === 'trump_3d';
   const [isLoading, setIsLoading] = useState(
     (isGLBRobot && !cachedGLTF) ||
-    (isFaceCapAvatar && !cachedFaceCapGLTF)
+    (isFaceCapAvatar && !cachedFaceCapGLTF) ||
+    (isLincolnAvatar && !cachedLincolnGLTF) ||
+    (isBidenAvatar && !cachedBidenGLTF) ||
+    (isObamaAvatar && !cachedObamaGLTF) ||
+    (isTrumpAvatar && !cachedTrumpGLTF)
   );
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isWebglAvailable, setIsWebglAvailable] = useState(true);
@@ -363,11 +483,10 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
       female_3d: 0xa855f7,
       horse_3d: 0xf97316,
       face_cap: 0x38bdf8,
+      lincoln_3d: 0x3b82f6,
+      biden_3d: 0x2563eb,
+      obama_3d: 0x0ea5e9,
       trump_3d: 0xe11d48,
-      putin_3d: 0x2563eb,
-      jinping_3d: 0xdc2626,
-      bush_3d: 0x3b82f6,
-      thatcher_3d: 0x8b5cf6,
     };
     const rimColor = themeRimColors[avatarId] || 0x06b6d4;
 
@@ -552,21 +671,72 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             setLoadError('Error al cargar Face Cap 3D');
           }
         });
-    } else if (isLeaderAvatar(avatarId)) {
-      setIsLoading(!hasCachedLeaderModel(avatarId));
-      loadCustomLeaderModel(avatarId)
-        .then((model) => {
+    } else if (avatarId === 'lincoln_3d') {
+      setIsLoading(!cachedLincolnGLTF);
+      loadLincolnGLTF()
+        .then((gltf) => {
           if (isDisposed) return;
           setIsLoading(false);
-          const controller = buildCustomLeaderCharacter(avatarId, model);
+          const controller = buildLincolnCharacter(gltf);
           characterControllerRef.current = controller;
           scene.add(controller.group);
         })
         .catch((err) => {
-          console.error(`[ThreeAvatarCanvas] Error loading leader ${avatarId}:`, err);
+          console.error('[ThreeAvatarCanvas] Error loading Lincoln 3D:', err);
           if (!isDisposed) {
             setIsLoading(false);
-            setLoadError(`Error al cargar modelo 3D (${avatarId})`);
+            setLoadError('Error al cargar Lincoln 3D');
+          }
+        });
+    } else if (avatarId === 'biden_3d') {
+      setIsLoading(!cachedBidenGLTF);
+      loadBidenGLTF()
+        .then((gltf) => {
+          if (isDisposed) return;
+          setIsLoading(false);
+          const controller = buildBidenCharacter(gltf);
+          characterControllerRef.current = controller;
+          scene.add(controller.group);
+        })
+        .catch((err) => {
+          console.error('[ThreeAvatarCanvas] Error loading Biden 3D:', err);
+          if (!isDisposed) {
+            setIsLoading(false);
+            setLoadError('Error al cargar Biden 3D');
+          }
+        });
+    } else if (avatarId === 'obama_3d') {
+      setIsLoading(!cachedObamaGLTF);
+      loadObamaGLTF()
+        .then((gltf) => {
+          if (isDisposed) return;
+          setIsLoading(false);
+          const controller = buildObamaCharacter(gltf);
+          characterControllerRef.current = controller;
+          scene.add(controller.group);
+        })
+        .catch((err) => {
+          console.error('[ThreeAvatarCanvas] Error loading Obama 3D:', err);
+          if (!isDisposed) {
+            setIsLoading(false);
+            setLoadError('Error al cargar Obama 3D');
+          }
+        });
+    } else if (avatarId === 'trump_3d') {
+      setIsLoading(!cachedTrumpGLTF);
+      loadTrumpGLTF()
+        .then((gltf) => {
+          if (isDisposed) return;
+          setIsLoading(false);
+          const controller = buildTrumpCharacter(gltf);
+          characterControllerRef.current = controller;
+          scene.add(controller.group);
+        })
+        .catch((err) => {
+          console.error('[ThreeAvatarCanvas] Error loading Trump 3D:', err);
+          if (!isDisposed) {
+            setIsLoading(false);
+            setLoadError('Error al cargar Trump 3D');
           }
         });
     } else {
