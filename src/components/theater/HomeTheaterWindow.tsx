@@ -1,12 +1,13 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Tv,
   X,
   Minus,
   ListPlus,
   GripHorizontal,
-  Maximize2,
-  Sparkles,
+  Volume2,
+  Volume1,
+  VolumeX,
 } from 'lucide-react';
 import { RoomMediaState } from '../../types';
 import { YouTubeSyncPlayer } from './YouTubeSyncPlayer';
@@ -52,6 +53,42 @@ export const HomeTheaterWindow: React.FC<HomeTheaterWindowProps> = ({
     return { x: 50, y: 80 };
   });
 
+  // Volume & Mute state (local to user, remembered across visits)
+  const [volume, setVolume] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('xstreamx_theater_volume');
+      if (saved !== null) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) return parsed;
+      }
+    }
+    return 80;
+  });
+
+  const [isMuted, setIsMuted] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('xstreamx_theater_muted') === 'true';
+    }
+    return false;
+  });
+
+  const handleVolumeChange = (newVol: number) => {
+    setVolume(newVol);
+    if (newVol > 0 && isMuted) {
+      setIsMuted(false);
+      localStorage.setItem('xstreamx_theater_muted', 'false');
+    }
+    localStorage.setItem('xstreamx_theater_volume', newVol.toString());
+  };
+
+  const handleToggleMute = () => {
+    setIsMuted((prev) => {
+      const next = !prev;
+      localStorage.setItem('xstreamx_theater_muted', next.toString());
+      return next;
+    });
+  };
+
   const isDraggingRef = useRef(false);
   const dragStartRef = useRef<{ startX: number; startY: number; initPosX: number; initPosY: number }>({
     startX: 0,
@@ -87,8 +124,8 @@ export const HomeTheaterWindow: React.FC<HomeTheaterWindowProps> = ({
 
   // Pointer drag logic
   const handlePointerDownHeader = (e: React.PointerEvent) => {
-    // Ignore button clicks
-    if ((e.target as HTMLElement).closest('button')) return;
+    // Ignore interactive element clicks (buttons, inputs)
+    if ((e.target as HTMLElement).closest('button, input')) return;
 
     isDraggingRef.current = true;
     dragStartRef.current = {
@@ -195,8 +232,38 @@ export const HomeTheaterWindow: React.FC<HomeTheaterWindowProps> = ({
           </div>
         </div>
 
-        {/* Right: Queue Button, Minimize, and Close */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        {/* Right: Volume Control, Queue Button, Minimize, and Close */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Local Volume Control Slider */}
+          <div className="flex items-center gap-1 px-1.5 py-1 rounded-lg bg-white/[0.04] border border-white/[0.08] hover:border-white/20 transition">
+            <button
+              type="button"
+              onClick={handleToggleMute}
+              className="p-1 rounded text-neutral-300 hover:text-white transition active:scale-95 cursor-pointer"
+              title={isMuted ? 'Activar sonido' : 'Silenciar sonido'}
+            >
+              {isMuted || volume === 0 ? (
+                <VolumeX className="w-3.5 h-3.5 text-rose-400" />
+              ) : volume < 50 ? (
+                <Volume1 className="w-3.5 h-3.5 text-cyan-300" />
+              ) : (
+                <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
+              )}
+            </button>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={isMuted ? 0 : volume}
+              onChange={(e) => handleVolumeChange(Number(e.target.value))}
+              className="w-14 sm:w-16 h-1 bg-white/20 accent-cyan-400 hover:accent-cyan-300 rounded-lg cursor-pointer"
+              title={`Volumen: ${isMuted ? 'Silenciado' : `${volume}%`}`}
+            />
+            <span className="text-[10px] text-neutral-400 font-mono min-w-[24px] text-right hidden sm:inline">
+              {isMuted ? '0%' : `${volume}%`}
+            </span>
+          </div>
+
           {/* Playlist / Queue Drawer Button */}
           <button
             type="button"
@@ -247,6 +314,8 @@ export const HomeTheaterWindow: React.FC<HomeTheaterWindowProps> = ({
           onSeek={onSeek}
           onVideoEnded={onVideoEnded}
           onSkip={onSkip}
+          volume={volume}
+          isMuted={isMuted}
         />
       </div>
 

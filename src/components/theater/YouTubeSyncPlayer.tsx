@@ -9,6 +9,8 @@ interface YouTubeSyncPlayerProps {
   onSeek: (currentTime: number) => void;
   onVideoEnded: () => void;
   onSkip?: () => void;
+  volume?: number;
+  isMuted?: boolean;
 }
 
 declare global {
@@ -64,6 +66,8 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
   onSeek,
   onVideoEnded,
   onSkip,
+  volume = 80,
+  isMuted = false,
 }) => {
   const containerId = useRef(`yt_player_${Math.random().toString(36).substring(2, 9)}`);
   const playerRef = useRef<any>(null);
@@ -118,6 +122,15 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
               } else {
                 event.target.pauseVideo();
               }
+
+              try {
+                if (isMuted || volume === 0) {
+                  event.target.mute();
+                } else {
+                  event.target.unMute();
+                  event.target.setVolume(Math.min(100, Math.max(0, volume)));
+                }
+              } catch (_) {}
             }
           },
           onStateChange: (event: any) => {
@@ -229,9 +242,27 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
     return () => clearInterval(interval);
   }, [isPlayerReady, mediaState, currentVideo]);
 
+  // Real-time local volume & mute controller
+  useEffect(() => {
+    if (!isPlayerReady || !playerRef.current) return;
+    try {
+      if (isMuted || volume === 0) {
+        playerRef.current.mute();
+      } else {
+        playerRef.current.unMute();
+        playerRef.current.setVolume(Math.min(100, Math.max(0, volume)));
+      }
+    } catch (_) {}
+  }, [isPlayerReady, volume, isMuted]);
+
   const handleManualPlayAudio = () => {
     if (playerRef.current) {
-      playerRef.current.unMute();
+      try {
+        if (!isMuted && volume > 0) {
+          playerRef.current.unMute();
+          playerRef.current.setVolume(Math.min(100, Math.max(0, volume)));
+        }
+      } catch (_) {}
       playerRef.current.playVideo();
       setNeedsAutoplayInteraction(false);
     }
