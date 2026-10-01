@@ -131,9 +131,39 @@ export class NetworkService {
           if (this.onRoomLockChanged) this.onRoomLockChanged(isLocked);
         });
 
-        this.socket.on('force_mute', ({ isMuted }: { isMuted: boolean }) => {
-          if (this.currentUser) this.currentUser.isMuted = isMuted;
-          if (this.onForceMute) this.onForceMute(isMuted);
+        this.socket.on('force_mute', ({ targetUserId, isMuted }: { targetUserId?: string; isMuted: boolean }) => {
+          const targetId = targetUserId || this.currentUser?.id;
+          if (this.currentRoom && targetId) {
+            this.currentRoom.participants = this.currentRoom.participants.map((p) => {
+              if (p.id === targetId) {
+                const updated = { ...p, isMuted };
+                if (this.onUserUpdated) this.onUserUpdated(updated);
+                return updated;
+              }
+              return p;
+            });
+          }
+          if (!targetUserId || targetUserId === this.currentUser?.id) {
+            if (this.currentUser) this.currentUser.isMuted = isMuted;
+            if (this.onForceMute) this.onForceMute(isMuted);
+          }
+        });
+
+        this.socket.on('force_mute_all', ({ isMuted }: { isMuted: boolean }) => {
+          if (this.currentRoom) {
+            this.currentRoom.participants = this.currentRoom.participants.map((p) => {
+              if (p.role !== 'admin') {
+                const updated = { ...p, isMuted };
+                if (this.onUserUpdated) this.onUserUpdated(updated);
+                return updated;
+              }
+              return p;
+            });
+          }
+          if (this.currentUser && this.currentUser.role !== 'admin') {
+            if (this.currentUser) this.currentUser.isMuted = isMuted;
+            if (this.onForceMute) this.onForceMute(isMuted);
+          }
         });
 
         this.socket.on('kicked_from_room', ({ reason }: { reason: string }) => {
@@ -592,8 +622,38 @@ export class NetworkService {
       }
 
       case 'force_mute': {
-        if (msg.targetUserId === this.currentUser.id) {
-          this.currentUser.isMuted = !!msg.isMuted;
+        if (this.currentRoom) {
+          this.currentRoom.participants = this.currentRoom.participants.map((p) => {
+            if (p.id === msg.targetUserId) {
+              const updated = { ...p, isMuted: !!msg.isMuted };
+              if (this.onUserUpdated) this.onUserUpdated(updated);
+              return updated;
+            }
+            return p;
+          });
+        }
+        if (msg.targetUserId === this.currentUser?.id) {
+          if (this.currentUser) this.currentUser.isMuted = !!msg.isMuted;
+          if (this.onForceMute) {
+            this.onForceMute(!!msg.isMuted);
+          }
+        }
+        break;
+      }
+
+      case 'force_mute_all': {
+        if (this.currentRoom) {
+          this.currentRoom.participants = this.currentRoom.participants.map((p) => {
+            if (p.role !== 'admin') {
+              const updated = { ...p, isMuted: !!msg.isMuted };
+              if (this.onUserUpdated) this.onUserUpdated(updated);
+              return updated;
+            }
+            return p;
+          });
+        }
+        if (this.currentUser && this.currentUser.role !== 'admin') {
+          if (this.currentUser) this.currentUser.isMuted = !!msg.isMuted;
           if (this.onForceMute) {
             this.onForceMute(!!msg.isMuted);
           }
@@ -667,7 +727,33 @@ export class NetworkService {
           }
         })
         .on('broadcast', { event: 'force_mute' }, ({ payload }) => {
+          if (this.currentRoom) {
+            this.currentRoom.participants = this.currentRoom.participants.map((p) => {
+              if (p.id === payload.targetUserId) {
+                const updated = { ...p, isMuted: !!payload.isMuted };
+                if (this.onUserUpdated) this.onUserUpdated(updated);
+                return updated;
+              }
+              return p;
+            });
+          }
           if (payload.targetUserId === this.currentUser?.id) {
+            if (this.currentUser) this.currentUser.isMuted = !!payload.isMuted;
+            if (this.onForceMute) this.onForceMute(!!payload.isMuted);
+          }
+        })
+        .on('broadcast', { event: 'force_mute_all' }, ({ payload }) => {
+          if (this.currentRoom) {
+            this.currentRoom.participants = this.currentRoom.participants.map((p) => {
+              if (p.role !== 'admin') {
+                const updated = { ...p, isMuted: !!payload.isMuted };
+                if (this.onUserUpdated) this.onUserUpdated(updated);
+                return updated;
+              }
+              return p;
+            });
+          }
+          if (this.currentUser && this.currentUser.role !== 'admin') {
             if (this.currentUser) this.currentUser.isMuted = !!payload.isMuted;
             if (this.onForceMute) this.onForceMute(!!payload.isMuted);
           }
@@ -961,6 +1047,17 @@ export class NetworkService {
 
   // Admin controls
   adminMuteUser(targetUserId: string, muteState: boolean) {
+    if (this.currentRoom) {
+      this.currentRoom.participants = this.currentRoom.participants.map((p) => {
+        if (p.id === targetUserId) {
+          const updated = { ...p, isMuted: muteState };
+          if (this.onUserUpdated) this.onUserUpdated(updated);
+          return updated;
+        }
+        return p;
+      });
+    }
+
     this.publishMeshMessage({
       type: 'force_mute',
       roomId: this.currentRoom?.id,
@@ -987,6 +1084,17 @@ export class NetworkService {
   }
 
   adminMuteAll(muteState: boolean) {
+    if (this.currentRoom) {
+      this.currentRoom.participants = this.currentRoom.participants.map((p) => {
+        if (p.role !== 'admin') {
+          const updated = { ...p, isMuted: muteState };
+          if (this.onUserUpdated) this.onUserUpdated(updated);
+          return updated;
+        }
+        return p;
+      });
+    }
+
     this.publishMeshMessage({
       type: 'force_mute_all',
       roomId: this.currentRoom?.id,
@@ -1006,12 +1114,6 @@ export class NetworkService {
         type: 'tab_force_mute_all',
         roomId: this.currentRoom.id,
         isMuted: muteState,
-      });
-      this.currentRoom.participants = this.currentRoom.participants.map((p) => {
-        if (p.role !== 'admin') {
-          return { ...p, isMuted: muteState };
-        }
-        return p;
       });
     }
   }
@@ -1192,8 +1294,38 @@ export class NetworkService {
       }
 
       case 'tab_force_mute': {
-        if (msg.targetUserId === this.currentUser.id) {
-          this.currentUser.isMuted = !!msg.isMuted;
+        if (this.currentRoom) {
+          this.currentRoom.participants = this.currentRoom.participants.map((p) => {
+            if (p.id === msg.targetUserId) {
+              const updated = { ...p, isMuted: !!msg.isMuted };
+              if (this.onUserUpdated) this.onUserUpdated(updated);
+              return updated;
+            }
+            return p;
+          });
+        }
+        if (msg.targetUserId === this.currentUser?.id) {
+          if (this.currentUser) this.currentUser.isMuted = !!msg.isMuted;
+          if (this.onForceMute) {
+            this.onForceMute(!!msg.isMuted);
+          }
+        }
+        break;
+      }
+
+      case 'tab_force_mute_all': {
+        if (this.currentRoom) {
+          this.currentRoom.participants = this.currentRoom.participants.map((p) => {
+            if (p.role !== 'admin') {
+              const updated = { ...p, isMuted: !!msg.isMuted };
+              if (this.onUserUpdated) this.onUserUpdated(updated);
+              return updated;
+            }
+            return p;
+          });
+        }
+        if (this.currentUser && this.currentUser.role !== 'admin') {
+          if (this.currentUser) this.currentUser.isMuted = !!msg.isMuted;
           if (this.onForceMute) {
             this.onForceMute(!!msg.isMuted);
           }

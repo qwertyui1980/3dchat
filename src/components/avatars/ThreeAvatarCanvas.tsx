@@ -52,18 +52,15 @@ function loadRobotGLTF(): Promise<GLTF> {
 
 export function getAssetUrl(relPath: string): string {
   const clean = relPath.replace(/^\//, '');
-  if (typeof window === 'undefined') return `./${clean}`;
+  if (typeof window === 'undefined') return `/${clean}`;
 
   const origin = window.location.origin;
-  let path = window.location.pathname;
+  const pathname = window.location.pathname;
 
-  if (path.endsWith('.html')) {
-    path = path.substring(0, path.lastIndexOf('/') + 1);
-  } else if (!path.endsWith('/')) {
-    path = `${path}/`;
-  }
+  // Preserve repo basePath for GitHub Pages (/3dchat)
+  const basePath = pathname.startsWith('/3dchat') ? '/3dchat' : '';
 
-  return `${origin}${path}${clean}`;
+  return `${origin}${basePath}/${clean}`;
 }
 
 // Cache for loaded FaceCap GLTF
@@ -77,6 +74,7 @@ function loadFaceCapGLTF(renderer: THREE.WebGLRenderer): Promise<GLTF> {
   faceCapLoadingPromise = new Promise((resolve, reject) => {
     const basisPath = getAssetUrl('basis/');
     const localModelPath = getAssetUrl('models/gltf/facecap.glb');
+    const cdnBasisPath = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/examples/jsm/libs/basis/';
     const cdnModelPath = 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@master/examples/models/gltf/facecap.glb';
 
     const ktx2Loader = new KTX2Loader()
@@ -97,7 +95,8 @@ function loadFaceCapGLTF(renderer: THREE.WebGLRenderer): Promise<GLTF> {
         undefined,
         (err) => {
           if (!isFallback) {
-            console.warn('[ThreeAvatarCanvas] Local facecap.glb failed, falling back to CDN...', err);
+            console.warn('[ThreeAvatarCanvas] Local facecap.glb or transcoder failed, falling back to CDN...', err);
+            ktx2Loader.setTranscoderPath(cdnBasisPath);
             attemptLoad(cdnModelPath, true);
           } else {
             console.error('[ThreeAvatarCanvas] Error loading facecap.glb:', err);

@@ -37,6 +37,9 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
   if (!isOpen) return null;
 
   const otherParticipants = room.participants.filter((p) => p.id !== currentUser.id);
+  const isAllMuted =
+    otherParticipants.length > 0 &&
+    otherParticipants.filter((p) => p.role !== 'admin').every((p) => p.isMuted);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
@@ -73,10 +76,23 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
               {/* Mute All */}
               <button
                 onClick={onMuteAll}
-                className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-bold transition active:scale-98"
+                className={`flex items-center justify-center gap-2 p-3 rounded-xl border text-xs font-bold transition active:scale-98 ${
+                  isAllMuted
+                    ? 'bg-rose-950/80 border-rose-700 text-rose-300 hover:bg-rose-900'
+                    : 'bg-slate-800/80 hover:bg-slate-700 text-slate-200 border-slate-700'
+                }`}
               >
-                <VolumeX className="w-4 h-4 text-rose-400" />
-                <span>Silenciar a Todos</span>
+                {isAllMuted ? (
+                  <>
+                    <Volume2 className="w-4 h-4 text-emerald-400" />
+                    <span>Desmutear a Todos</span>
+                  </>
+                ) : (
+                  <>
+                    <VolumeX className="w-4 h-4 text-rose-400" />
+                    <span>Silenciar a Todos</span>
+                  </>
+                )}
               </button>
 
               {/* Toggle Lock */}

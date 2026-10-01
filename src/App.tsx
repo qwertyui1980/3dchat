@@ -306,6 +306,7 @@ export default function App() {
 
     networkServiceSingleton.onUserJoined = (user, participants) => {
       setRoom((prev) => (prev ? { ...prev, participants } : null));
+      audioServiceSingleton.playJoinSound();
       addToast(`${user.name} se ha unido al espacio`, 'info');
     };
 
@@ -537,6 +538,15 @@ export default function App() {
   // Admin controls
   const handleAdminMute = (targetUserId: string, state: boolean) => {
     networkServiceSingleton.adminMuteUser(targetUserId, state);
+    setRoom((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        participants: prev.participants.map((p) =>
+          p.id === targetUserId ? { ...p, isMuted: state } : p
+        ),
+      };
+    });
     addToast(state ? 'Participante silenciado' : 'Micrófono de participante reactivado', 'info');
   };
 
@@ -559,6 +569,17 @@ export default function App() {
     const targetMuteState = !isCurrentlyAllMuted;
 
     networkServiceSingleton.adminMuteAll(targetMuteState);
+    setRoom((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        participants: prev.participants.map((p) =>
+          p.role !== 'admin' && p.id !== currentUser.id
+            ? { ...p, isMuted: targetMuteState }
+            : p
+        ),
+      };
+    });
     addToast(
       targetMuteState
         ? 'Todos los participantes han sido silenciados por el administrador'

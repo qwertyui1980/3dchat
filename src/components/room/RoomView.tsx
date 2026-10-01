@@ -6,6 +6,7 @@ import { CallControls } from './CallControls';
 import { ChatSidebar } from './ChatSidebar';
 import { CameraPreviewPip } from './CameraPreviewPip';
 import { AuthenticatedUser } from '../auth/Login';
+import { StarfieldBackground } from '../common/StarfieldBackground';
 
 interface RoomViewProps {
   room: RoomInfo;
@@ -87,7 +88,10 @@ export const RoomView: React.FC<RoomViewProps> = ({
   }, [allParticipants, currentUser.id]);
 
   return (
-    <div className="flex flex-col h-full h-[100dvh] w-full max-w-full overflow-hidden bg-[#08080a] text-neutral-100 select-none">
+    <div className="relative flex flex-col h-full h-[100dvh] w-full max-w-full overflow-hidden bg-[#050508] text-neutral-100 select-none">
+      {/* Discreet, smooth cosmic starfield travel background */}
+      <StarfieldBackground speed={0.7} starCount={175} opacity={0.55} />
+
       {/* Top Bar Header */}
       <Header
         room={room}
@@ -99,7 +103,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
       />
 
       {/* Main Video Call Stage Layout */}
-      <div className="flex-1 flex min-h-0 relative overflow-hidden">
+      <div className="flex-1 flex min-h-0 relative overflow-hidden z-10">
         
         {/* Participant Avatars Viewport */}
         <div className="flex-1 p-2 sm:p-5 overflow-y-auto flex flex-col justify-center">
