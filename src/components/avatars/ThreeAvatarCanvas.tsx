@@ -50,7 +50,7 @@ function loadRobotGLTF(): Promise<GLTF> {
 }
 
 
-export function getAssetUrl(relPath: string): string {
+function getAssetUrl(relPath: string): string {
   const clean = relPath.replace(/^\//, '');
   if (typeof window === 'undefined') return `/${clean}`;
 

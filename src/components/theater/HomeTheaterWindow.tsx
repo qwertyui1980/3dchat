@@ -12,6 +12,7 @@ import {
 import { RoomMediaState } from '../../types';
 import { YouTubeSyncPlayer } from './YouTubeSyncPlayer';
 
+
 interface HomeTheaterWindowProps {
   isOpen: boolean;
   onClose: () => void;
