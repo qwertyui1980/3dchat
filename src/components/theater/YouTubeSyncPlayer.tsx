@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { VideoQueueItem, RoomMediaState } from '../../types';
-import { Volume2, VolumeX, SkipForward, Play, Pause, AlertCircle } from 'lucide-react';
+import { RoomMediaState } from '../../types';
+import { Play, AlertCircle } from 'lucide-react';
 
 interface YouTubeSyncPlayerProps {
   mediaState: RoomMediaState;
@@ -68,7 +68,6 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
   const containerId = useRef(`yt_player_${Math.random().toString(36).substring(2, 9)}`);
   const playerRef = useRef<any>(null);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
   const [needsAutoplayInteraction, setNeedsAutoplayInteraction] = useState(false);
   const lastTargetVideoIdRef = useRef<string | null>(null);
   const isSyncingInternalRef = useRef(false);
@@ -88,11 +87,14 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
         videoId: currentVideo?.videoId || '',
         playerVars: {
           autoplay: 1,
-          controls: 1,
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
           rel: 0,
           modestbranding: 1,
           playsinline: 1,
           enablejsapi: 1,
+          iv_load_policy: 3,
           origin: window.location.origin,
         },
         events: {
@@ -235,21 +237,13 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
     }
   };
 
-  const handleToggleMute = () => {
-    if (!playerRef.current) return;
-    if (isMuted) {
-      playerRef.current.unMute();
-      setIsMuted(false);
-    } else {
-      playerRef.current.mute();
-      setIsMuted(true);
-    }
-  };
-
   return (
-    <div className="relative w-full h-full bg-black overflow-hidden flex items-center justify-center select-none group">
+    <div className="relative w-full h-full bg-black overflow-hidden flex items-center justify-center select-none">
       {/* Target container for YT.Player iframe */}
-      <div id={containerId.current} className="w-full h-full pointer-events-auto" />
+      <div id={containerId.current} className="w-full h-full pointer-events-none" />
+
+      {/* Transparent shield overlay completely blocking click/tap interaction on the video player */}
+      <div className="absolute inset-0 z-10 pointer-events-auto bg-transparent" />
 
       {/* Autoplay / Unmute Prompt Overlay (browser policy) */}
       {needsAutoplayInteraction && (
@@ -283,33 +277,6 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
           <p className="text-neutral-400 text-xs max-w-sm">
             No hay ningún video en reproducción. Usa el botón de <strong className="text-cyan-300">Playlist</strong> para pegar un enlace de YouTube y tomar tu turno.
           </p>
-        </div>
-      )}
-
-      {/* Subtle floating quick-action controls in top-right corner of video */}
-      {currentVideo && (
-        <div className="absolute top-2.5 right-2.5 z-20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1.5 bg-[#0a0a10]/80 backdrop-blur-md border border-white/10 rounded-xl p-1 shadow-lg">
-          {/* Mute local video audio toggle */}
-          <button
-            type="button"
-            onClick={handleToggleMute}
-            className="p-1.5 rounded-lg text-neutral-300 hover:text-white hover:bg-white/10 transition cursor-pointer"
-            title={isMuted ? 'Activar sonido del video' : 'Silenciar sonido del video'}
-          >
-            {isMuted ? <VolumeX className="w-4 h-4 text-rose-400" /> : <Volume2 className="w-4 h-4 text-cyan-300" />}
-          </button>
-
-          {/* Skip button for admin or video owner */}
-          {onSkip && (
-            <button
-              type="button"
-              onClick={onSkip}
-              className="p-1.5 rounded-lg text-neutral-300 hover:text-amber-300 hover:bg-white/10 transition cursor-pointer"
-              title="Saltar al siguiente video de la playlist"
-            >
-              <SkipForward className="w-4 h-4" />
-            </button>
-          )}
         </div>
       )}
     </div>
