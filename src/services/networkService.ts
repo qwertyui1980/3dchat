@@ -142,6 +142,7 @@ export class NetworkService {
               }
               return p;
             });
+            this.updateRemoteAudioMuteState(targetId, isMuted);
           }
           if (!targetUserId || targetUserId === this.currentUser?.id) {
             if (this.currentUser) this.currentUser.isMuted = isMuted;
@@ -159,6 +160,7 @@ export class NetworkService {
               }
               return p;
             });
+            this.updateAllRemoteAudioMuteState(isMuted);
           }
           if (this.currentUser && this.currentUser.role !== 'admin') {
             if (this.currentUser) this.currentUser.isMuted = isMuted;
@@ -338,6 +340,28 @@ export class NetworkService {
     });
   }
 
+  private updateRemoteAudioMuteState(userId: string, isMuted: boolean) {
+    if (!this.currentRoom) return;
+    const peerId = this.getPeerJsId(this.currentRoom.id, userId);
+    const audioEl = this.remoteAudioElements.get(peerId);
+    if (audioEl) {
+      audioEl.muted = isMuted;
+    }
+  }
+
+  private updateAllRemoteAudioMuteState(muteState: boolean) {
+    if (!this.currentRoom || !this.currentUser) return;
+    this.currentRoom.participants.forEach((p) => {
+      if (p.id !== this.currentUser?.id && p.role !== 'admin') {
+        const peerId = this.getPeerJsId(this.currentRoom!.id, p.id);
+        const audioEl = this.remoteAudioElements.get(peerId);
+        if (audioEl) {
+          audioEl.muted = muteState;
+        }
+      }
+    });
+  }
+
   private setupMediaCall(call: MediaConnection) {
     call.on('stream', (remoteStream) => {
       let audioEl = this.remoteAudioElements.get(call.peer);
@@ -347,6 +371,16 @@ export class NetworkService {
         this.remoteAudioElements.set(call.peer, audioEl);
       }
       audioEl.srcObject = remoteStream;
+
+      if (this.currentRoom) {
+        const participant = this.currentRoom.participants.find(
+          (p) => this.getPeerJsId(this.currentRoom!.id, p.id) === call.peer
+        );
+        if (participant) {
+          audioEl.muted = !!participant.isMuted;
+        }
+      }
+
       audioEl.play().catch((e) => console.warn('[Audio] Autoplay notice:', e));
     });
 
@@ -631,6 +665,7 @@ export class NetworkService {
             }
             return p;
           });
+          this.updateRemoteAudioMuteState(msg.targetUserId, !!msg.isMuted);
         }
         if (msg.targetUserId === this.currentUser?.id) {
           if (this.currentUser) this.currentUser.isMuted = !!msg.isMuted;
@@ -651,6 +686,7 @@ export class NetworkService {
             }
             return p;
           });
+          this.updateAllRemoteAudioMuteState(!!msg.isMuted);
         }
         if (this.currentUser && this.currentUser.role !== 'admin') {
           if (this.currentUser) this.currentUser.isMuted = !!msg.isMuted;
@@ -736,6 +772,7 @@ export class NetworkService {
               }
               return p;
             });
+            this.updateRemoteAudioMuteState(payload.targetUserId, !!payload.isMuted);
           }
           if (payload.targetUserId === this.currentUser?.id) {
             if (this.currentUser) this.currentUser.isMuted = !!payload.isMuted;
@@ -752,6 +789,7 @@ export class NetworkService {
               }
               return p;
             });
+            this.updateAllRemoteAudioMuteState(!!payload.isMuted);
           }
           if (this.currentUser && this.currentUser.role !== 'admin') {
             if (this.currentUser) this.currentUser.isMuted = !!payload.isMuted;
@@ -1056,6 +1094,7 @@ export class NetworkService {
         }
         return p;
       });
+      this.updateRemoteAudioMuteState(targetUserId, muteState);
     }
 
     this.publishMeshMessage({
@@ -1093,6 +1132,7 @@ export class NetworkService {
         }
         return p;
       });
+      this.updateAllRemoteAudioMuteState(muteState);
     }
 
     this.publishMeshMessage({
@@ -1303,6 +1343,7 @@ export class NetworkService {
             }
             return p;
           });
+          this.updateRemoteAudioMuteState(msg.targetUserId, !!msg.isMuted);
         }
         if (msg.targetUserId === this.currentUser?.id) {
           if (this.currentUser) this.currentUser.isMuted = !!msg.isMuted;
@@ -1323,6 +1364,7 @@ export class NetworkService {
             }
             return p;
           });
+          this.updateAllRemoteAudioMuteState(!!msg.isMuted);
         }
         if (this.currentUser && this.currentUser.role !== 'admin') {
           if (this.currentUser) this.currentUser.isMuted = !!msg.isMuted;

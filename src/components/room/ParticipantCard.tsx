@@ -26,6 +26,12 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
   onAdminKick,
 }) => {
   const isSpeaking = (features.audioVolume > 0.12 || false) && !user.isMuted;
+  const effectiveFeatures = React.useMemo(() => {
+    if (user.isMuted) {
+      return { ...features, audioVolume: 0 };
+    }
+    return features;
+  }, [features, user.isMuted]);
 
   return (
     <div
@@ -38,7 +44,7 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
       {/* Avatar Canvas Rendering */}
       <AvatarCanvas
         avatarId={user.avatarId}
-        features={features}
+        features={effectiveFeatures}
         userName=""
         isSpeaking={isSpeaking}
         className="w-full h-full"

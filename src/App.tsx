@@ -359,6 +359,16 @@ export default function App() {
       setIsMicActive(!isMuted);
       setIsAdminMuted(isMuted);
       audioServiceSingleton.setMute(isMuted);
+      setCurrentUser((prev) => (prev ? { ...prev, isMuted } : null));
+      setRoom((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          participants: prev.participants.map((p) =>
+            p.id === networkServiceSingleton.currentUser?.id ? { ...p, isMuted } : p
+          ),
+        };
+      });
       addToast(
         isMuted
           ? 'El administrador ha silenciado tu micrófono. No puedes desmutearte hasta que el administrador lo autorice.'
@@ -497,6 +507,16 @@ export default function App() {
     setIsMicActive(nextState);
     audioServiceSingleton.setMute(!nextState);
     networkServiceSingleton.toggleMute(!nextState);
+    setCurrentUser((prev) => (prev ? { ...prev, isMuted: !nextState } : null));
+    setRoom((prev) => {
+      if (!prev || !currentUser) return prev;
+      return {
+        ...prev,
+        participants: prev.participants.map((p) =>
+          p.id === currentUser.id ? { ...p, isMuted: !nextState } : p
+        ),
+      };
+    });
   };
 
   // Toggle Camera / Face Detection
