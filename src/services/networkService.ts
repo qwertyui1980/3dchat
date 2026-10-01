@@ -104,6 +104,7 @@ export class NetworkService {
           if (this.currentRoom && this.currentUser) {
             this.socket.emit('join_room', {
               roomId: this.currentRoom.id,
+              userId: this.currentUser.id,
               userName: this.currentUser.name,
               avatarId: this.currentUser.avatarId,
               createAsAdmin: this.currentUser.role === 'admin',
@@ -114,17 +115,17 @@ export class NetworkService {
 
         this.socket.on('user_joined', ({ user, participants }: { user: User; participants: User[] }) => {
           if (this.currentRoom) {
-            this.currentRoom.participants = [...participants];
+            this.currentRoom.participants = this.deduplicateParticipants(participants);
           }
-          if (this.onUserJoined) this.onUserJoined(user, [...participants]);
+          if (this.onUserJoined) this.onUserJoined(user, this.currentRoom?.participants || participants);
         });
 
         this.socket.on('user_left', ({ userId, participants }: { userId: string; participants: User[] }) => {
           if (this.currentRoom) {
-            this.currentRoom.participants = [...participants];
+            this.currentRoom.participants = this.deduplicateParticipants(participants);
           }
           this.closePeer(userId);
-          if (this.onUserLeft) this.onUserLeft(userId, [...participants]);
+          if (this.onUserLeft) this.onUserLeft(userId, this.currentRoom?.participants || participants);
         });
 
         this.socket.on('user_updated', ({ user }: { user: User }) => {
@@ -197,7 +198,7 @@ export class NetworkService {
 
         this.socket.on('all_users_updated', ({ participants }: { participants: User[] }) => {
           if (this.currentRoom) {
-            this.currentRoom.participants = [...participants];
+            this.currentRoom.participants = this.deduplicateParticipants(participants);
           }
           if (this.currentUser) {
             const selfInList = participants.find((p) => p.id === this.currentUser?.id);
@@ -348,11 +349,42 @@ export class NetworkService {
     if (this.socket?.connected) {
       this.socket.emit('join_room', {
         roomId: cleanRoomId,
+        userId: localUser.id,
         userName: cleanUserName,
         avatarId,
         createAsAdmin,
       });
     }
+  }
+
+  // --- PARTICIPANT DEDUPLICATION ENGINE ---
+  public deduplicateParticipants(list: User[]): User[] {
+    const seenIds = new Set<string>();
+    const seenNames = new Set<string>();
+    const result: User[] = [];
+
+    // Always put currentUser first if present
+    const self = this.currentUser;
+    if (self) {
+      seenIds.add(self.id);
+      if (self.name) seenNames.add(self.name.trim().toLowerCase());
+      result.push(self);
+    }
+
+    for (const u of list) {
+      if (!u || !u.id) continue;
+      const cleanName = (u.name || '').trim().toLowerCase();
+      // Skip if it represents currentUser
+      if (self && (u.id === self.id || (cleanName && cleanName === self.name.trim().toLowerCase()))) {
+        continue;
+      }
+      if (!seenIds.has(u.id) && (!cleanName || !seenNames.has(cleanName))) {
+        seenIds.add(u.id);
+        if (cleanName) seenNames.add(cleanName);
+        result.push(u);
+      }
+    }
+    return result;
   }
 
   // --- 1. PEERJS WEBRTC P2P LAYER ---
@@ -716,7 +748,9 @@ export class NetworkService {
 
     // Ignore self-sent messages
     const senderId = msg.user?.id || msg.userId || msg.message?.userId;
-    if (senderId === this.currentUser.id) return;
+    const senderName = (msg.user?.name || msg.message?.userName || '').trim().toLowerCase();
+    const selfName = (this.currentUser.name || '').trim().toLowerCase();
+    if (senderId === this.currentUser.id || (senderName && senderName === selfName)) return;
 
     if (senderId) {
       this.peerHeartbeats.set(senderId, Date.now());
@@ -724,7 +758,7 @@ export class NetworkService {
 
     switch (msg.type) {
       case 'who_is_here': {
-        if (msg.user && msg.user.id !== this.currentUser.id) {
+        if (msg.user && msg.user.id !== this.currentUser.id && msg.user.name?.trim().toLowerCase() !== selfName) {
           // Immediately respond with our presence so the new peer discovers us
           this.publishMeshMessage({
             type: 'presence_sync',
@@ -733,8 +767,11 @@ export class NetworkService {
           });
 
           // Add new user if not already in participants
-          if (!this.currentRoom.participants.some((p) => p.id === msg.user.id)) {
-            const nextList = [...this.currentRoom.participants, msg.user];
+          const exists = this.currentRoom.participants.some(
+            (p) => p.id === msg.user.id || (p.name && msg.user.name && p.name.trim().toLowerCase() === msg.user.name.trim().toLowerCase())
+          );
+          if (!exists) {
+            const nextList = this.deduplicateParticipants([...this.currentRoom.participants, msg.user]);
             this.currentRoom.participants = nextList;
             this.connectToPeerP2P(msg.user);
             if (this.onUserJoined) {
@@ -757,10 +794,12 @@ export class NetworkService {
       case 'presence_sync':
       case 'presence_beacon':
       case 'user_joined': {
-        if (msg.user && msg.user.id !== this.currentUser.id) {
-          const existingIdx = this.currentRoom.participants.findIndex((p) => p.id === msg.user.id);
+        if (msg.user && msg.user.id !== this.currentUser.id && msg.user.name?.trim().toLowerCase() !== selfName) {
+          const existingIdx = this.currentRoom.participants.findIndex(
+            (p) => p.id === msg.user.id || (p.name && msg.user.name && p.name.trim().toLowerCase() === msg.user.name.trim().toLowerCase())
+          );
           if (existingIdx === -1) {
-            const nextList = [...this.currentRoom.participants, msg.user];
+            const nextList = this.deduplicateParticipants([...this.currentRoom.participants, msg.user]);
             this.currentRoom.participants = nextList;
             this.connectToPeerP2P(msg.user);
             if (this.onUserJoined) {
@@ -778,8 +817,8 @@ export class NetworkService {
           } else {
             // Update participant details if changed
             const updated = [...this.currentRoom.participants];
-            updated[existingIdx] = msg.user;
-            this.currentRoom.participants = updated;
+            updated[existingIdx] = { ...updated[existingIdx], ...msg.user };
+            this.currentRoom.participants = this.deduplicateParticipants(updated);
             if (this.onUserUpdated) {
               this.onUserUpdated(msg.user);
             }
@@ -1906,15 +1945,20 @@ export class NetworkService {
 
     switch (msg.type) {
       case 'tab_who_is_in_room': {
-        if (msg.user && msg.user.id !== this.currentUser.id) {
+        const selfName = (this.currentUser.name || '').trim().toLowerCase();
+        const incomingName = (msg.user?.name || '').trim().toLowerCase();
+        if (msg.user && msg.user.id !== this.currentUser.id && incomingName !== selfName) {
           this.broadcastChannel?.postMessage({
             type: 'tab_sync_presence',
             roomId: this.currentRoom.id,
             user: this.currentUser,
           });
 
-          if (!this.currentRoom.participants.some((p) => p.id === msg.user.id)) {
-            const nextList = [...this.currentRoom.participants, msg.user];
+          const exists = this.currentRoom.participants.some(
+            (p) => p.id === msg.user.id || (p.name && incomingName && p.name.trim().toLowerCase() === incomingName)
+          );
+          if (!exists) {
+            const nextList = this.deduplicateParticipants([...this.currentRoom.participants, msg.user]);
             this.currentRoom.participants = nextList;
             if (this.onUserJoined) {
               this.onUserJoined(msg.user, nextList);
@@ -1935,10 +1979,14 @@ export class NetworkService {
 
       case 'tab_sync_presence':
       case 'tab_user_joined': {
-        if (msg.user && msg.user.id !== this.currentUser.id) {
-          const exists = this.currentRoom.participants.some((p) => p.id === msg.user.id);
+        const selfName = (this.currentUser.name || '').trim().toLowerCase();
+        const incomingName = (msg.user?.name || '').trim().toLowerCase();
+        if (msg.user && msg.user.id !== this.currentUser.id && incomingName !== selfName) {
+          const exists = this.currentRoom.participants.some(
+            (p) => p.id === msg.user.id || (p.name && incomingName && p.name.trim().toLowerCase() === incomingName)
+          );
           if (!exists) {
-            const nextList = [...this.currentRoom.participants, msg.user];
+            const nextList = this.deduplicateParticipants([...this.currentRoom.participants, msg.user]);
             this.currentRoom.participants = nextList;
             if (this.onUserJoined) {
               this.onUserJoined(msg.user, nextList);

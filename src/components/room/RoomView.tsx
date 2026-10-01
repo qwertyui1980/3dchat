@@ -125,11 +125,30 @@ export const RoomView: React.FC<RoomViewProps> = ({
     });
   };
 
-  // Combine current user with room participants to ensure self is present
+  // Combine current user with room participants to ensure self is present without duplicates
   const allParticipants = React.useMemo(() => {
-    const list = [...room.participants];
-    if (!list.find((p) => p.id === currentUser.id)) {
-      list.unshift(currentUser);
+    const list: User[] = [];
+    const seenIds = new Set<string>();
+    const seenNames = new Set<string>();
+
+    if (currentUser) {
+      seenIds.add(currentUser.id);
+      if (currentUser.name) seenNames.add(currentUser.name.trim().toLowerCase());
+      list.push(currentUser);
+    }
+
+    for (const p of room.participants) {
+      if (!p || !p.id) continue;
+      const cleanName = (p.name || '').trim().toLowerCase();
+      // Skip if it represents currentUser by ID or by name
+      if (currentUser && (p.id === currentUser.id || (cleanName && cleanName === currentUser.name.trim().toLowerCase()))) {
+        continue;
+      }
+      if (!seenIds.has(p.id) && (!cleanName || !seenNames.has(cleanName))) {
+        seenIds.add(p.id);
+        if (cleanName) seenNames.add(cleanName);
+        list.push(p);
+      }
     }
     return list;
   }, [room.participants, currentUser]);

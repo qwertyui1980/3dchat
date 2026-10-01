@@ -310,7 +310,7 @@ async function startServer() {
     });
 
     // Join room
-    socket.on('join_room', ({ roomId, userName, avatarId, createAsAdmin }, callback) => {
+    socket.on('join_room', ({ roomId, userId, userName, avatarId, createAsAdmin }, callback) => {
       const trimmedRoomId = (roomId || 'main').trim().toLowerCase();
       let room = rooms.get(trimmedRoomId);
 
@@ -355,9 +355,22 @@ async function startServer() {
         room.adminId = socket.id;
       }
 
+      const finalUserId = (userId && typeof userId === 'string') ? userId.trim() : socket.id;
+      const cleanName = (userName || `Usuario_${finalUserId.slice(0, 4)}`).trim();
+
+      // Deduplicate: Purge any existing connection with the same user ID or same name
+      for (const [existingSocketId, existingUser] of room.users.entries()) {
+        if (
+          existingUser.id === finalUserId ||
+          (cleanName && existingUser.name.toLowerCase() === cleanName.toLowerCase())
+        ) {
+          room.users.delete(existingSocketId);
+        }
+      }
+
       currentUser = {
-        id: socket.id,
-        name: userName || `Usuario_${socket.id.slice(0, 4)}`,
+        id: finalUserId,
+        name: cleanName,
         avatarId: avatarId || 'three_robot',
         role: isAdmin ? 'admin' : 'participant',
         roomId: trimmedRoomId,
@@ -634,7 +647,7 @@ async function startServer() {
         }
 
         io.to(currentUser.roomId).emit('user_left', {
-          userId: socket.id,
+          userId: currentUser.id,
           participants: Array.from(room.users.values()),
         });
 
