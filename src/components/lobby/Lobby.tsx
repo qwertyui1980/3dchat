@@ -30,6 +30,7 @@ import { AuthenticatedUser } from '../auth/Login';
 import { dbServiceSingleton, RoomRecord } from '../../services/dbService';
 import { getAvatarTrackingProfile, transformAvatarLandmark } from '../avatars/avatarTrackingProfiles';
 import { networkServiceSingleton } from '../../services/networkService';
+import { LegalDisclaimerModal } from '../common/LegalDisclaimerModal';
 
 interface LobbyProps {
   onJoinRoom: (config: {
@@ -142,6 +143,7 @@ export const Lobby: React.FC<LobbyProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [showCameraPip, setShowCameraPip] = useState(false);
   const [showAdjustments, setShowAdjustments] = useState(true);
+  const [isLegalOpen, setIsLegalOpen] = useState(false);
 
   // Calibration & Offset Controls
   const [cameraOffsetX, setCameraOffsetX] = useState(0);
@@ -813,11 +815,30 @@ export const Lobby: React.FC<LobbyProps> = ({
                   <ArrowRight className="w-4 h-4" />
                 </button>
               )}
+              {/* Legal & Origin Footer */}
+              <div className="pt-2 text-center text-[10px] text-neutral-500 flex flex-col items-center gap-1">
+                <span>
+                  Software libre bajo total responsabilidad personal del usuario.
+                </span>
+                <div className="flex items-center gap-2 text-neutral-400">
+                  <span>Origen: <strong className="text-neutral-300">XStreamX</strong></span>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsLegalOpen(true)}
+                    className="text-cyan-400/80 hover:text-cyan-300 underline cursor-pointer"
+                  >
+                    Ver Licencia y Descargo Legal
+                  </button>
+                </div>
+              </div>
             </form>
           </div>
         </div>
 
       </div>
+
+      <LegalDisclaimerModal isOpen={isLegalOpen} onClose={() => setIsLegalOpen(false)} />
     </div>
   );
 };

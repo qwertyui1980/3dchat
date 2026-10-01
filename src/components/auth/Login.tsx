@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Lock, User, Eye, EyeOff, ArrowRight, AlertCircle, Sparkles, ExternalLink } from 'lucide-react';
 import { dbServiceSingleton } from '../../services/dbService';
+import { LegalDisclaimerModal } from '../common/LegalDisclaimerModal';
 
 export interface AuthenticatedUser {
   username: string;
@@ -21,6 +22,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLegalOpen, setIsLegalOpen] = useState(false);
 
   // X.com handle input for direct sign in
   const [xHandleInput, setXHandleInput] = useState('');
@@ -421,7 +423,27 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           </div>
         )}
 
+        {/* Footer Legal & Origin Disclaimer */}
+        <div className="pt-2 text-center text-[10px] text-neutral-500 flex flex-col items-center gap-1">
+          <span>
+            Software provisto &ldquo;TAL CUAL&rdquo; bajo total responsabilidad personal del usuario.
+          </span>
+          <div className="flex items-center gap-2 text-neutral-400">
+            <span>Origen: <strong className="text-neutral-300">XStreamX</strong></span>
+            <span>•</span>
+            <button
+              type="button"
+              onClick={() => setIsLegalOpen(true)}
+              className="text-cyan-400/80 hover:text-cyan-300 underline cursor-pointer"
+            >
+              Ver Licencia y Descargo Legal
+            </button>
+          </div>
+        </div>
+
       </div>
+
+      <LegalDisclaimerModal isOpen={isLegalOpen} onClose={() => setIsLegalOpen(false)} />
     </div>
   );
 };
