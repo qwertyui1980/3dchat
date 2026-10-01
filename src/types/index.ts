@@ -121,3 +121,24 @@ export interface ChatMessage {
 }
 
 export type ViewLayoutMode = 'grid' | 'speaker_focus' | 'stage';
+
+export interface VideoQueueItem {
+  id: string;
+  url: string;
+  videoId: string;
+  title: string;
+  thumbnailUrl: string;
+  durationSec?: number;
+  addedByUserId: string;
+  addedByUserName: string;
+  addedAt: number;
+}
+
+export interface RoomMediaState {
+  currentVideo: VideoQueueItem | null;
+  queue: VideoQueueItem[];
+  isPlaying: boolean;
+  playbackTime: number; // in seconds
+  lastSyncTimestamp: number; // Date.now() when playbackTime was reported
+  syncedByUserId: string;
+}

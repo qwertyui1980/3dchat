@@ -1,5 +1,14 @@
-import React, { useState } from 'react';
-import { RoomInfo, User, FaceFeatures, ChatMessage, ViewLayoutMode, AvatarId } from '../../types';
+import React, { useState, useEffect } from 'react';
+import {
+  RoomInfo,
+  User,
+  FaceFeatures,
+  ChatMessage,
+  ViewLayoutMode,
+  AvatarId,
+  RoomMediaState,
+  VideoQueueItem,
+} from '../../types';
 import { Header } from '../common/Header';
 import { ParticipantCard } from './ParticipantCard';
 import { CallControls } from './CallControls';
@@ -7,6 +16,9 @@ import { ChatSidebar } from './ChatSidebar';
 import { CameraPreviewPip } from './CameraPreviewPip';
 import { AuthenticatedUser } from '../auth/Login';
 import { StarfieldBackground } from '../common/StarfieldBackground';
+import { HomeTheaterWindow } from '../theater/HomeTheaterWindow';
+import { TvFloatingLauncher } from '../theater/TvFloatingLauncher';
+import { QueueModal } from '../theater/QueueModal';
 
 interface RoomViewProps {
   room: RoomInfo;
@@ -30,6 +42,12 @@ interface RoomViewProps {
   onLeaveCall: () => void;
   authUser?: AuthenticatedUser | null;
   onLogout?: () => void;
+  mediaState: RoomMediaState;
+  onAddMediaQueueItem: (item: VideoQueueItem) => void;
+  onRemoveMediaQueueItem: (itemId: string) => void;
+  onSkipMedia: () => void;
+  onToggleMediaPlayback: (isPlaying: boolean, currentTime: number) => void;
+  onSeekMedia: (currentTime: number) => void;
 }
 
 export const RoomView: React.FC<RoomViewProps> = ({
@@ -54,13 +72,36 @@ export const RoomView: React.FC<RoomViewProps> = ({
   onLeaveCall,
   authUser,
   onLogout,
+  mediaState,
+  onAddMediaQueueItem,
+  onRemoveMediaQueueItem,
+  onSkipMedia,
+  onToggleMediaPlayback,
+  onSeekMedia,
 }) => {
   const [viewMode] = useState<ViewLayoutMode>('grid');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [lastReadMessageCount, setLastReadMessageCount] = useState(messages.length);
 
+  // Home Theater & Cue Modal States
+  const [isTheaterOpen, setIsTheaterOpen] = useState(false);
+  const [isQueueModalOpen, setIsQueueModalOpen] = useState(false);
+
+  // Automatically open theater when a new video starts if not currently open
+  useEffect(() => {
+    if (mediaState.currentVideo?.id) {
+      setIsTheaterOpen(true);
+    }
+  }, [mediaState.currentVideo?.id]);
+
   const isAdmin = currentUser.role === 'admin';
   const unreadCount = Math.max(0, messages.length - lastReadMessageCount);
+
+  // Queue and turn calculations
+  const isUserPlayingNow = mediaState.currentVideo?.addedByUserId === currentUser.id;
+  const userQueueIdx = mediaState.queue.findIndex((it) => it.addedByUserId === currentUser.id);
+  const userTurnNumber = userQueueIdx !== -1 ? userQueueIdx + 1 : null;
+  const hasActiveMedia = !!mediaState.currentVideo || mediaState.queue.length > 0;
 
   const handleToggleChat = () => {
     setIsChatOpen((prev) => {
@@ -152,7 +193,38 @@ export const RoomView: React.FC<RoomViewProps> = ({
         avatarId={currentUser.avatarId}
       />
 
-      {/* Bottom Controls Bar (Cleaned without Cuadrícula or Panel Moderador) */}
+      {/* Synchronized Home Theater Window (Draggable & Resizable 16:9 up to 1024px) */}
+      <HomeTheaterWindow
+        isOpen={isTheaterOpen}
+        onClose={() => setIsTheaterOpen(false)}
+        onOpenQueueModal={() => setIsQueueModalOpen(true)}
+        mediaState={mediaState}
+        currentUserRole={currentUser.role}
+        onTogglePlayback={onToggleMediaPlayback}
+        onSeek={onSeekMedia}
+        onVideoEnded={onSkipMedia}
+        onSkip={onSkipMedia}
+      />
+
+      {/* Floating TV Launcher Widget (when theater is minimized or closed) */}
+      <TvFloatingLauncher
+        isVisible={!isTheaterOpen && hasActiveMedia}
+        onOpen={() => setIsTheaterOpen(true)}
+        mediaState={mediaState}
+      />
+
+      {/* YouTube Cue / Playlist Modal with Personal Turn indicator */}
+      <QueueModal
+        isOpen={isQueueModalOpen}
+        onClose={() => setIsQueueModalOpen(false)}
+        mediaState={mediaState}
+        currentUser={currentUser}
+        onAddVideo={onAddMediaQueueItem}
+        onRemoveVideo={onRemoveMediaQueueItem}
+        onSkipVideo={onSkipMedia}
+      />
+
+      {/* Bottom Controls Bar */}
       <CallControls
         isMicActive={isMicActive}
         isCameraActive={isCameraActive}
@@ -167,6 +239,18 @@ export const RoomView: React.FC<RoomViewProps> = ({
         onSelectAvatar={onSelectAvatar}
         onToggleChat={handleToggleChat}
         onLeaveCall={onLeaveCall}
+        onOpenTheater={() => {
+          if (!isTheaterOpen && hasActiveMedia) {
+            setIsTheaterOpen(true);
+          } else {
+            setIsQueueModalOpen(true);
+          }
+        }}
+        isTheaterOpen={isTheaterOpen}
+        userTurnNumber={userTurnNumber}
+        isUserPlayingNow={isUserPlayingNow}
+        hasActiveMedia={hasActiveMedia}
+        queueCount={mediaState.queue.length}
       />
     </div>
   );

@@ -10,6 +10,8 @@ import {
   RoomInfo,
   User,
   ChatMessage,
+  RoomMediaState,
+  VideoQueueItem,
 } from './types';
 import {
   faceTrackerSingleton,
@@ -28,6 +30,15 @@ interface Toast {
   type: 'info' | 'success' | 'warning';
   text: string;
 }
+
+const INITIAL_MEDIA_STATE: RoomMediaState = {
+  currentVideo: null,
+  queue: [],
+  isPlaying: false,
+  playbackTime: 0,
+  lastSyncTimestamp: 0,
+  syncedByUserId: '',
+};
 
 export default function App() {
   // Authentication state
@@ -51,6 +62,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [mediaState, setMediaState] = useState<RoomMediaState>(INITIAL_MEDIA_STATE);
 
   // Hardware states
   const [isMicActive, setIsMicActive] = useState(true);
@@ -301,6 +313,7 @@ export default function App() {
       setRoom(joinedRoom);
       setCurrentUser(user);
       setIsInRoom(true);
+      setMediaState(networkServiceSingleton.currentMediaState);
       addToast(`Bienvenido al espacio ${joinedRoom.id.toUpperCase()}`, 'success');
     };
 
@@ -377,10 +390,15 @@ export default function App() {
       );
     };
 
+    networkServiceSingleton.onMediaStateChanged = (nextMedia) => {
+      setMediaState(nextMedia);
+    };
+
     networkServiceSingleton.onKicked = (reason) => {
       setIsInRoom(false);
       setRoom(null);
       setCurrentUser(null);
+      setMediaState(INITIAL_MEDIA_STATE);
       addToast(reason || 'Has sido expulsado del espacio por el administrador', 'warning');
     };
 
@@ -616,6 +634,7 @@ export default function App() {
     setRoom(null);
     setCurrentUser(null);
     setMessages([]);
+    setMediaState(INITIAL_MEDIA_STATE);
     if (typeof window !== 'undefined') {
       const basePath = getBasePath();
       const targetPath = `${basePath}/lobby`;
@@ -625,6 +644,27 @@ export default function App() {
     }
     addToast('Has salido del espacio', 'info');
   };
+
+  // Media Theater Actions
+  const handleAddMediaQueueItem = useCallback((item: VideoQueueItem) => {
+    networkServiceSingleton.addMediaQueueItem(item);
+  }, []);
+
+  const handleRemoveMediaQueueItem = useCallback((itemId: string) => {
+    networkServiceSingleton.removeMediaQueueItem(itemId);
+  }, []);
+
+  const handleSkipMedia = useCallback(() => {
+    networkServiceSingleton.skipCurrentMedia();
+  }, []);
+
+  const handleToggleMediaPlayback = useCallback((isPlaying: boolean, currentTime: number) => {
+    networkServiceSingleton.toggleMediaPlayback(isPlaying, currentTime);
+  }, []);
+
+  const handleSeekMedia = useCallback((currentTime: number) => {
+    networkServiceSingleton.seekMedia(currentTime);
+  }, []);
 
   return (
     <div className="flex flex-col h-full h-[100dvh] w-full max-w-full overflow-hidden bg-[#08080a] font-sans antialiased text-neutral-100">
@@ -720,6 +760,12 @@ export default function App() {
           onLeaveCall={handleLeaveCall}
           authUser={authenticatedUser}
           onLogout={handleLogout}
+          mediaState={mediaState}
+          onAddMediaQueueItem={handleAddMediaQueueItem}
+          onRemoveMediaQueueItem={handleRemoveMediaQueueItem}
+          onSkipMedia={handleSkipMedia}
+          onToggleMediaPlayback={handleToggleMediaPlayback}
+          onSeekMedia={handleSeekMedia}
         />
       )}
     </div>

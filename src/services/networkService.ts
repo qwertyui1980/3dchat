@@ -2,7 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import mqtt, { MqttClient } from 'mqtt';
 import { Peer, DataConnection, MediaConnection } from 'peerjs';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { User, RoomInfo, FaceFeatures, ChatMessage, AvatarId } from '../types';
+import { User, RoomInfo, FaceFeatures, ChatMessage, AvatarId, VideoQueueItem, RoomMediaState } from '../types';
 import { getSupabaseClient } from './supabaseClient';
 
 const PUBLIC_MQTT_BROKERS = [
@@ -36,6 +36,15 @@ export class NetworkService {
   public currentRoom: RoomInfo | null = null;
   private lastSentTime: number = 0;
 
+  public currentMediaState: RoomMediaState = {
+    currentVideo: null,
+    queue: [],
+    isPlaying: false,
+    playbackTime: 0,
+    lastSyncTimestamp: 0,
+    syncedByUserId: '',
+  };
+
   // Event callbacks
   public onRoomJoined: ((room: RoomInfo, user: User) => void) | null = null;
   public onUserJoined: ((user: User, participants: User[]) => void) | null = null;
@@ -47,6 +56,7 @@ export class NetworkService {
   public onKicked: ((reason: string) => void) | null = null;
   public onForceMute: ((isMuted: boolean) => void) | null = null;
   public onRoomStatusChanged: ((status: { isOpen: boolean; room: any }) => void) | null = null;
+  public onMediaStateChanged: ((state: RoomMediaState) => void) | null = null;
   public onError: ((error: string) => void) | null = null;
 
   constructor() {
@@ -187,6 +197,13 @@ export class NetworkService {
           participants.forEach((user) => {
             if (this.onUserUpdated) this.onUserUpdated(user);
           });
+        });
+
+        this.socket.on('media_state_sync', (state: RoomMediaState) => {
+          if (state && typeof state === 'object') {
+            this.currentMediaState = { ...state };
+            if (this.onMediaStateChanged) this.onMediaStateChanged(this.currentMediaState);
+          }
         });
 
         this.socket.on('room_status_changed', (status: { isOpen: boolean; room: any }) => {
@@ -648,6 +665,16 @@ export class NetworkService {
         break;
       }
 
+      case 'media_state_sync': {
+        if (msg.state && typeof msg.state === 'object') {
+          this.currentMediaState = { ...msg.state };
+          if (this.onMediaStateChanged) {
+            this.onMediaStateChanged(this.currentMediaState);
+          }
+        }
+        break;
+      }
+
       case 'room_lock': {
         this.currentRoom.isLocked = !!msg.isLocked;
         if (this.onRoomLockChanged) {
@@ -753,6 +780,14 @@ export class NetworkService {
             }
             if (this.onUserUpdated) {
               this.onUserUpdated(payload.user);
+            }
+          }
+        })
+        .on('broadcast', { event: 'media_state_sync' }, ({ payload }) => {
+          if (payload && payload.state) {
+            this.currentMediaState = { ...payload.state };
+            if (this.onMediaStateChanged) {
+              this.onMediaStateChanged(this.currentMediaState);
             }
           }
         })
@@ -1223,6 +1258,102 @@ export class NetworkService {
     }
   }
 
+  // --- 4. MEDIA / YOUTUBE THEATER SYNCHRONIZATION ---
+  syncMediaState(newState: RoomMediaState) {
+    this.currentMediaState = { ...newState };
+    if (this.onMediaStateChanged) {
+      this.onMediaStateChanged(this.currentMediaState);
+    }
+
+    this.publishMeshMessage({
+      type: 'media_state_sync',
+      roomId: this.currentRoom?.id,
+      state: this.currentMediaState,
+    });
+
+    this.supabaseChannel?.send({
+      type: 'broadcast',
+      event: 'media_state_sync',
+      payload: { state: this.currentMediaState },
+    });
+
+    this.socket?.emit('media_state_sync', this.currentMediaState);
+
+    if (this.currentRoom) {
+      this.broadcastChannel?.postMessage({
+        type: 'tab_media_state_sync',
+        roomId: this.currentRoom.id,
+        state: this.currentMediaState,
+      });
+    }
+  }
+
+  addMediaQueueItem(item: VideoQueueItem) {
+    const isFirstVideo = !this.currentMediaState.currentVideo;
+    let nextCurrent = this.currentMediaState.currentVideo;
+    let nextQueue = [...this.currentMediaState.queue];
+
+    if (isFirstVideo) {
+      nextCurrent = item;
+    } else {
+      nextQueue.push(item);
+    }
+
+    this.syncMediaState({
+      ...this.currentMediaState,
+      currentVideo: nextCurrent,
+      queue: nextQueue,
+      isPlaying: isFirstVideo ? true : this.currentMediaState.isPlaying,
+      playbackTime: isFirstVideo ? 0 : this.currentMediaState.playbackTime,
+      lastSyncTimestamp: Date.now(),
+      syncedByUserId: this.currentUser?.id || '',
+    });
+  }
+
+  removeMediaQueueItem(itemId: string) {
+    const nextQueue = this.currentMediaState.queue.filter((it) => it.id !== itemId);
+    this.syncMediaState({
+      ...this.currentMediaState,
+      queue: nextQueue,
+      lastSyncTimestamp: Date.now(),
+      syncedByUserId: this.currentUser?.id || '',
+    });
+  }
+
+  skipCurrentMedia() {
+    const nextQueue = [...this.currentMediaState.queue];
+    const nextVideo = nextQueue.shift() || null;
+
+    this.syncMediaState({
+      ...this.currentMediaState,
+      currentVideo: nextVideo,
+      queue: nextQueue,
+      isPlaying: !!nextVideo,
+      playbackTime: 0,
+      lastSyncTimestamp: Date.now(),
+      syncedByUserId: this.currentUser?.id || '',
+    });
+  }
+
+  toggleMediaPlayback(isPlaying: boolean, currentTime: number) {
+    this.syncMediaState({
+      ...this.currentMediaState,
+      isPlaying,
+      playbackTime: Math.max(0, currentTime),
+      lastSyncTimestamp: Date.now(),
+      syncedByUserId: this.currentUser?.id || '',
+    });
+  }
+
+  seekMedia(currentTime: number) {
+    this.syncMediaState({
+      ...this.currentMediaState,
+      playbackTime: Math.max(0, currentTime),
+      lastSyncTimestamp: Date.now(),
+      syncedByUserId: this.currentUser?.id || '',
+    });
+  }
+
   private closePeer(userId: string) {
     if (this.currentRoom) {
       const peerId = this.getPeerJsId(this.currentRoom.id, userId);
@@ -1324,6 +1455,16 @@ export class NetworkService {
         if (msg.message && msg.message.userId !== this.currentUser.id) {
           if (this.onChatMessage) {
             this.onChatMessage(msg.message);
+          }
+        }
+        break;
+      }
+
+      case 'tab_media_state_sync': {
+        if (msg.state && typeof msg.state === 'object') {
+          this.currentMediaState = { ...msg.state };
+          if (this.onMediaStateChanged) {
+            this.onMediaStateChanged(this.currentMediaState);
           }
         }
         break;
@@ -1462,6 +1603,14 @@ export class NetworkService {
     this.currentUser = null;
     this.currentRoom = null;
     this.peerHeartbeats.clear();
+    this.currentMediaState = {
+      currentVideo: null,
+      queue: [],
+      isPlaying: false,
+      playbackTime: 0,
+      lastSyncTimestamp: 0,
+      syncedByUserId: '',
+    };
   }
 }
 
