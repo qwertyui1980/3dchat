@@ -70,7 +70,7 @@ export default function App() {
   // Hardware states
   const [isMicActive, setIsMicActive] = useState(true);
   const [isAdminMuted, setIsAdminMuted] = useState(false);
-  const [isCameraActive, setIsCameraActive] = useState(true);
+  const [isCameraActive, setIsCameraActive] = useState(false);
   const [isModelReady, setIsModelReady] = useState(false);
   const [hasMicPermission, setHasMicPermission] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
@@ -275,25 +275,12 @@ export default function App() {
     await startCamera(deviceId);
   }, [startCamera]);
 
-  // 1. Initialize MediaPipe, Camera & Microphone on mount
+  // 1. Initialize Microphone & Audio Reactivity on mount (Camera starts ONLY on user request)
   useEffect(() => {
     let isMounted = true;
 
     async function initHardwareAndAI() {
-      // Initialize MediaPipe FaceLandmarker
-      try {
-        const loaded = await faceTrackerSingleton.initialize();
-        if (isMounted) {
-          setIsModelReady(loaded);
-        }
-      } catch (e) {
-        console.warn('[App] MediaPipe load error, continuing with audio-only fallback:', e);
-      }
-
-      // Initialize Webcam (optional, audio lip-sync fallback if denied)
-      await startCamera();
-
-      // Initialize Microphone (mandatory to enter room)
+      // Initialize Microphone (mandatory to participate in audio and lip-sync)
       await startMic();
     }
 
@@ -307,8 +294,11 @@ export default function App() {
         cameraStreamRef.current.getTracks().forEach((track) => track.stop());
         cameraStreamRef.current = null;
       }
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
     };
-  }, [startCamera, startMic]);
+  }, [startMic]);
 
   // 2. Set up Network Service listeners
   useEffect(() => {
@@ -372,25 +362,33 @@ export default function App() {
     };
 
     networkServiceSingleton.onForceMute = (isMuted) => {
-      setIsMicActive(!isMuted);
       setIsAdminMuted(isMuted);
-      audioServiceSingleton.setMute(isMuted);
-      setCurrentUser((prev) => (prev ? { ...prev, isMuted } : null));
-      setRoom((prev) => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          participants: prev.participants.map((p) =>
-            p.id === networkServiceSingleton.currentUser?.id ? { ...p, isMuted } : p
-          ),
-        };
-      });
-      addToast(
-        isMuted
-          ? 'El administrador ha silenciado tu micrófono. No puedes desmutearte hasta que el administrador lo autorice.'
-          : 'El administrador ha reactivado tu micrófono',
-        isMuted ? 'warning' : 'success'
-      );
+      if (isMuted) {
+        // Admin muted the participant: turn off local mic immediately
+        setIsMicActive(false);
+        audioServiceSingleton.setMute(true);
+        setCurrentUser((prev) => (prev ? { ...prev, isMuted: true } : null));
+        setRoom((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            participants: prev.participants.map((p) =>
+              p.id === networkServiceSingleton.currentUser?.id ? { ...p, isMuted: true } : p
+            ),
+          };
+        });
+        addToast(
+          'El administrador ha silenciado tu micrófono. No puedes desmutearte hasta que el administrador lo autorice.',
+          'warning'
+        );
+      } else {
+        // Admin granted permission to talk: DO NOT automatically enable physical microphone!
+        // The user must voluntarily click unmute when ready.
+        addToast(
+          'El administrador te ha concedido la palabra. Puedes activar tu micrófono cuando desees.',
+          'info'
+        );
+      }
     };
 
     networkServiceSingleton.onMediaStateChanged = (nextMedia) => {
@@ -548,27 +546,42 @@ export default function App() {
     });
   };
 
-  // Toggle Camera / Face Detection
+  // Toggle Camera / Face Detection (Safe toggle with complete hardware release)
   const handleToggleCamera = async () => {
-    const nextState = !isCameraActive;
-    setIsCameraActive(nextState);
-
-    if (!nextState) {
+    if (isCameraActive) {
+      // 1. Cleanly disable camera and release hardware device lock
+      setIsCameraActive(false);
+      faceTrackerSingleton.stopTracking();
       if (cameraStreamRef.current) {
-        cameraStreamRef.current.getVideoTracks().forEach((track) => {
-          track.enabled = false;
-        });
+        cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+        cameraStreamRef.current = null;
       }
+      setCameraStream(null);
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+      setLandmarks(null);
+      setLocalFeatures((prev) => ({
+        ...INITIAL_FACE_FEATURES,
+        audioVolume: prev.audioVolume,
+      }));
+      networkServiceSingleton.toggleCamera(false);
     } else {
-      if (cameraStreamRef.current && cameraStreamRef.current.getVideoTracks().length > 0) {
-        cameraStreamRef.current.getVideoTracks().forEach((track) => {
-          track.enabled = true;
-        });
-      } else {
-        await startCamera();
+      // 2. User explicitly requested camera activation
+      if (!isModelReady) {
+        try {
+          const loaded = await faceTrackerSingleton.initialize();
+          setIsModelReady(loaded);
+        } catch (e) {
+          console.warn('[App] MediaPipe load on demand warning:', e);
+        }
+      }
+      const success = await startCamera();
+      if (success) {
+        setIsCameraActive(true);
+        networkServiceSingleton.toggleCamera(true);
       }
     }
-    networkServiceSingleton.toggleCamera(nextState);
   };
 
   // Select Avatar in real time

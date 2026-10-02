@@ -121,9 +121,9 @@ export const Lobby: React.FC<LobbyProps> = ({
 }) => {
   const isAdminUser = authUser?.role === 'admin';
 
-  // Always generate a random alias unless signed in with X.com account
+  // Generate random alias or use authenticated user name
   const [userName, setUserName] = useState<string>(() => {
-    if (authUser?.provider === 'x' && authUser.name) {
+    if (authUser?.name) {
       return authUser.name;
     }
     return generateRandomAlias();
@@ -854,7 +854,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                 </div>
               </div>
 
-              {/* Paso 2: Nombre o Alias (Aleatorio por defecto salvo cuenta de X.com) */}
+              {/* Paso 2: Nombre o Alias */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">

@@ -499,11 +499,37 @@ export class NetworkService {
 
       // Handle incoming direct DataConnections for 60fps face tracking
       peer.on('connection', (conn) => {
+        const remotePeerId = conn.peer || '';
+        const currentRoomId = this.currentRoom?.id;
+        const expectedPrefix = currentRoomId ? `xs_${currentRoomId.replace(/[^a-zA-Z0-9]/g, '')}_` : '';
+
+        // Security check: reject if not belonging to current room namespace
+        if (expectedPrefix && !remotePeerId.startsWith(expectedPrefix)) {
+          console.warn('[PeerJS Security] Rejected data connection from foreign peer:', remotePeerId);
+          try {
+            conn.close();
+          } catch (_) {}
+          return;
+        }
+
         this.setupDataConnection(conn);
       });
 
-      // Handle incoming direct Audio Calls
+      // Handle incoming direct Audio Calls (with strict room verification)
       peer.on('call', (call) => {
+        const callerPeerId = call.peer || '';
+        const currentRoomId = this.currentRoom?.id;
+        const expectedPrefix = currentRoomId ? `xs_${currentRoomId.replace(/[^a-zA-Z0-9]/g, '')}_` : '';
+
+        // Security check: reject unknown or cross-room callers
+        if (expectedPrefix && !callerPeerId.startsWith(expectedPrefix)) {
+          console.warn('[PeerJS Security] Rejected call from unauthorized peer:', callerPeerId);
+          try {
+            call.close();
+          } catch (_) {}
+          return;
+        }
+
         if (this.localAudioStream) {
           call.answer(this.localAudioStream);
         } else {
@@ -1044,6 +1070,11 @@ export class NetworkService {
       }
 
       case 'force_mute': {
+        // Security check: Only the genuine room admin can trigger moderation mutes
+        if (this.currentRoom?.adminId && msg.senderId && msg.senderId !== this.currentRoom.adminId) {
+          console.warn('[Network Security] Ignored unauthorized force_mute from non-admin sender:', msg.senderId);
+          break;
+        }
         if (this.currentRoom) {
           this.currentRoom.participants = this.currentRoom.participants.map((p) => {
             if (p.id === msg.targetUserId) {
@@ -1065,6 +1096,11 @@ export class NetworkService {
       }
 
       case 'force_mute_all': {
+        // Security check: Only the genuine room admin can trigger mute all
+        if (this.currentRoom?.adminId && msg.senderId && msg.senderId !== this.currentRoom.adminId) {
+          console.warn('[Network Security] Ignored unauthorized force_mute_all from non-admin sender:', msg.senderId);
+          break;
+        }
         if (this.currentRoom) {
           this.currentRoom.isAllMuted = !!msg.isMuted;
           this.currentRoom.participants = this.currentRoom.participants.map((p) => {
@@ -1087,10 +1123,15 @@ export class NetworkService {
       }
 
       case 'kick_user': {
-        if (msg.targetUserId === this.currentUser.id) {
+        // Security check: Only the genuine room admin can kick participants
+        if (this.currentRoom?.adminId && msg.senderId && msg.senderId !== this.currentRoom.adminId) {
+          console.warn('[Network Security] Ignored unauthorized kick_user from non-admin sender:', msg.senderId);
+          break;
+        }
+        if (msg.targetUserId === this.currentUser?.id) {
           this.cleanup();
           if (this.onKicked) {
-            this.onKicked(msg.reason || 'Has sido expulsado del espacio');
+            this.onKicked(msg.reason || 'Has sido expulsado del espacio por el moderador');
           }
         }
         break;

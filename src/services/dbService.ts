@@ -6,7 +6,7 @@ export interface UserRecord {
   username: string;
   name: string;
   role: 'admin' | 'participant';
-  provider: 'local' | 'x';
+  provider: 'local';
   avatarId: AvatarId;
   createdAt: number;
 }
@@ -372,30 +372,6 @@ class DatabaseService {
     }
 
     return user;
-  }
-
-  async registerXUser(xHandle: string, displayName?: string): Promise<UserRecord> {
-    this.initLocal();
-    const cleanHandle = xHandle.replace(/^@/, '').trim().toLowerCase();
-    
-    // 1. Check local cache first
-    const existing = this.localUsers.get(cleanHandle);
-    if (existing) {
-      return existing;
-    }
-
-    // 2. Create new user record
-    const newUser: UserRecord = {
-      id: `x_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      username: cleanHandle,
-      name: displayName || `@${cleanHandle}`,
-      role: 'participant',
-      provider: 'x',
-      avatarId: 'cat_3d',
-      createdAt: Date.now(),
-    };
-
-    return this.upsertUser(newUser);
   }
 }
 
