@@ -21,6 +21,7 @@ import {
   AlertTriangle,
   Play,
   X,
+  Plus,
 } from 'lucide-react';
 import { AvatarId, FaceFeatures, AvatarDefinition } from '../../types';
 import { AVATAR_LIST } from '../avatars/avatarConfigs';
@@ -662,7 +663,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                     }`}
                   title={isMicActive ? 'Silenciar Micrófono' : 'Activar Micrófono'}
                 >
-                  {isMicActive ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
+                  {isMicActive ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4 text-rose-400" />}
                 </button>
 
                 <button
@@ -674,7 +675,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                     }`}
                   title={isCameraActive ? 'Pausar Cámara' : 'Reanudar Cámara'}
                 >
-                  {isCameraActive ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
+                  {isCameraActive ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4 text-rose-400" />}
                 </button>
 
                 <button

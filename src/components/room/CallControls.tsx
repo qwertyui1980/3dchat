@@ -9,10 +9,12 @@ import {
   PhoneOff,
   Check,
   Tv,
-  ListVideo,
+  ScanFace,
   PenTool,
   Shield,
   X,
+  Maximize2,
+  Minimize2,
 } from 'lucide-react';
 import { AvatarId, AvatarDefinition } from '../../types';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
@@ -32,16 +34,14 @@ interface CallControlsProps {
   onToggleChat: () => void;
   onLeaveCall: () => void;
   onOpenTheater?: () => void;
-  onOpenPlaylist?: () => void;
   isTheaterOpen?: boolean;
-  isPlaylistOpen?: boolean;
-  userTurnNumber?: number | null;
-  isUserPlayingNow?: boolean;
-  hasActiveMedia?: boolean;
-  queueCount?: number;
+  onToggleTrackingPip?: () => void;
+  isTrackingPipOpen?: boolean;
   onToggleWhiteboard?: () => void;
   isWhiteboardOpen?: boolean;
   onOpenAdminPanel?: () => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 export const CallControls: React.FC<CallControlsProps> = ({
@@ -59,16 +59,14 @@ export const CallControls: React.FC<CallControlsProps> = ({
   onToggleChat,
   onLeaveCall,
   onOpenTheater,
-  onOpenPlaylist,
   isTheaterOpen = false,
-  isPlaylistOpen = false,
-  userTurnNumber = null,
-  isUserPlayingNow = false,
-  hasActiveMedia = false,
-  queueCount = 0,
+  onToggleTrackingPip,
+  isTrackingPipOpen = true,
   onToggleWhiteboard,
   isWhiteboardOpen = false,
   onOpenAdminPanel,
+  isFullscreen = false,
+  onToggleFullscreen,
 }) => {
   const [showAvatarPicker, setShowAvatarPicker] = React.useState(false);
   const [avatars, setAvatars] = useState<AvatarDefinition[]>(() =>
@@ -97,21 +95,21 @@ export const CallControls: React.FC<CallControlsProps> = ({
 
   return (
     <div className="h-20 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-[#08080c]/95 backdrop-blur-xl border-t border-white/[0.06] px-3 sm:px-6 flex items-center justify-between z-20 shrink-0 select-none">
-      {/* Left side: Admin Mute All Button & Admin Panel or Spacer */}
+      {/* Left side: Admin Controls or Spacer */}
       <div className="flex items-center gap-2 min-w-[32px] sm:min-w-[48px]">
         {isAdmin && onMuteAll && (
           <button
             type="button"
             onClick={onMuteAll}
-            className={`px-3 py-2 sm:px-3.5 sm:py-2.5 rounded-xl border transition active:scale-95 shadow-md flex items-center gap-1.5 cursor-pointer font-bold ${
+            className={`px-3 py-2.5 rounded-2xl border transition active:scale-95 shadow-sm flex items-center gap-1.5 cursor-pointer text-xs font-semibold ${
               isAllMuted
-                ? 'bg-rose-600 hover:bg-rose-500 border-rose-500 text-white shadow-lg shadow-rose-600/30 ring-1 ring-rose-400/50'
-                : 'bg-[#121218] hover:bg-[#181822] border-amber-500/40 text-amber-300'
+                ? 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-300 border-rose-800/60'
+                : 'bg-[#121218] hover:bg-[#181822] text-neutral-200 border-white/[0.08]'
             }`}
             title={isAllMuted ? 'Reactivar micrófonos de todos' : 'Mutear a todos los participantes'}
           >
-            <MicOff className={`w-4 h-4 ${isAllMuted ? 'text-white' : 'text-amber-400'}`} />
-            <span className="text-[11px] font-black uppercase tracking-wider hidden sm:inline">
+            <MicOff className={`w-4 h-4 ${isAllMuted ? 'text-rose-400' : 'text-neutral-400'}`} />
+            <span className="hidden sm:inline">
               {isAllMuted ? 'Desmutear Todos' : 'Mutear Todos'}
             </span>
           </button>
@@ -121,10 +119,10 @@ export const CallControls: React.FC<CallControlsProps> = ({
           <button
             type="button"
             onClick={onOpenAdminPanel}
-            className="p-2 sm:px-3 sm:py-2 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-md font-bold text-[11px] uppercase tracking-wider"
+            className="px-3 py-2.5 rounded-2xl bg-[#121218] hover:bg-[#181822] border border-white/[0.08] text-neutral-200 hover:text-white transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm text-xs font-semibold"
             title="Abrir Panel de Control del Administrador"
           >
-            <Shield className="w-4 h-4 text-amber-400" />
+            <Shield className="w-4 h-4 text-neutral-400" />
             <span className="hidden md:inline">Panel Admin</span>
           </button>
         )}
@@ -136,28 +134,28 @@ export const CallControls: React.FC<CallControlsProps> = ({
         <button
           type="button"
           onClick={onToggleMic}
-          className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-lg cursor-pointer ${
+          className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-sm cursor-pointer ${
             isMicActive
               ? 'bg-[#121218] hover:bg-[#181822] text-neutral-100 border-white/[0.08]'
-              : 'bg-rose-600 hover:bg-rose-500 text-white border-rose-500 shadow-rose-600/30'
+              : 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-300 border-rose-800/60'
           }`}
           title={isMicActive ? 'Silenciar mi micrófono' : 'Activar mi micrófono'}
         >
-          {isMicActive ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5" />}
+          {isMicActive ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5 text-rose-400" />}
         </button>
 
         {/* Camera / Face Tracking Toggle */}
         <button
           type="button"
           onClick={onToggleCamera}
-          className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-lg cursor-pointer ${
+          className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-sm cursor-pointer ${
             isCameraActive
               ? 'bg-[#121218] hover:bg-[#181822] text-neutral-100 border-white/[0.08]'
-              : 'bg-rose-600 hover:bg-rose-500 text-white border-rose-500 shadow-rose-600/30'
+              : 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-300 border-rose-800/60'
           }`}
           title={isCameraActive ? 'Pausar captura de rostro' : 'Activar captura de rostro'}
         >
-          {isCameraActive ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5" />}
+          {isCameraActive ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5 text-rose-400" />}
         </button>
 
         {/* Avatar Quick Switcher Popover */}
@@ -165,10 +163,10 @@ export const CallControls: React.FC<CallControlsProps> = ({
           <button
             type="button"
             onClick={() => setShowAvatarPicker(!showAvatarPicker)}
-            className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-lg cursor-pointer ${
+            className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-sm cursor-pointer ${
               showAvatarPicker
-                ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-cyan-500/25'
-                : 'bg-[#121218] hover:bg-[#181822] text-cyan-300 border-white/[0.08]'
+                ? 'bg-[#20202c] text-white border-white/[0.22]'
+                : 'bg-[#121218] hover:bg-[#181822] text-neutral-200 border-white/[0.08]'
             }`}
             title="Cambiar mi Avatar en vivo"
           >
@@ -236,100 +234,85 @@ export const CallControls: React.FC<CallControlsProps> = ({
         {/* Leave Call Button */}
         <button
           type="button"
-          onClick={onLeaveCall}
-          className="p-3 sm:p-3.5 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white border border-rose-500 transition active:scale-95 shadow-lg shadow-rose-600/30 cursor-pointer"
-          title="Salir de la videollamada"
+          onClick={() => {
+            if (window.confirm('¿Estás seguro de que deseas salir del espacio?')) {
+              onLeaveCall();
+            }
+          }}
+          className="p-3 sm:p-3.5 rounded-2xl bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800/60 transition active:scale-95 shadow-sm cursor-pointer"
+          title="Salir del espacio"
         >
           <PhoneOff className="w-5 h-5" />
         </button>
       </div>
 
-      {/* Right: Screen & Playlist & Chat Buttons */}
+      {/* Right: Screen & Tracking & Pizarra & Chat Buttons */}
       <div className="flex items-center gap-2">
         {/* 1. Dedicated Button: Re-open Theater Video Screen */}
         {onOpenTheater && (
           <button
             type="button"
             onClick={onOpenTheater}
-            className={`relative p-2.5 sm:py-3 sm:px-3 rounded-2xl border transition active:scale-95 flex items-center gap-2 cursor-pointer ${
+            className={`relative p-2.5 sm:py-3 sm:px-3 rounded-2xl border transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm ${
               isTheaterOpen
-                ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/25'
-                : hasActiveMedia
-                ? 'bg-gradient-to-r from-[#141424] to-[#10101c] hover:bg-[#1a1a2e] text-cyan-300 border-cyan-500/40 shadow-sm animate-pulse'
+                ? 'bg-[#20202c] text-white border-white/[0.22]'
                 : 'bg-[#121218] hover:bg-[#181822] text-neutral-200 border-white/[0.08]'
             }`}
-            title={isTheaterOpen ? 'Pantalla de Cine activa (clic para ocultar)' : 'Abrir pantalla de Cine'}
+            title={isTheaterOpen ? 'Ocultar pantalla de video' : 'Abrir pantalla de video'}
           >
             <Tv className="w-5 h-5 shrink-0" />
-            <span className="text-xs font-bold hidden sm:inline">Pantalla</span>
-            {hasActiveMedia && !isTheaterOpen && (
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping shrink-0" />
-            )}
+            <span className="text-xs font-semibold hidden sm:inline">Pantalla</span>
           </button>
         )}
 
-        {/* 2. Dedicated Button: Open Synchronized Cue Playlist */}
-        {onOpenPlaylist && (
+        {/* 2. Dedicated Button: Toggle Tracking PIP Panel (Next to Pantalla) */}
+        {onToggleTrackingPip && (
           <button
             type="button"
-            onClick={onOpenPlaylist}
-            className={`relative p-2.5 sm:py-3 sm:px-3.5 rounded-2xl border transition active:scale-95 flex items-center gap-2 cursor-pointer ${
-              isPlaylistOpen
-                ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/25'
-                : 'bg-[#121218] hover:bg-[#181822] text-cyan-300 hover:text-white border-white/[0.08]'
+            onClick={onToggleTrackingPip}
+            className={`relative p-2.5 sm:py-3 sm:px-3 rounded-2xl border transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm ${
+              isTrackingPipOpen
+                ? 'bg-[#20202c] text-white border-white/[0.22]'
+                : 'bg-[#121218] hover:bg-[#181822] text-neutral-200 border-white/[0.08]'
             }`}
-            title="Abrir Playlist compartida y ver tu turno"
+            title={isTrackingPipOpen ? 'Ocultar visor de tracking' : 'Mostrar visor de tracking'}
           >
-            <ListVideo className="w-5 h-5 shrink-0 text-cyan-400" />
-            <span className="text-xs font-bold hidden sm:inline">Playlist</span>
-
-            {/* Turn or Queue Badge */}
-            {isUserPlayingNow ? (
-              <span className="px-1.5 py-0.5 rounded-full bg-emerald-500 text-slate-950 font-black text-[9px] uppercase tracking-wider animate-pulse">
-                Tu video
-              </span>
-            ) : userTurnNumber ? (
-              <span className="px-1.5 py-0.5 rounded-full bg-amber-400 text-slate-950 font-black text-[10px] shadow-sm">
-                Turno #{userTurnNumber}
-              </span>
-            ) : queueCount > 0 ? (
-              <span className="px-1.5 py-0.5 rounded-full bg-cyan-500 text-slate-950 font-black text-[10px]">
-                {queueCount}
-              </span>
-            ) : null}
+            <ScanFace className="w-5 h-5 shrink-0" />
+            <span className="text-xs font-semibold hidden sm:inline">Tracking</span>
           </button>
         )}
 
-        {/* Pizarra / Canvas Whiteboard Button */}
+        {/* 3. Dedicated Button: Toggle Whiteboard */}
         {onToggleWhiteboard && (
           <button
             type="button"
             onClick={onToggleWhiteboard}
-            className={`relative p-2.5 sm:py-3 sm:px-3 rounded-2xl border transition active:scale-95 flex items-center gap-2 cursor-pointer ${
+            className={`relative p-2.5 sm:py-3 sm:px-3 rounded-2xl border transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm ${
               isWhiteboardOpen
-                ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md shadow-amber-400/25'
-                : 'bg-[#121218] hover:bg-[#181822] text-amber-300 hover:text-white border-white/[0.08]'
+                ? 'bg-[#20202c] text-white border-white/[0.22]'
+                : 'bg-[#121218] hover:bg-[#181822] text-neutral-200 border-white/[0.08]'
             }`}
-            title={isWhiteboardOpen ? 'Pizarra activa (clic para ocultar)' : 'Abrir pizarra colaborativa'}
+            title={isWhiteboardOpen ? 'Cerrar Pizarra colaborativa' : 'Abrir Pizarra colaborativa'}
           >
-            <PenTool className="w-5 h-5 shrink-0 text-amber-400" />
-            <span className="text-xs font-bold hidden sm:inline">Pizarra</span>
+            <PenTool className="w-5 h-5 shrink-0" />
+            <span className="text-xs font-semibold hidden sm:inline">Pizarra</span>
           </button>
         )}
 
+        {/* 4. Chat Button */}
         <button
           type="button"
           onClick={onToggleChat}
-          className={`relative p-3 sm:p-3.5 rounded-2xl border transition cursor-pointer ${
+          className={`relative p-3 sm:p-3.5 rounded-2xl border transition cursor-pointer shadow-sm ${
             isChatOpen
-              ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/25'
+              ? 'bg-[#20202c] text-white border-white/[0.22]'
               : 'bg-[#121218] hover:bg-[#181822] text-neutral-200 border-white/[0.08]'
           }`}
           title="Abrir chat del espacio"
         >
           <MessageSquare className="w-5 h-5" />
           {unreadChatCount > 0 && !isChatOpen && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-rose-500 text-white font-bold text-[10px] flex items-center justify-center border-2 border-[#08080c] animate-bounce">
+            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white font-bold text-[9px] flex items-center justify-center border border-[#08080c]">
               {unreadChatCount}
             </span>
           )}

@@ -258,27 +258,11 @@ export const CameraPreviewPip: React.FC<CameraPreviewPipProps> = ({
           {/* Left Title & Status */}
           <div className="flex items-center gap-1.5 min-w-0">
             <GripHorizontal className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-            <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-200 truncate">
-              <ScanFace className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-              <span className="truncate">Tracking</span>
-            </div>
-
-            {/* Dynamic avatar points badge */}
-            <span
-              className="text-[10px] font-mono px-1.5 py-0.2 rounded border truncate font-bold"
-              style={{
-                color: profile.dotColor,
-                borderColor: `${profile.color}55`,
-                backgroundColor: `${profile.color}15`,
-              }}
-              title={profile.description}
-            >
-              {profile.badge}
-            </span>
+            <ScanFace className="w-4 h-4 text-cyan-400 shrink-0" />
 
             {/* Compact status dot */}
             <span
-              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+              className={`w-2 h-2 rounded-full shrink-0 ${
                 features.isFaceDetected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
               }`}
               title={features.isFaceDetected ? 'Rostro detectado' : 'Sin rostro'}

@@ -540,18 +540,6 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
                   </button>
                 </form>
               )}
-
-              {/* Admin Badge Indicator */}
-              {isAdmin ? (
-                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
-                  <Shield className="w-3 h-3 text-amber-400" />
-                  <span>Control Admin</span>
-                </span>
-              ) : (
-                <span className="px-2 py-0.5 rounded-md bg-white/10 text-neutral-300 border border-white/10 text-[9px] font-medium uppercase">
-                  Sincronizado
-                </span>
-              )}
             </div>
           </div>
         </div>

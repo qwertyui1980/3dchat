@@ -1736,12 +1736,35 @@ export function buildFaceCapCharacter(gltf: GLTF): Character3DController {
   headPivot.add(model);
   root.add(headPivot);
 
-  // Locate mesh with morphTargetDictionary
-  let morphMesh: THREE.Mesh | null = null;
+  // Locate all meshes with morphTargetDictionary and eyeball objects/bones
+  const morphMeshes: THREE.Mesh[] = [];
+  let eyeLeftObj: THREE.Object3D | null = null;
+  let eyeRightObj: THREE.Object3D | null = null;
+
   model.traverse((child) => {
+    const name = child.name.toLowerCase();
     const m = child as THREE.Mesh;
     if (m.isMesh && m.morphTargetDictionary && m.morphTargetInfluences) {
-      morphMesh = m;
+      morphMeshes.push(m);
+    }
+    if (
+      name.includes('eye_l') ||
+      name.includes('eyeleft') ||
+      name.includes('lefteye') ||
+      name === 'eye.l' ||
+      name === 'left_eye' ||
+      name === 'eyeball_l'
+    ) {
+      eyeLeftObj = child;
+    } else if (
+      name.includes('eye_r') ||
+      name.includes('eyeright') ||
+      name.includes('righteye') ||
+      name === 'eye.r' ||
+      name === 'right_eye' ||
+      name === 'eyeball_r'
+    ) {
+      eyeRightObj = child;
     }
   });
 
@@ -1769,17 +1792,49 @@ export function buildFaceCapCharacter(gltf: GLTF): Character3DController {
   root.add(ring);
 
   const setMorph = (targetName: string, val: number) => {
-    if (!morphMesh || !morphMesh.morphTargetDictionary || !morphMesh.morphTargetInfluences) return;
-    const dict = morphMesh.morphTargetDictionary;
-    const idx =
-      dict[targetName] ??
-      dict[`blendShape1.${targetName}`] ??
-      dict[`head.${targetName}`] ??
-      dict[`mesh.${targetName}`] ??
-      dict[targetName.replace('_L', 'Left').replace('_R', 'Right')] ??
-      dict[targetName.replace('Left', '_L').replace('Right', '_R')];
-    if (idx !== undefined) {
-      morphMesh.morphTargetInfluences[idx] = Math.max(0, Math.min(1, val));
+    const clampedVal = Math.max(0, Math.min(1, val));
+    if (morphMeshes.length === 0) return;
+
+    for (const mesh of morphMeshes) {
+      const dict = mesh.morphTargetDictionary;
+      const influences = mesh.morphTargetInfluences;
+      if (!dict || !influences) continue;
+
+      let idx = dict[targetName];
+      if (idx === undefined) {
+        const alt1 = targetName.replace('_L', 'Left').replace('_R', 'Right');
+        const alt2 = targetName.replace('Left', '_L').replace('Right', '_R');
+        const alt3 = targetName.replace('_L', '.L').replace('_R', '.R');
+        const alt4 = targetName.replace('Left', '.L').replace('Right', '.R');
+
+        idx =
+          dict[alt1] ??
+          dict[alt2] ??
+          dict[alt3] ??
+          dict[alt4] ??
+          dict[`blendShape1.${targetName}`] ??
+          dict[`blendShape1.${alt1}`] ??
+          dict[`blendShape1.${alt2}`] ??
+          dict[`head.${targetName}`] ??
+          dict[`head.${alt1}`] ??
+          dict[`mesh.${targetName}`] ??
+          dict[`mesh.${alt1}`];
+
+        if (idx === undefined) {
+          const lower = targetName.toLowerCase();
+          for (const key of Object.keys(dict)) {
+            const kl = key.toLowerCase();
+            if (kl === lower || kl.endsWith('.' + lower) || kl.replace(/[^a-z0-9]/g, '') === lower.replace(/[^a-z0-9]/g, '')) {
+              idx = dict[key];
+              break;
+            }
+          }
+        }
+      }
+
+      if (idx !== undefined && influences[idx] !== undefined) {
+        influences[idx] = clampedVal;
+      }
     }
   };
 
@@ -1792,44 +1847,103 @@ export function buildFaceCapCharacter(gltf: GLTF): Character3DController {
       headPivot.rotation.x = features.pitch || 0;
       headPivot.rotation.z = features.roll || 0;
 
-      if (!morphMesh || !morphMesh.morphTargetInfluences) return;
+      if (morphMeshes.length === 0) return;
 
       const bs = features.blendshapes || {};
 
       // 2. Eyes Blinking, Squint & Wide
       setMorph('eyeBlink_L', bs['eyeBlinkLeft'] ?? features.eyeBlinkLeft);
+      setMorph('eyeBlinkLeft', bs['eyeBlinkLeft'] ?? features.eyeBlinkLeft);
       setMorph('eyeBlink_R', bs['eyeBlinkRight'] ?? features.eyeBlinkRight);
+      setMorph('eyeBlinkRight', bs['eyeBlinkRight'] ?? features.eyeBlinkRight);
+
       setMorph('eyeWide_L', bs['eyeWideLeft'] ?? features.eyeWideLeft ?? 0);
+      setMorph('eyeWideLeft', bs['eyeWideLeft'] ?? features.eyeWideLeft ?? 0);
       setMorph('eyeWide_R', bs['eyeWideRight'] ?? features.eyeWideRight ?? 0);
+      setMorph('eyeWideRight', bs['eyeWideRight'] ?? features.eyeWideRight ?? 0);
+
       setMorph('eyeSquint_L', bs['eyeSquintLeft'] ?? 0);
+      setMorph('eyeSquintLeft', bs['eyeSquintLeft'] ?? 0);
       setMorph('eyeSquint_R', bs['eyeSquintRight'] ?? 0);
+      setMorph('eyeSquintRight', bs['eyeSquintRight'] ?? 0);
 
-      // Eye Gaze
-      setMorph('eyeLookIn_L', bs['eyeLookInLeft'] ?? (features.gazeX > 0 ? features.gazeX : 0));
-      setMorph('eyeLookOut_L', bs['eyeLookOutLeft'] ?? (features.gazeX < 0 ? -features.gazeX : 0));
-      setMorph('eyeLookIn_R', bs['eyeLookInRight'] ?? (features.gazeX < 0 ? -features.gazeX : 0));
-      setMorph('eyeLookOut_R', bs['eyeLookOutRight'] ?? (features.gazeX > 0 ? features.gazeX : 0));
-      setMorph('eyeLookUp_L', bs['eyeLookUpLeft'] ?? (features.gazeY < 0 ? -features.gazeY : 0));
-      setMorph('eyeLookUp_R', bs['eyeLookUpRight'] ?? (features.gazeY < 0 ? -features.gazeY : 0));
-      setMorph('eyeLookDown_L', bs['eyeLookDownLeft'] ?? (features.gazeY > 0 ? features.gazeY : 0));
-      setMorph('eyeLookDown_R', bs['eyeLookDownRight'] ?? (features.gazeY > 0 ? features.gazeY : 0));
+      // 3. EYE GAZE TRACKING (Left & Right Eyes - Both In/Out & Up/Down)
+      const gx = features.gazeX || 0;
+      const gy = features.gazeY || 0;
 
-      // 3. Eyebrows (Inner Up, Outer Up, Furrow Down)
+      const lookInL = bs['eyeLookInLeft'] ?? (gx > 0 ? gx : 0);
+      const lookOutL = bs['eyeLookOutLeft'] ?? (gx < 0 ? -gx : 0);
+      const lookInR = bs['eyeLookInRight'] ?? (gx < 0 ? -gx : 0);
+      const lookOutR = bs['eyeLookOutRight'] ?? (gx > 0 ? gx : 0);
+
+      const lookUpL = bs['eyeLookUpLeft'] ?? (gy < 0 ? -gy : 0);
+      const lookUpR = bs['eyeLookUpRight'] ?? (gy < 0 ? -gy : 0);
+      const lookDownL = bs['eyeLookDownLeft'] ?? (gy > 0 ? gy : 0);
+      const lookDownR = bs['eyeLookDownRight'] ?? (gy > 0 ? gy : 0);
+
+      setMorph('eyeLookIn_L', lookInL);
+      setMorph('eyeLookInLeft', lookInL);
+      setMorph('eyeLookOut_L', lookOutL);
+      setMorph('eyeLookOutLeft', lookOutL);
+
+      setMorph('eyeLookIn_R', lookInR);
+      setMorph('eyeLookInRight', lookInR);
+      setMorph('eyeLookOut_R', lookOutR);
+      setMorph('eyeLookOutRight', lookOutR);
+
+      setMorph('eyeLookUp_L', lookUpL);
+      setMorph('eyeLookUpLeft', lookUpL);
+      setMorph('eyeLookUp_R', lookUpR);
+      setMorph('eyeLookUpRight', lookUpR);
+
+      setMorph('eyeLookDown_L', lookDownL);
+      setMorph('eyeLookDownLeft', lookDownL);
+      setMorph('eyeLookDown_R', lookDownR);
+      setMorph('eyeLookDownRight', lookDownR);
+
+      // Physical eyeball object / bone rotation (if available in GLTF hierarchy)
+      if (eyeLeftObj) {
+        eyeLeftObj.rotation.y = gx * 0.35;
+        eyeLeftObj.rotation.x = -gy * 0.28;
+      }
+      if (eyeRightObj) {
+        eyeRightObj.rotation.y = gx * 0.35;
+        eyeRightObj.rotation.x = -gy * 0.28;
+      }
+
+      // 4. Eyebrows (Inner Up, Outer Up, Furrow Down)
       setMorph('browInnerUp', bs['browInnerUp'] ?? features.browRaise ?? 0);
       setMorph('browOuterUp_L', bs['browOuterUpLeft'] ?? (features.browRaise || 0) * 0.75);
+      setMorph('browOuterUpLeft', bs['browOuterUpLeft'] ?? (features.browRaise || 0) * 0.75);
       setMorph('browOuterUp_R', bs['browOuterUpRight'] ?? (features.browRaise || 0) * 0.75);
+      setMorph('browOuterUpRight', bs['browOuterUpRight'] ?? (features.browRaise || 0) * 0.75);
       setMorph('browDown_L', bs['browDownLeft'] ?? features.browFurrow ?? 0);
+      setMorph('browDownLeft', bs['browDownLeft'] ?? features.browFurrow ?? 0);
       setMorph('browDown_R', bs['browDownRight'] ?? features.browFurrow ?? 0);
+      setMorph('browDownRight', bs['browDownRight'] ?? features.browFurrow ?? 0);
 
-      // 4. Cheeks & Nose (Puff, Squint, Sneer)
+      // 5. Cheeks & Nose (Puff, Squint, Sneer)
       setMorph('cheekPuff', bs['cheekPuff'] ?? 0);
       setMorph('cheekSquint_L', bs['cheekSquintLeft'] ?? 0);
+      setMorph('cheekSquintLeft', bs['cheekSquintLeft'] ?? 0);
       setMorph('cheekSquint_R', bs['cheekSquintRight'] ?? 0);
+      setMorph('cheekSquintRight', bs['cheekSquintRight'] ?? 0);
       setMorph('noseSneer_L', bs['noseSneerLeft'] ?? 0);
+      setMorph('noseSneerLeft', bs['noseSneerLeft'] ?? 0);
       setMorph('noseSneer_R', bs['noseSneerRight'] ?? 0);
+      setMorph('noseSneerRight', bs['noseSneerRight'] ?? 0);
 
-      // 5. Jaw & Mouth (Pure Biometric Lips & Jaw - 100% Noise Immune)
+      // 6. Jaw & Mouth (Pure Biometric Lips & Jaw + Voice Lip-Sync)
       setMorph('jawOpen', features.jawOpen);
+      setMorph('mouthOpen', features.jawOpen);
+      setMorph('mouthLowerDown_L', bs['mouthLowerDownLeft'] ?? (features.jawOpen * 0.4));
+      setMorph('mouthLowerDownLeft', bs['mouthLowerDownLeft'] ?? (features.jawOpen * 0.4));
+      setMorph('mouthLowerDown_R', bs['mouthLowerDownRight'] ?? (features.jawOpen * 0.4));
+      setMorph('mouthLowerDownRight', bs['mouthLowerDownRight'] ?? (features.jawOpen * 0.4));
+      setMorph('mouthUpperUp_L', bs['mouthUpperUpLeft'] ?? (features.jawOpen * 0.15));
+      setMorph('mouthUpperUpLeft', bs['mouthUpperUpLeft'] ?? (features.jawOpen * 0.15));
+      setMorph('mouthUpperUp_R', bs['mouthUpperUpRight'] ?? (features.jawOpen * 0.15));
+      setMorph('mouthUpperUpRight', bs['mouthUpperUpRight'] ?? (features.jawOpen * 0.15));
       setMorph('jawForward', bs['jawForward'] ?? 0);
       setMorph('jawLeft', bs['jawLeft'] ?? 0);
       setMorph('jawRight', bs['jawRight'] ?? 0);
@@ -1838,14 +1952,23 @@ export function buildFaceCapCharacter(gltf: GLTF): Character3DController {
       const smileL = features.mouthSmileLeft ?? bs['mouthSmileLeft'] ?? (features.mouthSmile > 0 ? features.mouthSmile : 0);
       const smileR = features.mouthSmileRight ?? bs['mouthSmileRight'] ?? (features.mouthSmile > 0 ? features.mouthSmile : 0);
       setMorph('mouthSmile_L', smileL);
+      setMorph('mouthSmileLeft', smileL);
       setMorph('mouthSmile_R', smileR);
+      setMorph('mouthSmileRight', smileR);
 
       setMorph('mouthFrown_L', bs['mouthFrownLeft'] ?? (features.mouthSmile < 0 ? -features.mouthSmile : 0));
+      setMorph('mouthFrownLeft', bs['mouthFrownLeft'] ?? (features.mouthSmile < 0 ? -features.mouthSmile : 0));
       setMorph('mouthFrown_R', bs['mouthFrownRight'] ?? (features.mouthSmile < 0 ? -features.mouthSmile : 0));
+      setMorph('mouthFrownRight', bs['mouthFrownRight'] ?? (features.mouthSmile < 0 ? -features.mouthSmile : 0));
+
       setMorph('mouthDimple_L', bs['mouthDimpleLeft'] ?? 0);
+      setMorph('mouthDimpleLeft', bs['mouthDimpleLeft'] ?? 0);
       setMorph('mouthDimple_R', bs['mouthDimpleRight'] ?? 0);
+      setMorph('mouthDimpleRight', bs['mouthDimpleRight'] ?? 0);
       setMorph('mouthStretch_L', bs['mouthStretchLeft'] ?? 0);
+      setMorph('mouthStretchLeft', bs['mouthStretchLeft'] ?? 0);
       setMorph('mouthStretch_R', bs['mouthStretchRight'] ?? 0);
+      setMorph('mouthStretchRight', bs['mouthStretchRight'] ?? 0);
 
       // Pucker, Funnel, Roll & Shrug
       setMorph('mouthPucker', bs['mouthPucker'] ?? features.mouthPucker ?? 0);
@@ -1857,11 +1980,9 @@ export function buildFaceCapCharacter(gltf: GLTF): Character3DController {
       setMorph('mouthShrugLower', bs['mouthShrugLower'] ?? 0);
       setMorph('mouthShrugUpper', bs['mouthShrugUpper'] ?? 0);
       setMorph('mouthPress_L', bs['mouthPressLeft'] ?? 0);
+      setMorph('mouthPressLeft', bs['mouthPressLeft'] ?? 0);
       setMorph('mouthPress_R', bs['mouthPressRight'] ?? 0);
-      setMorph('mouthLowerDown_L', bs['mouthLowerDownLeft'] ?? 0);
-      setMorph('mouthLowerDown_R', bs['mouthLowerDownRight'] ?? 0);
-      setMorph('mouthUpperUp_L', bs['mouthUpperUpLeft'] ?? 0);
-      setMorph('mouthUpperUp_R', bs['mouthUpperUpRight'] ?? 0);
+      setMorph('mouthPressRight', bs['mouthPressRight'] ?? 0);
       setMorph('mouthClose', bs['mouthClose'] ?? 0);
 
       // Slowly rotate base ring
@@ -1923,6 +2044,33 @@ export function buildLincolnCharacter(gltf: GLTF): Character3DController {
   headPivot.add(modelWrapper);
   root.add(headPivot);
 
+  const morphMeshes: Array<{ mesh: THREE.Mesh; dict: { [key: string]: number } }> = [];
+  model.traverse((child) => {
+    if ((child as THREE.Mesh).isMesh) {
+      const mesh = child as THREE.Mesh;
+      if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
+        morphMeshes.push({ mesh, dict: mesh.morphTargetDictionary });
+      }
+    }
+  });
+
+  const applyMorph = (name: string, targetVal: number, speed: number = 0.3) => {
+    morphMeshes.forEach(({ mesh, dict }) => {
+      Object.keys(dict).forEach((key) => {
+        if (key.toLowerCase().includes(name.toLowerCase())) {
+          const idx = dict[key];
+          if (idx !== undefined && mesh.morphTargetInfluences) {
+            mesh.morphTargetInfluences[idx] = THREE.MathUtils.lerp(
+              mesh.morphTargetInfluences[idx] || 0,
+              Math.min(Math.max(targetVal, 0), 1),
+              speed
+            );
+          }
+        }
+      });
+    });
+  };
+
   const pedGeo = new THREE.CylinderGeometry(1.25, 1.45, 0.42, 32);
   const pedMat = new THREE.MeshStandardMaterial({
     color: 0x0f172a,
@@ -1961,6 +2109,12 @@ export function buildLincolnCharacter(gltf: GLTF): Character3DController {
       const breath = Math.sin(now * 0.002) * 0.012;
       const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
       headPivot.position.y = 3.75 + breath + voiceNod;
+
+      const mouthOpen = Math.max(features.jawOpen || 0, features.mouthOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
+      applyMorph('jaw', mouthOpen, 0.35);
+      applyMorph('mouth', mouthOpen, 0.35);
+      applyMorph('open', mouthOpen, 0.35);
+      applyMorph('smile', features.mouthSmile || 0, 0.2);
     },
     dispose: () => {
       pedGeo.dispose();
@@ -1995,6 +2149,7 @@ export function buildBidenCharacter(gltf: GLTF): Character3DController {
   let initialHeadRot: THREE.Euler | null = null;
   let initialNeckRot: THREE.Euler | null = null;
 
+  const morphMeshes: Array<{ mesh: THREE.Mesh; dict: { [key: string]: number } }> = [];
   model.traverse((child) => {
     if ((child as THREE.Bone).isBone) {
       const b = child as THREE.Bone;
@@ -2014,11 +2169,31 @@ export function buildBidenCharacter(gltf: GLTF): Character3DController {
       }
     }
     if ((child as THREE.Mesh).isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
+      const mesh = child as THREE.Mesh;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
+        morphMeshes.push({ mesh, dict: mesh.morphTargetDictionary });
+      }
     }
   });
 
+  const applyMorph = (name: string, targetVal: number, speed: number = 0.3) => {
+    morphMeshes.forEach(({ mesh, dict }) => {
+      Object.keys(dict).forEach((key) => {
+        if (key.toLowerCase().includes(name.toLowerCase())) {
+          const idx = dict[key];
+          if (idx !== undefined && mesh.morphTargetInfluences) {
+            mesh.morphTargetInfluences[idx] = THREE.MathUtils.lerp(
+              mesh.morphTargetInfluences[idx] || 0,
+              Math.min(Math.max(targetVal, 0), 1),
+              speed
+            );
+          }
+        }
+      });
+    });
+  };
   const scale = 2.4;
   model.scale.set(scale, scale, scale);
   model.position.set(0, -0.2, 0);
@@ -2081,6 +2256,12 @@ export function buildBidenCharacter(gltf: GLTF): Character3DController {
       const breath = Math.sin(now * 0.002) * 0.015;
       const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
       model.position.y = -0.2 + breath + voiceNod;
+
+      const mouthOpen = Math.max(features.jawOpen || 0, features.mouthOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
+      applyMorph('jaw', mouthOpen, 0.35);
+      applyMorph('mouth', mouthOpen, 0.35);
+      applyMorph('open', mouthOpen, 0.35);
+      applyMorph('smile', features.mouthSmile || 0, 0.2);
     },
     dispose: () => {
       pedGeo.dispose();
@@ -2123,12 +2304,34 @@ export function buildObamaCharacter(gltf: GLTF): Character3DController {
   model.position.y = -center.y * scale;
   model.position.z = -center.z * scale;
 
+  const morphMeshes: Array<{ mesh: THREE.Mesh; dict: { [key: string]: number } }> = [];
   model.traverse((child) => {
     if ((child as THREE.Mesh).isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
+      const mesh = child as THREE.Mesh;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
+        morphMeshes.push({ mesh, dict: mesh.morphTargetDictionary });
+      }
     }
   });
+
+  const applyMorph = (name: string, targetVal: number, speed: number = 0.3) => {
+    morphMeshes.forEach(({ mesh, dict }) => {
+      Object.keys(dict).forEach((key) => {
+        if (key.toLowerCase().includes(name.toLowerCase())) {
+          const idx = dict[key];
+          if (idx !== undefined && mesh.morphTargetInfluences) {
+            mesh.morphTargetInfluences[idx] = THREE.MathUtils.lerp(
+              mesh.morphTargetInfluences[idx] || 0,
+              Math.min(Math.max(targetVal, 0), 1),
+              speed
+            );
+          }
+        }
+      });
+    });
+  };
 
   const headPivot = new THREE.Group();
   headPivot.position.set(0, 3.75, 0);
@@ -2173,6 +2376,12 @@ export function buildObamaCharacter(gltf: GLTF): Character3DController {
       const breath = Math.sin(now * 0.002) * 0.012;
       const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
       headPivot.position.y = 3.75 + breath + voiceNod;
+
+      const mouthOpen = Math.max(features.jawOpen || 0, features.mouthOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
+      applyMorph('jaw', mouthOpen, 0.35);
+      applyMorph('mouth', mouthOpen, 0.35);
+      applyMorph('open', mouthOpen, 0.35);
+      applyMorph('smile', features.mouthSmile || 0, 0.2);
     },
     dispose: () => {
       pedGeo.dispose();
@@ -2215,12 +2424,34 @@ export function buildTrumpCharacter(gltf: GLTF): Character3DController {
   model.position.y = -center.y * scale;
   model.position.z = -center.z * scale;
 
+  const morphMeshes: Array<{ mesh: THREE.Mesh; dict: { [key: string]: number } }> = [];
   model.traverse((child) => {
     if ((child as THREE.Mesh).isMesh) {
-      child.castShadow = true;
-      child.receiveShadow = true;
+      const mesh = child as THREE.Mesh;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
+        morphMeshes.push({ mesh, dict: mesh.morphTargetDictionary });
+      }
     }
   });
+
+  const applyMorph = (name: string, targetVal: number, speed: number = 0.3) => {
+    morphMeshes.forEach(({ mesh, dict }) => {
+      Object.keys(dict).forEach((key) => {
+        if (key.toLowerCase().includes(name.toLowerCase())) {
+          const idx = dict[key];
+          if (idx !== undefined && mesh.morphTargetInfluences) {
+            mesh.morphTargetInfluences[idx] = THREE.MathUtils.lerp(
+              mesh.morphTargetInfluences[idx] || 0,
+              Math.min(Math.max(targetVal, 0), 1),
+              speed
+            );
+          }
+        }
+      });
+    });
+  };
 
   const headPivot = new THREE.Group();
   headPivot.position.set(0, 3.75, 0);
@@ -2265,6 +2496,12 @@ export function buildTrumpCharacter(gltf: GLTF): Character3DController {
       const breath = Math.sin(now * 0.002) * 0.012;
       const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
       headPivot.position.y = 3.75 + breath + voiceNod;
+
+      const mouthOpen = Math.max(features.jawOpen || 0, features.mouthOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
+      applyMorph('jaw', mouthOpen, 0.35);
+      applyMorph('mouth', mouthOpen, 0.35);
+      applyMorph('open', mouthOpen, 0.35);
+      applyMorph('smile', features.mouthSmile || 0, 0.2);
     },
     dispose: () => {
       pedGeo.dispose();

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, LogOut } from 'lucide-react';
+import { Users, LogOut, Maximize2, Minimize2 } from 'lucide-react';
 import { RoomInfo, User } from '../../types';
 import { AuthenticatedUser } from '../auth/Login';
 
@@ -10,6 +10,8 @@ interface HeaderProps {
   isAdmin: boolean;
   authUser?: AuthenticatedUser | null;
   onLogout?: () => void;
+  isFullscreen?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -17,6 +19,8 @@ export const Header: React.FC<HeaderProps> = ({
   currentUser: _currentUser,
   authUser,
   onLogout,
+  isFullscreen = false,
+  onToggleFullscreen,
 }) => {
 
   return (
@@ -38,6 +42,19 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="font-semibold">{room.participants.length}</span>
             </div>
           </>
+        )}
+
+        {/* Fullscreen Toggle Button */}
+        {onToggleFullscreen && (
+          <button
+            type="button"
+            onClick={onToggleFullscreen}
+            title={isFullscreen ? 'Salir de Pantalla Completa' : 'Pantalla Completa (Ocultar barras)'}
+            className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1 rounded-lg bg-[#121218] hover:bg-[#1c1c28] text-neutral-300 hover:text-cyan-300 border border-white/[0.08] hover:border-cyan-500/40 text-xs font-medium transition cursor-pointer"
+          >
+            {isFullscreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
+            <span className="hidden md:inline text-[11px]">{isFullscreen ? 'Salir Full' : 'Pantalla Full'}</span>
+          </button>
         )}
 
         {/* User Session & Logout */}

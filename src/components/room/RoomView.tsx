@@ -22,6 +22,7 @@ import { TvFloatingLauncher } from '../theater/TvFloatingLauncher';
 import { QueueModal } from '../theater/QueueModal';
 import { WhiteboardPanel } from '../whiteboard/WhiteboardPanel';
 import { AdminControlPanel } from './AdminControlPanel';
+import { Maximize2, Minimize2 } from 'lucide-react';
 
 interface RoomViewProps {
   room: RoomInfo;
@@ -100,6 +101,8 @@ export const RoomView: React.FC<RoomViewProps> = ({
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isTrackingPipVisible, setIsTrackingPipVisible] = useState(true);
   const [lastReadMessageCount, setLastReadMessageCount] = useState(messages.length);
 
   // Home Theater & Cue Modal States
@@ -121,6 +124,32 @@ export const RoomView: React.FC<RoomViewProps> = ({
   const userQueueIdx = mediaState.queue.findIndex((it) => it.addedByUserId === currentUser.id);
   const userTurnNumber = userQueueIdx !== -1 ? userQueueIdx + 1 : null;
   const hasActiveMedia = !!mediaState.currentVideo || mediaState.queue.length > 0;
+
+  const handleToggleFullscreen = () => {
+    setIsFullscreen((prev) => {
+      const next = !prev;
+      if (next) {
+        if (!document.fullscreenElement && document.documentElement.requestFullscreen) {
+          document.documentElement.requestFullscreen().catch(() => {});
+        }
+      } else {
+        if (document.fullscreenElement && document.exitFullscreen) {
+          document.exitFullscreen().catch(() => {});
+        }
+      }
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const handleFsChange = () => {
+      if (!document.fullscreenElement) {
+        setIsFullscreen(false);
+      }
+    };
+    document.addEventListener('fullscreenchange', handleFsChange);
+    return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
 
   const handleToggleChat = () => {
     setIsChatOpen((prev) => {
@@ -172,15 +201,19 @@ export const RoomView: React.FC<RoomViewProps> = ({
       {/* Discreet, smooth cosmic starfield travel background */}
       <StarfieldBackground speed={0.7} starCount={175} opacity={0.55} />
 
-      {/* Top Bar Header */}
-      <Header
-        room={room}
-        currentUser={currentUser}
-        onToggleLock={onToggleLock}
-        isAdmin={isAdmin}
-        authUser={authUser}
-        onLogout={onLogout}
-      />
+      {/* Top Bar Header (Hidden in Fullscreen mode) */}
+      {!isFullscreen && (
+        <Header
+          room={room}
+          currentUser={currentUser}
+          onToggleLock={onToggleLock}
+          isAdmin={isAdmin}
+          authUser={authUser}
+          onLogout={onLogout}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={handleToggleFullscreen}
+        />
+      )}
 
       {/* Main Video Call Stage Layout */}
       <div className="flex-1 flex min-h-0 relative overflow-hidden z-10">
@@ -233,14 +266,16 @@ export const RoomView: React.FC<RoomViewProps> = ({
       </div>
 
       {/* Floating Camera Preview PIP (MediaPipe Webcam & Landmark Mesh) */}
-      <CameraPreviewPip
-        videoRef={videoRef}
-        cameraStream={cameraStream}
-        features={localFeatures}
-        landmarks={landmarks}
-        isCameraActive={isCameraActive}
-        avatarId={currentUser.avatarId}
-      />
+      {isTrackingPipVisible && (
+        <CameraPreviewPip
+          videoRef={videoRef}
+          cameraStream={cameraStream}
+          features={localFeatures}
+          landmarks={landmarks}
+          isCameraActive={isCameraActive}
+          avatarId={currentUser.avatarId}
+        />
+      )}
 
       {/* Synchronized Home Theater Window (Draggable & Resizable 16:9 up to 1024px) */}
       <HomeTheaterWindow
@@ -292,33 +327,33 @@ export const RoomView: React.FC<RoomViewProps> = ({
         />
       )}
 
-      {/* Bottom Controls Bar */}
-      <CallControls
-        isMicActive={isMicActive}
-        isCameraActive={isCameraActive}
-        currentAvatarId={currentUser.avatarId}
-        unreadChatCount={unreadCount}
-        isChatOpen={isChatOpen}
-        isAdmin={isAdmin}
-        onMuteAll={onMuteAll}
-        isAllMuted={isAllMuted}
-        onToggleMic={onToggleMic}
-        onToggleCamera={onToggleCamera}
-        onSelectAvatar={onSelectAvatar}
-        onToggleChat={handleToggleChat}
-        onLeaveCall={onLeaveCall}
-        onOpenTheater={() => setIsTheaterOpen((prev) => !prev)}
-        onOpenPlaylist={() => setIsQueueModalOpen(true)}
-        isTheaterOpen={isTheaterOpen}
-        isPlaylistOpen={isQueueModalOpen}
-        userTurnNumber={userTurnNumber}
-        isUserPlayingNow={isUserPlayingNow}
-        hasActiveMedia={hasActiveMedia}
-        queueCount={mediaState.queue.length}
-        onToggleWhiteboard={() => setIsWhiteboardOpen((prev) => !prev)}
-        isWhiteboardOpen={isWhiteboardOpen}
-        onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
-      />
+      {/* Bottom Controls Bar (Hidden in Fullscreen mode) */}
+      {!isFullscreen && (
+        <CallControls
+          isMicActive={isMicActive}
+          isCameraActive={isCameraActive}
+          currentAvatarId={currentUser.avatarId}
+          unreadChatCount={unreadCount}
+          isChatOpen={isChatOpen}
+          isAdmin={isAdmin}
+          onMuteAll={onMuteAll}
+          isAllMuted={isAllMuted}
+          onToggleMic={onToggleMic}
+          onToggleCamera={onToggleCamera}
+          onSelectAvatar={onSelectAvatar}
+          onToggleChat={handleToggleChat}
+          onLeaveCall={onLeaveCall}
+          onOpenTheater={() => setIsTheaterOpen((prev) => !prev)}
+          isTheaterOpen={isTheaterOpen}
+          onToggleTrackingPip={() => setIsTrackingPipVisible((prev) => !prev)}
+          isTrackingPipOpen={isTrackingPipVisible}
+          onToggleWhiteboard={() => setIsWhiteboardOpen((prev) => !prev)}
+          isWhiteboardOpen={isWhiteboardOpen}
+          onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={handleToggleFullscreen}
+        />
+      )}
     </div>
   );
 };

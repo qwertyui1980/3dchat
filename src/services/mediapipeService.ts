@@ -106,13 +106,23 @@ export class MediaPipeFaceTracker {
     this.onLandmarksCallback = onLandmarks || null;
     this.isRunning = true;
 
+    // Auto-initialize landmarker if not already ready
+    if (!this.landmarker && !this.isInitializing) {
+      this.initialize().catch((err) => {
+        console.warn('[MediaPipe] Auto-initialize in startTracking error:', err);
+      });
+    }
+
     const processFrame = () => {
       if (!this.isRunning) return;
+
+      if (this.videoElement && this.videoElement.paused && this.videoElement.srcObject) {
+        this.videoElement.play().catch(() => {});
+      }
 
       if (
         this.videoElement &&
         this.videoElement.readyState >= 2 &&
-        !this.videoElement.paused &&
         this.landmarker
       ) {
         const currentTime = this.videoElement.currentTime;
@@ -212,13 +222,49 @@ export class MediaPipeFaceTracker {
               const eyeWideLeft = bsMap['eyeWideLeft'] ?? 0;
               const eyeWideRight = bsMap['eyeWideRight'] ?? 0;
 
-              // Gaze
+              // Bi-ocular Eye Gaze Tracking (Left & Right Blendshapes + Iris Landmarks)
               const lookInL = bsMap['eyeLookInLeft'] ?? 0;
               const lookOutL = bsMap['eyeLookOutLeft'] ?? 0;
+              const lookInR = bsMap['eyeLookInRight'] ?? 0;
+              const lookOutR = bsMap['eyeLookOutRight'] ?? 0;
               const lookUpL = bsMap['eyeLookUpLeft'] ?? 0;
+              const lookUpR = bsMap['eyeLookUpRight'] ?? 0;
               const lookDownL = bsMap['eyeLookDownLeft'] ?? 0;
-              const gazeX = (lookOutL - lookInL);
-              const gazeY = (lookDownL - lookUpL);
+              const lookDownR = bsMap['eyeLookDownRight'] ?? 0;
+
+              // Gaze from blendshapes: positive gazeX = user looks to their left, negative gazeX = user looks to their right
+              let rawGazeX = ((lookOutL - lookInL) + (lookInR - lookOutR)) / 2;
+              let rawGazeY = ((lookDownL - lookUpL) + (lookDownR - lookUpR)) / 2;
+
+              // If iris landmarks (468, 473) are present in MediaPipe landmarks
+              if (landmarks && landmarks.length >= 478) {
+                const leftIris = landmarks[468];
+                const rightIris = landmarks[473];
+                const leftOuter = landmarks[33];
+                const leftInner = landmarks[133];
+                const rightInner = landmarks[362];
+                const rightOuter = landmarks[263];
+
+                if (leftIris && rightIris && leftOuter && leftInner && rightInner && rightOuter) {
+                  const leftEyeW = Math.hypot(leftInner.x - leftOuter.x, leftInner.y - leftOuter.y) || 0.04;
+                  const rightEyeW = Math.hypot(rightOuter.x - rightInner.x, rightOuter.y - rightInner.y) || 0.04;
+
+                  const leftEyeMidX = (leftInner.x + leftOuter.x) / 2;
+                  const rightEyeMidX = (rightInner.x + rightOuter.x) / 2;
+
+                  const irisOffsetLX = (leftIris.x - leftEyeMidX) / (leftEyeW * 0.42);
+                  const irisOffsetRX = (rightIris.x - rightEyeMidX) / (rightEyeW * 0.42);
+                  const irisGazeX = -(irisOffsetLX + irisOffsetRX) / 2;
+
+                  if (Math.abs(irisGazeX) > 0.04) {
+                    rawGazeX = rawGazeX * 0.35 + irisGazeX * 0.65;
+                  }
+                }
+              }
+
+              // Dynamic amplification for vivid pupil gaze tracking (-1 to 1)
+              const gazeX = Math.max(-1, Math.min(1, rawGazeX * 1.6));
+              const gazeY = Math.max(-1, Math.min(1, rawGazeY * 1.5));
 
               // ========================================================
               // ENHANCED MULTI-POINT MOUTH & LIPS CAPTURE (40 POINTS)

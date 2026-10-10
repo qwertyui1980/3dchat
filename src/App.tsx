@@ -119,6 +119,9 @@ export default function App() {
       const audioStream = await audioServiceSingleton.start((volume) => {
         faceTrackerSingleton.setAudioVolume(volume);
         setLocalFeatures((prev) => {
+          if (Math.abs(prev.audioVolume - volume) < 0.005 && volume === 0 && prev.audioVolume === 0) {
+            return prev;
+          }
           const updated: FaceFeatures = {
             ...prev,
             audioVolume: volume,
@@ -534,6 +537,9 @@ export default function App() {
     }
     const nextState = !isMicActive;
     setIsMicActive(nextState);
+    if (nextState) {
+      audioServiceSingleton.ensureResumed();
+    }
     audioServiceSingleton.setMute(!nextState);
     networkServiceSingleton.toggleMute(!nextState);
     setCurrentUser((prev) => (prev ? { ...prev, isMuted: !nextState } : null));
@@ -714,7 +720,7 @@ export default function App() {
 
   return (
     <div className="flex flex-col h-full h-[100dvh] w-full max-w-full overflow-hidden bg-[#08080a] font-sans antialiased text-neutral-100">
-      {/* Off-screen Master Video for MediaPipe Detection (Always active, never display:none) */}
+      {/* Master Video for MediaPipe Detection (Kept inside viewport with low opacity to prevent GPU throttling) */}
       <video
         ref={videoRef}
         autoPlay
@@ -722,11 +728,11 @@ export default function App() {
         muted
         style={{
           position: 'fixed',
-          top: '-9999px',
-          left: '-9999px',
-          width: '640px',
-          height: '480px',
-          opacity: 0,
+          top: 0,
+          left: 0,
+          width: '320px',
+          height: '240px',
+          opacity: 0.001,
           pointerEvents: 'none',
           zIndex: -100,
         }}

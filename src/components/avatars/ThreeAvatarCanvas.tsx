@@ -1020,25 +1020,26 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
         cur.gazeX = THREE.MathUtils.lerp(cur.gazeX, Number.isFinite(feat.gazeX) ? feat.gazeX : 0, alphaFace);
         cur.gazeY = THREE.MathUtils.lerp(cur.gazeY, Number.isFinite(feat.gazeY) ? feat.gazeY : 0, alphaFace);
       } else {
-        // No camera or face tracking off: Head stays neutral, mouth animates dynamically with voice volume
-        const vol = Number.isFinite(feat.audioVolume) ? feat.audioVolume : 0;
-        const audioJaw = vol > 0.05 ? Math.min(1, Math.max(0, (vol - 0.05) * 3.2)) : 0;
-        const alphaJaw = audioJaw > cur.jawOpen ? 1 - Math.exp(-dt * 30) : 1 - Math.exp(-dt * 20);
+        // No camera or face tracking off: Head stays perfectly neutral/centered, mouth animates dynamically with voice volume (Lip-Sync)
+        const vol = Number.isFinite(feat.audioVolume) ? (feat.audioVolume as number) : 0;
+        const effectiveVol = vol > 0 ? vol : (isSpeakingRef.current ? 0.35 : 0);
+        const audioJaw = effectiveVol > 0.003 ? Math.min(1, Math.max(0, (effectiveVol - 0.003) * 5.2)) : 0;
+        const alphaJaw = audioJaw > cur.jawOpen ? 1 - Math.exp(-dt * 40) : 1 - Math.exp(-dt * 20);
         cur.jawOpen = THREE.MathUtils.lerp(cur.jawOpen, audioJaw, alphaJaw);
 
-        // Smoothly glide head and other facial features to neutral
-        const decay = 0.04;
-        cur.yaw = THREE.MathUtils.lerp(cur.yaw, 0, decay);
-        cur.pitch = THREE.MathUtils.lerp(cur.pitch, 0, decay);
-        cur.roll = THREE.MathUtils.lerp(cur.roll, 0, decay);
-        cur.mouthSmile = THREE.MathUtils.lerp(cur.mouthSmile, 0, decay);
-        cur.mouthPucker = THREE.MathUtils.lerp(cur.mouthPucker, 0, decay);
-        cur.browRaise = THREE.MathUtils.lerp(cur.browRaise, 0, decay);
-        cur.browFurrow = THREE.MathUtils.lerp(cur.browFurrow, 0, decay);
-        cur.eyeBlinkLeft = THREE.MathUtils.lerp(cur.eyeBlinkLeft, 0, decay);
-        cur.eyeBlinkRight = THREE.MathUtils.lerp(cur.eyeBlinkRight, 0, decay);
-        cur.gazeX = THREE.MathUtils.lerp(cur.gazeX, 0, decay);
-        cur.gazeY = THREE.MathUtils.lerp(cur.gazeY, 0, decay);
+        // Swift, fluid return to centered resting pose for head rotation and non-mouth expressions
+        const alphaCenter = 1 - Math.exp(-dt * 16);
+        cur.yaw = THREE.MathUtils.lerp(cur.yaw, 0, alphaCenter);
+        cur.pitch = THREE.MathUtils.lerp(cur.pitch, 0, alphaCenter);
+        cur.roll = THREE.MathUtils.lerp(cur.roll, 0, alphaCenter);
+        cur.mouthSmile = THREE.MathUtils.lerp(cur.mouthSmile, 0, alphaCenter);
+        cur.mouthPucker = THREE.MathUtils.lerp(cur.mouthPucker, 0, alphaCenter);
+        cur.browRaise = THREE.MathUtils.lerp(cur.browRaise, 0, alphaCenter);
+        cur.browFurrow = THREE.MathUtils.lerp(cur.browFurrow, 0, alphaCenter);
+        cur.eyeBlinkLeft = THREE.MathUtils.lerp(cur.eyeBlinkLeft, 0, alphaCenter);
+        cur.eyeBlinkRight = THREE.MathUtils.lerp(cur.eyeBlinkRight, 0, alphaCenter);
+        cur.gazeX = THREE.MathUtils.lerp(cur.gazeX, 0, alphaCenter);
+        cur.gazeY = THREE.MathUtils.lerp(cur.gazeY, 0, alphaCenter);
       }
 
       // ========================================================

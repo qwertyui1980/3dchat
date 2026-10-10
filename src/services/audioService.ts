@@ -70,12 +70,17 @@ export class AudioService {
 
       const bufferLength = this.analyser.fftSize;
       this.dataArray = new Uint8Array(bufferLength);
+      const freqData = new Uint8Array(this.analyser.frequencyBinCount);
+      let lastDispatchTime = 0;
 
-      const analyzeAudio = () => {
+      const analyzeAudio = (timestamp: number) => {
         if (!this.analyser || !this.dataArray) return;
 
         if (this.isMuted) {
-          if (this.onVolumeChange) this.onVolumeChange(0);
+          if (this.onVolumeChange && timestamp - lastDispatchTime > 60) {
+            lastDispatchTime = timestamp;
+            this.onVolumeChange(0);
+          }
         } else {
           // Time-domain RMS for real sound pressure detection
           this.analyser.getByteTimeDomainData(this.dataArray as unknown as Uint8Array<ArrayBuffer>);
@@ -86,9 +91,21 @@ export class AudioService {
           }
           const rms = Math.sqrt(sumSquares / this.dataArray.length);
 
-          // Calibrated sensitivity: ambient noise ~0.005, human voice ~0.02 to 0.20
-          const normalized = Math.min(1, Math.max(0, (rms - 0.008) * 5.8));
-          if (this.onVolumeChange) {
+          // Frequency spectrum energy for vocal resonance
+          this.analyser.getByteFrequencyData(freqData as unknown as Uint8Array<ArrayBuffer>);
+          let freqSum = 0;
+          const speechBins = Math.min(freqData.length, 32);
+          for (let i = 1; i < speechBins; i++) {
+            freqSum += freqData[i];
+          }
+          const avgFreq = freqSum / (speechBins * 255);
+
+          const rawEnergy = Math.max(rms, avgFreq * 0.45);
+          // Calibrated sensitivity: ambient noise ~0.002, human voice ~0.01 to 0.25
+          const normalized = Math.min(1, Math.max(0, (rawEnergy - 0.002) * 7.5));
+
+          if (this.onVolumeChange && timestamp - lastDispatchTime >= 30) {
+            lastDispatchTime = timestamp;
             this.onVolumeChange(normalized);
           }
         }
@@ -106,6 +123,9 @@ export class AudioService {
 
   setMute(mute: boolean) {
     this.isMuted = mute;
+    if (!mute) {
+      this.ensureResumed();
+    }
     if (this.mediaStream) {
       this.mediaStream.getAudioTracks().forEach((track) => {
         track.enabled = !mute;

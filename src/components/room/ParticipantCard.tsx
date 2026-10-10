@@ -104,18 +104,8 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
 
       {/* Top Bar inside Card */}
       <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between z-10 gap-1.5">
-        {/* Left: Role & Voice status badge */}
+        {/* Left: Voice status badge (when camera is off) */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {user.role === 'admin' ? (
-            <span className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-black uppercase tracking-wider shadow-sm">
-              <Shield className="w-3 h-3 text-amber-400" />
-              ADMIN
-            </span>
-          ) : (
-            <span className="px-1.5 py-0.5 rounded-md bg-neutral-900/80 text-neutral-400 border border-neutral-800 text-[10px] font-medium uppercase">
-              Participante
-            </span>
-          )}
           {!user.isCameraActive && (
             <span
               className="px-1.5 py-0.5 rounded-md bg-neutral-900/80 text-sky-400 border border-sky-900/40 text-[10px] font-mono"
