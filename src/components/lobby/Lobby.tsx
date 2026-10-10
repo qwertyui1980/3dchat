@@ -34,6 +34,7 @@ import { getAvatarTrackingProfile, transformAvatarLandmark } from '../avatars/av
 import { networkServiceSingleton } from '../../services/networkService';
 import { LegalDisclaimerModal } from '../common/LegalDisclaimerModal';
 import { AdminControlPanel } from '../room/AdminControlPanel';
+import { FaceBlendshapeStudioModal } from '../admin/FaceBlendshapeStudioModal';
 
 interface LobbyProps {
   onJoinRoom: (config: {
@@ -139,6 +140,7 @@ export const Lobby: React.FC<LobbyProps> = ({
       : avatarModelServiceSingleton.getActiveAvatars()
   );
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [isFaceStudioOpen, setIsFaceStudioOpen] = useState(false);
 
   useEffect(() => {
     const unsub = avatarModelServiceSingleton.subscribe(() => {
@@ -828,14 +830,26 @@ export const Lobby: React.FC<LobbyProps> = ({
                     <span>Elige tu Avatar 3D</span>
                   </label>
                   {isAdminUser && (
-                    <button
-                      type="button"
-                      onClick={() => setIsAdminPanelOpen(true)}
-                      className="text-[11px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded-lg border border-amber-500/30"
-                    >
-                      <Shield className="w-3 h-3" />
-                      <span>Gestionar Modelos</span>
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setIsFaceStudioOpen(true)}
+                        className="text-[11px] text-cyan-300 hover:text-cyan-200 font-black flex items-center gap-1 cursor-pointer bg-gradient-to-r from-cyan-500/20 to-indigo-500/20 hover:from-cyan-500/30 hover:to-indigo-500/30 px-2.5 py-1 rounded-lg border border-cyan-400/40 shadow-sm"
+                        title="Abrir Generador Face to Blendshape 3D"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Face to 3D</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setIsAdminPanelOpen(true)}
+                        className="text-[11px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 px-2 py-1 rounded-lg border border-amber-500/30"
+                      >
+                        <Shield className="w-3 h-3" />
+                        <span>Gestionar Modelos</span>
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -891,6 +905,26 @@ export const Lobby: React.FC<LobbyProps> = ({
                       </div>
                     );
                   })}
+
+                  {/* Botón Face to Blendshape 3D Directo para Admin */}
+                  {isAdminUser && (
+                    <button
+                      type="button"
+                      onClick={() => setIsFaceStudioOpen(true)}
+                      title="Generar modelo 3D desde foto con 52 blendshapes ARKit"
+                      className="relative p-2 rounded-xl border border-cyan-500/50 hover:border-cyan-400 bg-gradient-to-b from-cyan-950/40 to-indigo-950/40 hover:from-cyan-950/60 hover:to-indigo-950/60 text-left flex flex-col items-center justify-center gap-1 cursor-pointer transition active:scale-95 shadow-lg shadow-cyan-950/30"
+                    >
+                      <div className="w-10 h-10 rounded-lg bg-gradient-to-tr from-cyan-500 to-indigo-600 text-white flex items-center justify-center text-sm shadow-md shrink-0">
+                        <Sparkles className="w-5 h-5" />
+                      </div>
+                      <span className="text-[9px] font-black text-cyan-200 text-center leading-tight">
+                        + Foto 3D
+                      </span>
+                      <span className="text-[8px] font-mono text-cyan-300 px-1 py-0.2 bg-cyan-900/60 rounded border border-cyan-600/50">
+                        Blendshapes
+                      </span>
+                    </button>
+                  )}
 
                   {/* Subir Modelo / Abrir Panel */}
                   <button
@@ -1038,8 +1072,23 @@ export const Lobby: React.FC<LobbyProps> = ({
           onToggleLock={() => {}}
           onMuteAll={() => {}}
           onSelectAvatar={(id) => handleSelectAvatar(id)}
+          onOpenFaceStudio={() => {
+            setIsAdminPanelOpen(false);
+            setIsFaceStudioOpen(true);
+          }}
         />
       )}
+
+      {/* Face to Blendshape 3D Admin Studio Modal */}
+      <FaceBlendshapeStudioModal
+        isOpen={isFaceStudioOpen}
+        onClose={() => setIsFaceStudioOpen(false)}
+        isAdmin={isAdminUser}
+        onSelectAvatar={(avatarId) => {
+          handleSelectAvatar(avatarId);
+          setIsFaceStudioOpen(false);
+        }}
+      />
     </div>
   );
 };

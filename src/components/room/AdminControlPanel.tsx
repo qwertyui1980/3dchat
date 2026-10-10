@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { RoomInfo, User, AvatarDefinition } from '../../types';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
+import { FaceBlendshapeStudioModal } from '../admin/FaceBlendshapeStudioModal';
 
 interface AdminControlPanelProps {
   room: RoomInfo;
@@ -34,6 +35,7 @@ interface AdminControlPanelProps {
   onToggleLock: (locked: boolean) => void;
   onMuteAll: () => void;
   onSelectAvatar?: (avatarId: string) => void;
+  onOpenFaceStudio?: () => void;
 }
 
 export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
@@ -46,11 +48,13 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
   onToggleLock,
   onMuteAll,
   onSelectAvatar,
+  onOpenFaceStudio,
 }) => {
   const [activeTab, setActiveTab] = useState<'models' | 'room'>('models');
   const [avatars, setAvatars] = useState<AvatarDefinition[]>(() =>
     avatarModelServiceSingleton.getAllAvatars()
   );
+  const [isFaceStudioModalOpen, setIsFaceStudioModalOpen] = useState(false);
 
   // Upload Form State
   const [modelName, setModelName] = useState('');
@@ -195,11 +199,48 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
         <div className="p-5 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
           {activeTab === 'models' && (
             <div className="space-y-6">
+              {/* 0. Face to Blendshape 3D Studio Banner */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-cyan-950/60 via-indigo-950/60 to-purple-950/60 border border-cyan-500/40 shadow-xl shadow-cyan-950/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-start sm:items-center gap-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-cyan-500/30">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm sm:text-base font-black text-white tracking-wide">
+                        Face to Blendshape 3D Studio
+                      </h4>
+                      <span className="px-2 py-0.5 rounded-full bg-cyan-400/20 text-cyan-300 border border-cyan-400/40 text-[9px] font-black uppercase">
+                        NUEVO
+                      </span>
+                    </div>
+                    <p className="text-xs text-neutral-300 mt-0.5">
+                      Convierte una sola foto o selfie en un modelo 3D con 52 morph targets ARKit y texturizado UV automático.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (onOpenFaceStudio) {
+                      onOpenFaceStudio();
+                    } else {
+                      setIsFaceStudioModalOpen(true);
+                    }
+                  }}
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-black text-xs tracking-wider shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 transition hover:scale-[1.02] active:scale-[0.98] shrink-0 cursor-pointer"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  <span>ABRIR ESTUDIO 3D</span>
+                </button>
+              </div>
+
               {/* 1. Upload Model File Section */}
               <div className="p-4 sm:p-5 rounded-2xl bg-[#0f1426] border border-cyan-500/20 shadow-lg">
                 <div className="flex items-center gap-2 text-cyan-300 font-bold text-sm mb-3">
                   <Upload className="w-4 h-4" />
-                  <span>Subir Nuevo Archivo de Modelo 3D</span>
+                  <span>Subir Archivo de Modelo 3D (.glb / .gltf)</span>
                 </div>
 
                 <form onSubmit={handleUploadSubmit} className="space-y-4">
@@ -543,6 +584,17 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Face to Blendshape 3D Admin Studio Modal */}
+      <FaceBlendshapeStudioModal
+        isOpen={isFaceStudioModalOpen}
+        onClose={() => setIsFaceStudioModalOpen(false)}
+        isAdmin={true}
+        onSelectAvatar={(avatarId) => {
+          if (onSelectAvatar) onSelectAvatar(avatarId);
+          setIsFaceStudioModalOpen(false);
+        }}
+      />
     </div>
   );
 };

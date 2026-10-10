@@ -431,27 +431,26 @@ export default function App() {
     return window.location.pathname.startsWith('/3dchat') ? '/3dchat' : '';
   };
 
-  // Synchronize browser URL (/lobby, /espacio/nombre, /)
+  // Synchronize browser URL (#lobby, #espacio/nombre, /)
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const basePath = getBasePath();
 
     if (!authenticatedUser) {
-      const rootPath = basePath ? `${basePath}/` : '/';
-      const curPath = window.location.pathname;
-      if (curPath !== rootPath && curPath !== basePath && curPath !== '/' && curPath !== '') {
+      const rootPath = `${basePath}/`;
+      if (window.location.hash || window.location.pathname !== rootPath) {
         window.history.replaceState(null, '', rootPath);
       }
     } else if (isInRoom && room?.id) {
       const roomSlug = encodeURIComponent(room.id);
-      const targetPath = `${basePath}/espacio/${roomSlug}`;
-      if (window.location.pathname !== targetPath) {
-        window.history.pushState({ screen: 'room', roomId: room.id }, '', targetPath);
+      const targetHash = `#espacio/${roomSlug}`;
+      if (window.location.hash !== targetHash) {
+        window.history.replaceState({ screen: 'room', roomId: room.id }, '', `${basePath}/${targetHash}`);
       }
     } else {
-      const targetPath = `${basePath}/lobby`;
-      if (window.location.pathname !== targetPath) {
-        window.history.pushState({ screen: 'lobby' }, '', targetPath);
+      const targetHash = '#lobby';
+      if (window.location.hash !== targetHash) {
+        window.history.replaceState({ screen: 'lobby' }, '', `${basePath}/${targetHash}`);
       }
     }
   }, [authenticatedUser, isInRoom, room?.id]);
@@ -459,17 +458,10 @@ export default function App() {
   // Handle browser back / forward buttons
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const basePath = getBasePath();
 
     const handlePopState = () => {
-      const path = window.location.pathname;
-      if (
-        path === `${basePath}/lobby` ||
-        path === `${basePath}/` ||
-        path === basePath ||
-        path === '/lobby' ||
-        path === '/'
-      ) {
+      const hash = window.location.hash;
+      if (hash === '#lobby' || hash === '' || !hash) {
         if (isInRoom) {
           networkServiceSingleton.cleanup();
           setIsInRoom(false);
@@ -490,7 +482,7 @@ export default function App() {
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('xstreamx_auth', JSON.stringify(user));
       const basePath = getBasePath();
-      window.history.pushState({ screen: 'lobby' }, '', `${basePath}/lobby`);
+      window.history.replaceState({ screen: 'lobby' }, '', `${basePath}/#lobby`);
     }
     addToast(`Sesión iniciada como ${user.name} (${user.role === 'admin' ? 'Admin' : 'Participante'})`, 'success');
   };
@@ -500,7 +492,7 @@ export default function App() {
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('xstreamx_auth');
       const basePath = getBasePath();
-      window.history.replaceState(null, '', basePath ? `${basePath}/` : '/');
+      window.history.replaceState(null, '', `${basePath}/`);
     }
     handleLeaveCall();
     setAuthenticatedUser(null);
@@ -669,9 +661,9 @@ export default function App() {
     setMediaState(INITIAL_MEDIA_STATE);
     if (typeof window !== 'undefined') {
       const basePath = getBasePath();
-      const targetPath = `${basePath}/lobby`;
-      if (window.location.pathname !== targetPath) {
-        window.history.pushState({ screen: 'lobby' }, '', targetPath);
+      const targetHash = '#lobby';
+      if (window.location.hash !== targetHash) {
+        window.history.replaceState({ screen: 'lobby' }, '', `${basePath}/${targetHash}`);
       }
     }
     addToast('Has salido del espacio', 'info');
