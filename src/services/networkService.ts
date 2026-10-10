@@ -333,7 +333,7 @@ export class NetworkService {
       avatarId: avatarId,
       role: createAsAdmin ? 'admin' : 'participant',
       roomId: cleanRoomId,
-      isMuted: false,
+      isMuted: true,
       isCameraActive: true,
     };
 
@@ -1960,6 +1960,22 @@ export class NetworkService {
         state: nextState,
       });
     }
+  }
+
+  reorderMediaQueue(newQueue: VideoQueueItem[]) {
+    const nextState: RoomMediaState = {
+      ...this.currentMediaState,
+      queue: newQueue,
+      lastSyncTimestamp: Date.now(),
+      syncedByUserId: this.currentUser?.id || '',
+    };
+
+    this.currentMediaState = { ...nextState };
+    if (this.onMediaStateChanged) {
+      this.onMediaStateChanged({ ...this.currentMediaState });
+    }
+
+    this.syncMediaState(nextState);
   }
 
   requestMediaSync() {

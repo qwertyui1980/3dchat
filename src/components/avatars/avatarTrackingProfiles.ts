@@ -487,6 +487,29 @@ export const AVATAR_TRACKING_PROFILES: Record<AvatarId, AvatarTrackingProfile> =
       { name: 'lips', indices: [61, 82, 13, 312, 291, 14, 61], isClosed: true, color: '#f59e0b', width: 2.2 },
     ],
   },
+  // 16. Mipipi 3D: Modelo Híbrido Estilizado (30 Puntos)
+  mipipi: {
+    avatarId: 'mipipi',
+    name: 'Mipipi 3D',
+    pointsCount: 30,
+    badge: '3D MORPH',
+    description: 'Avatar 3D con morph targets faciales y seguimiento interactivo en tiempo real',
+    color: '#10b981',
+    dotColor: '#34d399',
+    glowColor: 'rgba(16, 185, 129, 0.4)',
+    activeIndices: [
+      10, 1, 152, 234, 454,
+      33, 133, 362, 263, 468, 473,
+      70, 105, 300, 334,
+      168, 197, 2,
+      61, 291, 13, 14, 0, 17, 78, 308, 82, 312,
+    ],
+    contours: [
+      { name: 'brows', indices: [70, 105, 300, 334], color: '#34d399', width: 2.0 },
+      { name: 'eyes', indices: [33, 133, 168, 362, 263], color: '#10b981', width: 2.0 },
+      { name: 'lips', indices: [61, 82, 13, 312, 291, 14, 61], isClosed: true, color: '#34d399', width: 2.2 },
+    ],
+  },
 };
 
 /**

@@ -292,7 +292,7 @@ async function startServer() {
         avatarId: avatarId || 'three_robot',
         role: finalRole,
         roomId: trimmedRoomId,
-        isMuted: false,
+        isMuted: true,
         isCameraActive: true,
       };
 
@@ -426,6 +426,7 @@ async function startServer() {
         }
       });
 
+      io.to(currentUser.roomId).emit('force_mute_all', { isMuted: shouldMute });
       io.to(currentUser.roomId).emit('all_users_updated', {
         participants: Array.from(room.users.values()),
       });

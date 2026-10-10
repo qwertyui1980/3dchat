@@ -17,13 +17,14 @@ import {
   Eye,
   EyeOff,
   Radio,
-  Upload,
   AlertCircle,
   AlertTriangle,
   Play,
+  X,
 } from 'lucide-react';
-import { AvatarId, FaceFeatures } from '../../types';
+import { AvatarId, FaceFeatures, AvatarDefinition } from '../../types';
 import { AVATAR_LIST } from '../avatars/avatarConfigs';
+import { avatarModelServiceSingleton } from '../../services/avatarModelService';
 import { AvatarCanvas } from '../avatars/AvatarCanvas';
 import { AudioWaveform } from '../common/AudioWaveform';
 import { AuthenticatedUser } from '../auth/Login';
@@ -31,6 +32,7 @@ import { dbServiceSingleton, RoomRecord } from '../../services/dbService';
 import { getAvatarTrackingProfile, transformAvatarLandmark } from '../avatars/avatarTrackingProfiles';
 import { networkServiceSingleton } from '../../services/networkService';
 import { LegalDisclaimerModal } from '../common/LegalDisclaimerModal';
+import { AdminControlPanel } from '../room/AdminControlPanel';
 
 interface LobbyProps {
   onJoinRoom: (config: {
@@ -130,10 +132,28 @@ export const Lobby: React.FC<LobbyProps> = ({
   });
 
   // Remember selected avatar from localStorage
+  const [avatars, setAvatars] = useState<AvatarDefinition[]>(() =>
+    isAdminUser
+      ? avatarModelServiceSingleton.getAllAvatars()
+      : avatarModelServiceSingleton.getActiveAvatars()
+  );
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+
+  useEffect(() => {
+    const unsub = avatarModelServiceSingleton.subscribe(() => {
+      setAvatars(
+        isAdminUser
+          ? avatarModelServiceSingleton.getAllAvatars()
+          : avatarModelServiceSingleton.getActiveAvatars()
+      );
+    });
+    return unsub;
+  }, [isAdminUser]);
+
   const [selectedAvatarId, setSelectedAvatarId] = useState<AvatarId>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(STORAGE_AVATAR_KEY) as AvatarId;
-      if (saved && AVATAR_LIST.some((a) => a.id === saved)) {
+      if (saved && avatarModelServiceSingleton.getAvatarById(saved)) {
         return saved;
       }
     }
@@ -374,7 +394,10 @@ export const Lobby: React.FC<LobbyProps> = ({
   }, [landmarks, showCameraPip, isCameraActive, selectedAvatarId]);
 
   const selectedAvatar =
-    AVATAR_LIST.find((a) => a.id === selectedAvatarId) || AVATAR_LIST[0];
+    avatars.find((a) => a.id === selectedAvatarId) ||
+    avatarModelServiceSingleton.getAvatarById(selectedAvatarId) ||
+    avatars[0] ||
+    AVATAR_LIST[0];
 
   const handleGenerateRandomAnon = () => {
     setUserName(generateRandomAlias());
@@ -798,22 +821,35 @@ export const Lobby: React.FC<LobbyProps> = ({
 
               {/* Paso 1: Selector de Avatar 3D */}
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-200 mb-2 flex items-center gap-1.5">
-                  <span className="w-4 h-4 rounded-full bg-cyan-500 text-slate-950 text-[10px] font-black flex items-center justify-center">1</span>
-                  <span>Elige tu Avatar 3D</span>
-                </label>
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-48 overflow-y-auto pr-1">
-                  {AVATAR_LIST.map((avatar) => {
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
+                    <span className="w-4 h-4 rounded-full bg-cyan-500 text-slate-950 text-[10px] font-black flex items-center justify-center">1</span>
+                    <span>Elige tu Avatar 3D</span>
+                  </label>
+                  {isAdminUser && (
+                    <button
+                      type="button"
+                      onClick={() => setIsAdminPanelOpen(true)}
+                      className="text-[11px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded-lg border border-amber-500/30"
+                    >
+                      <Shield className="w-3 h-3" />
+                      <span>Gestionar Modelos</span>
+                    </button>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
+                  {avatars.map((avatar) => {
                     const isSelected = avatar.id === selectedAvatarId;
                     return (
-                      <button
+                      <div
                         key={avatar.id}
-                        type="button"
                         onClick={() => handleSelectAvatar(avatar.id)}
-                        className={`relative p-2 rounded-xl border text-left flex flex-col items-center gap-1 transition cursor-pointer ${isSelected
+                        className={`group relative p-2 rounded-xl border text-left flex flex-col items-center gap-1 transition cursor-pointer ${
+                          isSelected
                             ? 'bg-cyan-950/80 border-cyan-400 ring-2 ring-cyan-400/40 shadow-md shadow-cyan-500/20 scale-[1.02]'
                             : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
-                          }`}
+                        }`}
                       >
                         <div
                           className="w-10 h-10 rounded-lg border flex items-center justify-center text-xl shadow-inner shrink-0"
@@ -827,30 +863,57 @@ export const Lobby: React.FC<LobbyProps> = ({
                         <span className="text-[10px] font-bold text-slate-200 truncate w-full text-center">
                           {avatar.name}
                         </span>
+
+                        {/* Selected Indicator Check */}
                         {isSelected && (
-                          <div className="absolute top-1 right-1 w-3.5 h-3.5 rounded-full bg-cyan-400 flex items-center justify-center shadow">
+                          <div className="absolute top-1 left-1 w-3.5 h-3.5 rounded-full bg-cyan-400 flex items-center justify-center shadow">
                             <Check className="w-2.5 h-2.5 text-slate-950" />
                           </div>
                         )}
-                      </button>
+
+                        {/* Admin 1-Click Delete Button ('X') */}
+                        {isAdminUser && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (confirm(`¿Eliminar el modelo "${avatar.name}" de la plataforma?`)) {
+                                avatarModelServiceSingleton.deleteModel(avatar.id);
+                              }
+                            }}
+                            className="absolute top-1 right-1 p-1 rounded-md bg-rose-950/95 hover:bg-rose-900 border border-rose-500/60 text-rose-300 z-10 transition active:scale-90 shadow-md cursor-pointer"
+                            title="Eliminar este modelo de la plataforma con 1 clic"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
                     );
                   })}
 
-                  {/* Opción Futura: Subir Avatar Propio */}
-                  <div
-                    title="Próximamente: Podrás subir tu modelo o avatar personalizado"
-                    className="relative p-2 rounded-xl border border-dashed border-slate-700 bg-slate-950/40 text-left flex flex-col items-center justify-center gap-1 opacity-60 cursor-not-allowed select-none"
+                  {/* Subir Modelo / Abrir Panel */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (isAdminUser) {
+                        setIsAdminPanelOpen(true);
+                      } else {
+                        alert('Solo el Administrador puede subir y agregar nuevos modelos 3D a la plataforma.');
+                      }
+                    }}
+                    title={isAdminUser ? 'Subir nuevo archivo de modelo 3D (.glb, .gltf, .vrm)' : 'Función disponible para administradores'}
+                    className="relative p-2 rounded-xl border border-dashed border-cyan-500/40 hover:border-cyan-400 bg-cyan-950/20 hover:bg-cyan-950/40 text-left flex flex-col items-center justify-center gap-1 cursor-pointer transition active:scale-95"
                   >
-                    <div className="w-10 h-10 rounded-lg border border-dashed border-slate-700 flex items-center justify-center text-slate-400 shrink-0">
-                      <Upload className="w-4 h-4" />
+                    <div className="w-10 h-10 rounded-lg border border-dashed border-cyan-500/40 flex items-center justify-center text-cyan-400 shrink-0">
+                      <Plus className="w-4 h-4" />
                     </div>
-                    <span className="text-[9px] font-bold text-slate-400 text-center leading-tight">
-                      Subir Propio
+                    <span className="text-[9px] font-bold text-cyan-300 text-center leading-tight">
+                      {isAdminUser ? 'Subir 3D' : 'Nuevos 3D'}
                     </span>
                     <span className="text-[8px] font-mono text-cyan-400 px-1 py-0.2 bg-cyan-950/80 rounded border border-cyan-900">
-                      Pronto
+                      {isAdminUser ? 'Admin' : 'Admin Only'}
                     </span>
-                  </div>
+                  </button>
                 </div>
               </div>
 
@@ -947,6 +1010,35 @@ export const Lobby: React.FC<LobbyProps> = ({
       </div>
 
       <LegalDisclaimerModal isOpen={isLegalOpen} onClose={() => setIsLegalOpen(false)} />
+
+      {/* Admin Global Control Panel Modal */}
+      {isAdminUser && (
+        <AdminControlPanel
+          room={{
+            id: SINGLE_ROOM_ID,
+            name: 'Espacio Principal en Vivo',
+            adminId: authUser?.username || 'admin',
+            isLocked: false,
+            participants: [],
+          }}
+          currentUser={{
+            id: authUser?.username || 'admin',
+            name: authUser?.name || 'Administrador',
+            avatarId: selectedAvatarId,
+            role: 'admin',
+            roomId: SINGLE_ROOM_ID,
+            isMuted: false,
+            isCameraActive: true,
+          }}
+          isOpen={isAdminPanelOpen}
+          onClose={() => setIsAdminPanelOpen(false)}
+          onAdminMute={() => {}}
+          onAdminKick={() => {}}
+          onToggleLock={() => {}}
+          onMuteAll={() => {}}
+          onSelectAvatar={(id) => handleSelectAvatar(id)}
+        />
+      )}
     </div>
   );
 };

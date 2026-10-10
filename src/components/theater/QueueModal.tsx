@@ -11,6 +11,9 @@ import {
   CheckCircle2,
   AlertCircle,
   ExternalLink,
+  ChevronUp,
+  ChevronDown,
+  ArrowUpDown,
 } from 'lucide-react';
 import { RoomMediaState, VideoQueueItem, User } from '../../types';
 import { extractYouTubeVideoId, fetchYouTubeVideoInfo } from '../../utils/youtube';
@@ -25,6 +28,7 @@ interface QueueModalProps {
   onSkipVideo: () => void;
   onPlayNow?: (itemId: string) => void;
   onRequestSync?: () => void;
+  onReorderQueue?: (newQueue: VideoQueueItem[]) => void;
 }
 
 export const QueueModal: React.FC<QueueModalProps> = ({
@@ -274,21 +278,55 @@ export const QueueModal: React.FC<QueueModalProps> = ({
                 No hay más videos en cola.
               </p>
             ) : (
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              <div className="space-y-2 max-h-56 overflow-y-auto pr-1 custom-scrollbar">
                 {queue.map((item, index) => {
                   const isMine = item.addedByUserId === currentUser.id;
                   const isAdmin = currentUser.role === 'admin';
                   const canDelete = isMine || isAdmin;
+                  const canReorder = isAdmin || isMine;
+
+                  const handleMove = (delta: number) => {
+                    const targetIndex = index + delta;
+                    if (targetIndex < 0 || targetIndex >= queue.length) return;
+                    const next = [...queue];
+                    const [moved] = next.splice(index, 1);
+                    next.splice(targetIndex, 0, moved);
+                    onReorderQueue?.(next);
+                  };
 
                   return (
                     <div
                       key={item.id}
-                      className={`p-2.5 rounded-xl border flex items-center gap-3 transition ${
+                      className={`p-2.5 rounded-xl border flex items-center gap-2.5 transition ${
                         isMine
                           ? 'bg-cyan-950/20 border-cyan-500/30'
                           : 'bg-white/[0.03] border-white/[0.06] hover:border-white/15'
                       }`}
                     >
+                      {/* Reorder Buttons (Up / Down) */}
+                      {canReorder && onReorderQueue && (
+                        <div className="flex flex-col gap-0.5 shrink-0">
+                          <button
+                            type="button"
+                            disabled={index === 0}
+                            onClick={() => handleMove(-1)}
+                            className="p-0.5 rounded hover:bg-white/10 text-neutral-400 hover:text-cyan-300 disabled:opacity-20 disabled:hover:bg-transparent cursor-pointer"
+                            title="Subir puesto en la playlist"
+                          >
+                            <ChevronUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            disabled={index === queue.length - 1}
+                            onClick={() => handleMove(1)}
+                            className="p-0.5 rounded hover:bg-white/10 text-neutral-400 hover:text-cyan-300 disabled:opacity-20 disabled:hover:bg-transparent cursor-pointer"
+                            title="Bajar puesto en la playlist"
+                          >
+                            <ChevronDown className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )}
+
                       <span className="w-5 text-center font-bold text-xs text-neutral-400 shrink-0">
                         #{index + 1}
                       </span>
@@ -314,7 +352,7 @@ export const QueueModal: React.FC<QueueModalProps> = ({
                             type="button"
                             onClick={() => onPlayNow(item.id)}
                             className="p-1.5 rounded-lg text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/30 transition active:scale-95 cursor-pointer"
-                            title="Adelantar y reproducir este video ahora (Admin)"
+                            title="Reproducir este video ahora (Admin)"
                           >
                             <Play className="w-3.5 h-3.5 fill-current" />
                           </button>

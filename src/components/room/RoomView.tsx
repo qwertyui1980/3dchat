@@ -21,6 +21,7 @@ import { HomeTheaterWindow } from '../theater/HomeTheaterWindow';
 import { TvFloatingLauncher } from '../theater/TvFloatingLauncher';
 import { QueueModal } from '../theater/QueueModal';
 import { WhiteboardPanel } from '../whiteboard/WhiteboardPanel';
+import { AdminControlPanel } from './AdminControlPanel';
 
 interface RoomViewProps {
   room: RoomInfo;
@@ -49,6 +50,7 @@ interface RoomViewProps {
   onRemoveMediaQueueItem: (itemId: string) => void;
   onSkipMedia: () => void;
   onPlayQueueItemNow?: (itemId: string) => void;
+  onReorderMediaQueue?: (newQueue: VideoQueueItem[]) => void;
   onToggleMediaPlayback: (isPlaying: boolean, currentTime: number) => void;
   onSeekMedia: (currentTime: number) => void;
   onRequestMediaSync?: () => void;
@@ -85,6 +87,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
   onRemoveMediaQueueItem,
   onSkipMedia,
   onPlayQueueItemNow,
+  onReorderMediaQueue,
   onToggleMediaPlayback,
   onSeekMedia,
   onRequestMediaSync,
@@ -96,6 +99,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
   const [viewMode] = useState<ViewLayoutMode>('grid');
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
+  const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [lastReadMessageCount, setLastReadMessageCount] = useState(messages.length);
 
   // Home Theater & Cue Modal States
@@ -206,7 +210,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
 
         </div>
 
-        {/* Collaborative Whiteboard Canvas - Placed beside the chat */}
+        {/* Collaborative Whiteboard Canvas - Resizable & Draggable Window */}
         <WhiteboardPanel
           isOpen={isWhiteboardOpen}
           onClose={() => setIsWhiteboardOpen(false)}
@@ -249,6 +253,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
         onSeek={onSeekMedia}
         onVideoEnded={onSkipMedia}
         onSkip={onSkipMedia}
+        onAddVideo={onAddMediaQueueItem}
       />
 
       {/* Floating TV Launcher Widget (when theater is minimized or closed) */}
@@ -258,7 +263,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
         mediaState={mediaState}
       />
 
-      {/* YouTube Cue / Playlist Modal with Personal Turn indicator */}
+      {/* YouTube Cue / Playlist Modal with Personal Turn indicator & Item Reordering */}
       <QueueModal
         isOpen={isQueueModalOpen}
         onClose={() => setIsQueueModalOpen(false)}
@@ -268,8 +273,24 @@ export const RoomView: React.FC<RoomViewProps> = ({
         onRemoveVideo={onRemoveMediaQueueItem}
         onSkipVideo={onSkipMedia}
         onPlayNow={onPlayQueueItemNow}
+        onReorderQueue={onReorderMediaQueue}
         onRequestSync={onRequestMediaSync}
       />
+
+      {/* Dedicated Admin Control Panel Modal */}
+      {isAdmin && (
+        <AdminControlPanel
+          room={room}
+          currentUser={currentUser}
+          isOpen={isAdminPanelOpen}
+          onClose={() => setIsAdminPanelOpen(false)}
+          onAdminMute={onAdminMute}
+          onAdminKick={onAdminKick}
+          onToggleLock={onToggleLock}
+          onMuteAll={onMuteAll}
+          onSelectAvatar={onSelectAvatar}
+        />
+      )}
 
       {/* Bottom Controls Bar */}
       <CallControls
@@ -296,6 +317,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
         queueCount={mediaState.queue.length}
         onToggleWhiteboard={() => setIsWhiteboardOpen((prev) => !prev)}
         isWhiteboardOpen={isWhiteboardOpen}
+        onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
       />
     </div>
   );

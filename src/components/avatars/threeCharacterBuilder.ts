@@ -2286,3 +2286,122 @@ export function buildTrumpCharacter(gltf: GLTF): Character3DController {
   };
 }
 
+export function buildMipipiCharacter(gltf: GLTF): Character3DController {
+  const root = new THREE.Group();
+  root.position.set(0, 0, 0);
+
+  const model = SkeletonUtils.clone(gltf.scene) as THREE.Group;
+
+  // Find meshes with morph targets
+  const morphMeshes: Array<{ mesh: THREE.Mesh; dict: { [key: string]: number } }> = [];
+  model.traverse((child) => {
+    if ((child as THREE.Mesh).isMesh) {
+      const mesh = child as THREE.Mesh;
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      if (mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
+        morphMeshes.push({ mesh, dict: mesh.morphTargetDictionary });
+      }
+    }
+  });
+
+  const bbox = new THREE.Box3().setFromObject(model);
+  const center = new THREE.Vector3();
+  bbox.getCenter(center);
+  const size = new THREE.Vector3();
+  bbox.getSize(size);
+
+  const targetHeight = 2.4;
+  const maxDim = Math.max(size.x, size.y, size.z);
+  const scale = targetHeight / (maxDim || 1);
+  model.scale.set(scale, scale, scale);
+
+  model.position.x = -center.x * scale;
+  model.position.y = -center.y * scale;
+  model.position.z = -center.z * scale;
+
+  const headPivot = new THREE.Group();
+  headPivot.position.set(0, 3.75, 0);
+  headPivot.add(model);
+  root.add(headPivot);
+
+  const pedGeo = new THREE.CylinderGeometry(1.25, 1.45, 0.42, 32);
+  const pedMat = new THREE.MeshStandardMaterial({
+    color: 0x0f172a,
+    roughness: 0.35,
+    metalness: 0.8,
+  });
+  const ped = new THREE.Mesh(pedGeo, pedMat);
+  ped.position.set(0, 0.21, 0);
+  ped.receiveShadow = true;
+  root.add(ped);
+
+  const ringGeo = new THREE.RingGeometry(1.48, 1.56, 48);
+  const ringMat = new THREE.MeshBasicMaterial({
+    color: 0x10b981,
+    side: THREE.DoubleSide,
+    transparent: true,
+    opacity: 0.7,
+  });
+  const ring = new THREE.Mesh(ringGeo, ringMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.position.set(0, 0.43, 0);
+  root.add(ring);
+
+  const applyMorph = (name: string, targetVal: number, speed: number = 0.25) => {
+    morphMeshes.forEach(({ mesh, dict }) => {
+      const idx = dict[name];
+      if (idx !== undefined && mesh.morphTargetInfluences) {
+        mesh.morphTargetInfluences[idx] = THREE.MathUtils.lerp(
+          mesh.morphTargetInfluences[idx] || 0,
+          Math.min(Math.max(targetVal, 0), 1),
+          speed
+        );
+      }
+    });
+  };
+
+  return {
+    group: root,
+    headPivot,
+    update: (features: FaceFeatures, _dt: number, now: number) => {
+      const targetPitch = (features.pitch || 0) * 0.85;
+      const targetYaw = (features.yaw || 0) * 0.85;
+      const targetRoll = (features.roll || 0) * 0.85;
+
+      headPivot.rotation.x = THREE.MathUtils.lerp(headPivot.rotation.x, targetPitch, 0.25);
+      headPivot.rotation.y = THREE.MathUtils.lerp(headPivot.rotation.y, targetYaw, 0.25);
+      headPivot.rotation.z = THREE.MathUtils.lerp(headPivot.rotation.z, targetRoll, 0.25);
+
+      const breath = Math.sin(now * 0.002) * 0.012;
+      const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
+      headPivot.position.y = 3.75 + breath + voiceNod;
+
+      // Morph targets handling (jawOpen, mouthSmile, browDown, eyeBlinkLeft, eyeBlinkRight)
+      const mouthOpen = Math.max(features.mouthOpen || 0, Math.min((features.audioVolume || 0) * 1.8, 1));
+      applyMorph('jawOpen', mouthOpen, 0.35);
+      applyMorph('mouthSmile', features.mouthSmile || 0, 0.2);
+      applyMorph('browDown', features.browDown || 0, 0.2);
+      applyMorph('eyeBlinkLeft', features.blinkL || 0, 0.4);
+      applyMorph('eyeBlinkRight', features.blinkR || 0, 0.4);
+    },
+    dispose: () => {
+      pedGeo.dispose();
+      pedMat.dispose();
+      ringGeo.dispose();
+      ringMat.dispose();
+      root.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const m = child as THREE.Mesh;
+          m.geometry?.dispose();
+          if (Array.isArray(m.material)) {
+            m.material.forEach((mat) => mat.dispose());
+          } else if (m.material) {
+            m.material.dispose();
+          }
+        }
+      });
+    },
+  };
+}
+

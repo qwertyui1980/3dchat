@@ -1,5 +1,5 @@
-import React from 'react';
-import { Shield, Mic, MicOff, X, Maximize2 } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { Shield, Mic, MicOff, X, Maximize2, GripHorizontal } from 'lucide-react';
 import { User, FaceFeatures } from '../../types';
 import { AvatarCanvas } from '../avatars/AvatarCanvas';
 import { AudioWaveform } from '../common/AudioWaveform';
@@ -25,6 +25,48 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
   onAdminMute,
   onAdminKick,
 }) => {
+  const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef<{ startX: number; startY: number; initX: number; initY: number }>({
+    startX: 0,
+    startY: 0,
+    initX: 0,
+    initY: 0,
+  });
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    // Only allow drag if not clicking buttons or interactive elements
+    if ((e.target as HTMLElement).closest('button, input, a')) return;
+
+    setIsDragging(true);
+    dragStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initX: offset.x,
+      initY: offset.y,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!isDragging) return;
+    const dx = e.clientX - dragStartRef.current.startX;
+    const dy = e.clientY - dragStartRef.current.startY;
+    setOffset({
+      x: dragStartRef.current.initX + dx,
+      y: dragStartRef.current.initY + dy,
+    });
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (isDragging) {
+      setIsDragging(false);
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch (_) {}
+    }
+  };
+
   const isSpeaking = (features.audioVolume > 0.12 || false) && !user.isMuted;
   const effectiveFeatures = React.useMemo(() => {
     if (user.isMuted) {
@@ -35,10 +77,20 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
 
   return (
     <div
-      className={`group relative w-[280px] h-[280px] sm:w-[320px] sm:h-[320px] shrink-0 rounded-2xl bg-[#08080c] border transition-all duration-300 overflow-hidden shadow-2xl ${
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
+      style={{
+        transform: `translate3d(${offset.x}px, ${offset.y}px, 0)`,
+        touchAction: 'none',
+      }}
+      className={`group relative w-[280px] h-[280px] sm:w-[320px] sm:h-[320px] shrink-0 rounded-2xl bg-[#08080c] border transition-shadow duration-200 overflow-hidden shadow-2xl select-none ${
+        isDragging ? 'z-40 ring-2 ring-cyan-400 shadow-cyan-950/60 cursor-grabbing' : 'cursor-grab'
+      } ${
         isFocusSpeaker
           ? 'border-cyan-500/80 ring-1 ring-cyan-500/30'
-          : 'border-white/[0.08] hover:border-white/[0.16]'
+          : 'border-white/[0.08] hover:border-white/[0.20]'
       }`}
     >
       {/* Avatar Canvas Rendering */}

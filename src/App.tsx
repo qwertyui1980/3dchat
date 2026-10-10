@@ -67,8 +67,8 @@ export default function App() {
   const [remoteStroke, setRemoteStroke] = useState<WhiteboardStroke | null>(null);
   const [remoteClearTimestamp, setRemoteClearTimestamp] = useState<number>(0);
 
-  // Hardware states
-  const [isMicActive, setIsMicActive] = useState(true);
+  // Hardware states: Audio starts MUTED by default
+  const [isMicActive, setIsMicActive] = useState(false);
   const [isAdminMuted, setIsAdminMuted] = useState(false);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [isModelReady, setIsModelReady] = useState(false);
@@ -113,7 +113,7 @@ export default function App() {
     }
   }, []);
 
-  // Microphone start helper that verifies permissions and establishes audio analysis
+  // Microphone start helper that verifies permissions and establishes audio analysis (starts muted by default)
   const startMic = useCallback(async () => {
     try {
       const audioStream = await audioServiceSingleton.start((volume) => {
@@ -135,7 +135,9 @@ export default function App() {
         networkServiceSingleton.setLocalAudioStream(audioStream);
         setHasMicPermission(true);
         setMicError(null);
-        setIsMicActive(true);
+        // Default to MUTED state
+        setIsMicActive(false);
+        audioServiceSingleton.setMute(true);
         return true;
       } else {
         setHasMicPermission(false);
@@ -517,11 +519,11 @@ export default function App() {
     networkServiceSingleton.joinRoom(roomId, userName, avatarId, createAsAdmin);
   };
 
-  // Toggle Microphone
+  // Toggle Microphone - Only user explicit click can open mic, and blocked if muted by admin
   const handleToggleMic = () => {
-    if (isAdminMuted && currentUser?.role !== 'admin') {
+    if ((isAdminMuted || room?.isAllMuted) && currentUser?.role !== 'admin') {
       addToast(
-        'Has sido silenciado por el administrador. Solo el administrador puede reactivar tu micrófono.',
+        'Has sido silenciado por el administrador. Solo el administrador puede reactivar los micrófonos de la sala.',
         'warning'
       );
       return;
@@ -698,6 +700,10 @@ export default function App() {
     networkServiceSingleton.requestMediaSync();
   }, []);
 
+  const handleReorderMediaQueue = useCallback((newQueue: VideoQueueItem[]) => {
+    networkServiceSingleton.reorderMediaQueue(newQueue);
+  }, []);
+
   const handleBroadcastStroke = useCallback((stroke: WhiteboardStroke) => {
     networkServiceSingleton.broadcastWhiteboardStroke(stroke);
   }, []);
@@ -805,6 +811,7 @@ export default function App() {
           onRemoveMediaQueueItem={handleRemoveMediaQueueItem}
           onSkipMedia={handleSkipMedia}
           onPlayQueueItemNow={handlePlayQueueItemNow}
+          onReorderMediaQueue={handleReorderMediaQueue}
           onToggleMediaPlayback={handleToggleMediaPlayback}
           onSeekMedia={handleSeekMedia}
           onRequestMediaSync={handleRequestMediaSync}

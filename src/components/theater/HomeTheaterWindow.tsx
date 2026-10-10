@@ -10,7 +10,7 @@ import {
   VolumeX,
   SkipForward,
 } from 'lucide-react';
-import { RoomMediaState } from '../../types';
+import { RoomMediaState, VideoQueueItem } from '../../types';
 import { YouTubeSyncPlayer } from './YouTubeSyncPlayer';
 
 
@@ -24,6 +24,7 @@ interface HomeTheaterWindowProps {
   onSeek: (currentTime: number) => void;
   onVideoEnded: () => void;
   onSkip?: () => void;
+  onAddVideo?: (item: VideoQueueItem) => void;
 }
 
 export const HomeTheaterWindow: React.FC<HomeTheaterWindowProps> = ({
@@ -36,6 +37,7 @@ export const HomeTheaterWindow: React.FC<HomeTheaterWindowProps> = ({
   onSeek,
   onVideoEnded,
   onSkip,
+  onAddVideo,
 }) => {
   // Dimensions: 16:9 strictly maintained for video area
   const [width, setWidth] = useState<number>(() => {
@@ -329,6 +331,7 @@ export const HomeTheaterWindow: React.FC<HomeTheaterWindowProps> = ({
           onSeek={onSeek}
           onVideoEnded={onVideoEnded}
           onSkip={onSkip}
+          onAddVideo={onAddVideo}
           volume={volume}
           isMuted={isMuted}
         />

@@ -7,6 +7,7 @@ import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { AvatarId, FaceFeatures } from '../../types';
 import { getAvatarTrackingProfile } from './avatarTrackingProfiles';
 import { AVATAR_LIST } from './avatarConfigs';
+import { avatarModelServiceSingleton } from '../../services/avatarModelService';
 import {
   Character3DController,
   buildCatCharacter,
@@ -21,6 +22,7 @@ import {
   buildBidenCharacter,
   buildObamaCharacter,
   buildTrumpCharacter,
+  buildMipipiCharacter,
 } from './threeCharacterBuilder';
 import { getAssetUrl } from '../../utils/assetUrl';
 
@@ -221,6 +223,35 @@ function loadTrumpGLTF(): Promise<GLTF> {
   return trumpLoadingPromise;
 }
 
+// Cache for loaded Mipipi GLTF
+let cachedMipipiGLTF: GLTF | null = null;
+let mipipiLoadingPromise: Promise<GLTF> | null = null;
+
+function loadMipipiGLTF(): Promise<GLTF> {
+  if (cachedMipipiGLTF) return Promise.resolve(cachedMipipiGLTF);
+  if (mipipiLoadingPromise) return mipipiLoadingPromise;
+
+  mipipiLoadingPromise = new Promise((resolve, reject) => {
+    const loader = new GLTFLoader();
+    const url = getAssetUrl('models/mipipi.glb');
+    loader.load(
+      url,
+      (gltf) => {
+        cachedMipipiGLTF = gltf;
+        resolve(gltf);
+      },
+      undefined,
+      (err) => {
+        console.error('[ThreeAvatarCanvas] Error loading mipipi.glb:', err);
+        mipipiLoadingPromise = null;
+        reject(err);
+      }
+    );
+  });
+
+  return mipipiLoadingPromise;
+}
+
 function checkIsMobile(): boolean {
   if (typeof window === 'undefined') return false;
   const ua = navigator.userAgent || '';
@@ -276,7 +307,7 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
   const trackingProfile = getAvatarTrackingProfile(avatarId);
 
   const avatarDef = useMemo(() => {
-    return AVATAR_LIST.find((a) => a.id === avatarId) || {
+    return avatarModelServiceSingleton.getAvatarById(avatarId) || AVATAR_LIST.find((a) => a.id === avatarId) || {
       id: avatarId,
       name: 'Avatar 3D',
       emoji: '👤',
@@ -739,6 +770,133 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             setLoadError('Error al cargar Trump 3D');
           }
         });
+    } else if (avatarId === 'mipipi') {
+      setIsLoading(!cachedMipipiGLTF);
+      loadMipipiGLTF()
+        .then((gltf) => {
+          if (isDisposed) return;
+          setIsLoading(false);
+          const controller = buildMipipiCharacter(gltf);
+          characterControllerRef.current = controller;
+          scene.add(controller.group);
+        })
+        .catch((err) => {
+          console.error('[ThreeAvatarCanvas] Error loading Mipipi 3D:', err);
+          if (!isDisposed) {
+            setIsLoading(false);
+            setLoadError('Error al cargar Mipipi 3D');
+          }
+        });
+    } else if (avatarDef && (avatarDef.modelUrl || avatarDef.fileData)) {
+      // Custom Uploaded 3D Model (GLB / GLTF / VRM)
+      setIsLoading(true);
+      const loader = new GLTFLoader();
+      const modelSource = avatarDef.fileData || avatarDef.modelUrl || '';
+      
+      loader.load(
+        modelSource,
+        (gltf) => {
+          if (isDisposed) return;
+          setIsLoading(false);
+          const rootGroup = new THREE.Group();
+          const clonedScene = SkeletonUtils.clone(gltf.scene) as THREE.Group;
+          clonedScene.traverse((child) => {
+            if ((child as THREE.Mesh).isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+
+          // Fit and normalize scale to viewport
+          const box = new THREE.Box3().setFromObject(clonedScene);
+          const size = box.getSize(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z) || 1;
+          const scaleFactor = 3.2 / maxDim;
+          clonedScene.scale.setScalar(scaleFactor);
+          const center = box.getCenter(new THREE.Vector3());
+          clonedScene.position.set(-center.x * scaleFactor, -box.min.y * scaleFactor, -center.z * scaleFactor);
+
+          rootGroup.add(clonedScene);
+
+          // Find head bone or head mesh
+          let customHeadBone: THREE.Object3D | null = null;
+          clonedScene.traverse((child) => {
+            if (!customHeadBone && child.name && child.name.toLowerCase().includes('head')) {
+              customHeadBone = child;
+            }
+          });
+
+          const controller: Character3DController = {
+            group: rootGroup,
+            headPivot: rootGroup,
+            update: (features, _dt, _now) => {
+              const targetPitch = features.pitch * 0.45;
+              const targetYaw = features.yaw * 0.55;
+              const targetRoll = features.roll * 0.35;
+
+              if (customHeadBone && customHeadBone !== clonedScene) {
+                customHeadBone.rotation.x = THREE.MathUtils.lerp(customHeadBone.rotation.x, -targetPitch, 0.15);
+                customHeadBone.rotation.y = THREE.MathUtils.lerp(customHeadBone.rotation.y, targetYaw, 0.15);
+                customHeadBone.rotation.z = THREE.MathUtils.lerp(customHeadBone.rotation.z, -targetRoll, 0.15);
+              } else {
+                rootGroup.rotation.x = THREE.MathUtils.lerp(rootGroup.rotation.x, -targetPitch * 0.4, 0.15);
+                rootGroup.rotation.y = THREE.MathUtils.lerp(rootGroup.rotation.y, targetYaw * 0.6, 0.15);
+                rootGroup.rotation.z = THREE.MathUtils.lerp(rootGroup.rotation.z, -targetRoll * 0.4, 0.15);
+              }
+
+              // Lip sync & expression morph targets
+              const effectiveVol = Math.max(0, features.audioVolume || 0);
+              const jawOpen = Math.max(features.jawOpen || 0, effectiveVol * 1.5);
+              clonedScene.traverse((child) => {
+                const mesh = child as THREE.Mesh;
+                if (mesh.isMesh && mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
+                  const dict = mesh.morphTargetDictionary;
+                  const infl = mesh.morphTargetInfluences;
+                  Object.keys(dict).forEach((key) => {
+                    const lk = key.toLowerCase();
+                    const idx = dict[key];
+                    if (lk.includes('jaw') || lk.includes('mouth') || lk.includes('aa') || lk.includes('open')) {
+                      infl[idx] = THREE.MathUtils.lerp(infl[idx], jawOpen, 0.25);
+                    }
+                    if (lk.includes('blinkleft') || lk.includes('blink_l')) {
+                      infl[idx] = THREE.MathUtils.lerp(infl[idx], features.eyeBlinkLeft, 0.3);
+                    }
+                    if (lk.includes('blinkright') || lk.includes('blink_r')) {
+                      infl[idx] = THREE.MathUtils.lerp(infl[idx], features.eyeBlinkRight, 0.3);
+                    }
+                  });
+                }
+              });
+            },
+            dispose: () => {
+              rootGroup.traverse((child) => {
+                const mesh = child as THREE.Mesh;
+                if (mesh.isMesh) {
+                  mesh.geometry?.dispose();
+                  if (Array.isArray(mesh.material)) {
+                    mesh.material.forEach((m) => m.dispose());
+                  } else {
+                    mesh.material?.dispose();
+                  }
+                }
+              });
+            },
+          };
+
+          characterControllerRef.current = controller;
+          scene.add(controller.group);
+        },
+        undefined,
+        (err) => {
+          console.warn('[ThreeAvatarCanvas] Custom model load error, fallback to procedural mecha:', err);
+          if (!isDisposed) {
+            setIsLoading(false);
+            const fallbackCtrl = buildProceduralRobotCharacter('mecha');
+            characterControllerRef.current = fallbackCtrl;
+            scene.add(fallbackCtrl.group);
+          }
+        }
+      );
     } else {
       // Distinct 3D Characters Built Instantly
       setIsLoading(false);

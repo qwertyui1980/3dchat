@@ -14,7 +14,9 @@ export type AvatarId =
   | 'lincoln_3d'
   | 'biden_3d'
   | 'obama_3d'
-  | 'trump_3d';
+  | 'trump_3d'
+  | 'mipipi'
+  | string;
 
 export interface AvatarTrackingProfile {
   avatarId: AvatarId;
@@ -47,12 +49,17 @@ export interface AvatarDefinition {
   id: AvatarId;
   name: string;
   tagline: string;
-  category: 'Sci-Fi' | 'Anime' | 'Robot' | 'Retro' | 'Fantasy' | 'Animals' | 'Character' | 'Líderes';
+  category: 'Sci-Fi' | 'Anime' | 'Robot' | 'Retro' | 'Fantasy' | 'Animals' | 'Character' | 'Líderes' | 'Personalizados' | string;
   themeColor: string;
   accentColor: string;
   badge: string;
   emoji?: string;
   trackingProfile?: AvatarTrackingProfile;
+  disabled?: boolean;
+  isCustom?: boolean;
+  modelUrl?: string;
+  fileData?: string;
+  createdAt?: number;
 }
 
 export interface FaceFeatures {

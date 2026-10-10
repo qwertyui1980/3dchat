@@ -132,6 +132,16 @@ const BASE_AVATAR_LIST: Omit<AvatarDefinition, 'trackingProfile'>[] = [
     badge: '3D GLB',
     emoji: '🦅',
   },
+  {
+    id: 'mipipi',
+    name: 'Mipipi 3D',
+    tagline: 'Personaje 3D con morph targets faciales, parpadeo y sincronización de voz',
+    category: 'Character',
+    themeColor: '#10b981',
+    accentColor: '#34d399',
+    badge: '3D MORPH',
+    emoji: '✨',
+  },
 ];
 
 export const AVATAR_LIST: AvatarDefinition[] = BASE_AVATAR_LIST.map((avatar) => ({

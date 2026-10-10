@@ -1,6 +1,20 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { RoomMediaState } from '../../types';
-import { Play, AlertCircle } from 'lucide-react';
+import { RoomMediaState, VideoQueueItem } from '../../types';
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  RotateCw,
+  SkipForward,
+  Volume2,
+  Volume1,
+  VolumeX,
+  AlertCircle,
+  Shield,
+  Search,
+  Plus,
+} from 'lucide-react';
+import { extractYouTubeVideoId, fetchYouTubeVideoInfo } from '../../utils/youtube';
 
 interface YouTubeSyncPlayerProps {
   mediaState: RoomMediaState;
@@ -9,6 +23,7 @@ interface YouTubeSyncPlayerProps {
   onSeek: (currentTime: number) => void;
   onVideoEnded: () => void;
   onSkip?: () => void;
+  onAddVideo?: (item: VideoQueueItem) => void;
   volume?: number;
   isMuted?: boolean;
 }
@@ -59,6 +74,13 @@ function loadYouTubeIframeApi(): Promise<void> {
   return apiLoadedPromise;
 }
 
+function formatTime(seconds: number): string {
+  const s = Math.floor(seconds || 0);
+  const mins = Math.floor(s / 60);
+  const secs = s % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+}
+
 export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
   mediaState,
   currentUserRole = 'participant',
@@ -66,6 +88,7 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
   onSeek,
   onVideoEnded,
   onSkip,
+  onAddVideo,
   volume = 80,
   isMuted = false,
 }) => {
@@ -73,10 +96,17 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
   const playerRef = useRef<any>(null);
   const [isPlayerReady, setIsPlayerReady] = useState(false);
   const [needsAutoplayInteraction, setNeedsAutoplayInteraction] = useState(false);
+  const [currentTime, setCurrentTime] = useState<number>(0);
+  const [duration, setDuration] = useState<number>(0);
+  const [isHoveringControls, setIsHoveringControls] = useState(false);
+  const [quickSearchUrl, setQuickSearchUrl] = useState('');
+  const [isAddingQuickVideo, setIsAddingQuickVideo] = useState(false);
+
   const lastTargetVideoIdRef = useRef<string | null>(null);
   const isSyncingInternalRef = useRef(false);
 
   const currentVideo = mediaState.currentVideo;
+  const isAdmin = currentUserRole === 'admin';
 
   // Initialize YT Player once API is ready
   useEffect(() => {
@@ -144,11 +174,13 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
             } else if (event.data === window.YT.PlayerState.PLAYING) {
               setNeedsAutoplayInteraction(false);
               const curTime = event.target.getCurrentTime() || 0;
+              setCurrentTime(curTime);
               if (!mediaState.isPlaying) {
                 onTogglePlayback(true, curTime);
               }
             } else if (event.data === window.YT.PlayerState.PAUSED) {
               const curTime = event.target.getCurrentTime() || 0;
+              setCurrentTime(curTime);
               if (mediaState.isPlaying) {
                 onTogglePlayback(false, curTime);
               }
@@ -156,7 +188,7 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
           },
           onError: (err: any) => {
             console.warn('[YouTubeSyncPlayer] Player error:', err);
-            // If video is restricted or cannot embed, auto-skip after 2s
+            // If video is restricted or cannot embed, auto-skip after 2.5s
             setTimeout(() => {
               onVideoEnded();
             }, 2500);
@@ -209,7 +241,7 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
     }
   }, [currentVideo?.videoId, isPlayerReady]);
 
-  // Real-time Drift Sync Interval (every 1.5 seconds)
+  // Real-time Drift Sync Interval & Time Polling (every 500ms)
   useEffect(() => {
     if (!isPlayerReady || !playerRef.current || !currentVideo) return;
 
@@ -217,13 +249,19 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
       const player = playerRef.current;
       if (!player || typeof player.getCurrentTime !== 'function') return;
 
+      const actualTime = player.getCurrentTime() || 0;
+      setCurrentTime(actualTime);
+
+      const d = player.getDuration() || 0;
+      if (d > 0 && d !== duration) {
+        setDuration(d);
+      }
+
       const expectedTime = mediaState.isPlaying
         ? Math.max(0, (Date.now() - mediaState.lastSyncTimestamp) / 1000 + mediaState.playbackTime)
         : mediaState.playbackTime;
 
-      const actualTime = player.getCurrentTime();
-
-      // If drift is greater than 2 seconds, gently seekTo
+      // If drift is greater than 2.2 seconds, gently seekTo
       if (Math.abs(actualTime - expectedTime) > 2.2) {
         isSyncingInternalRef.current = true;
         player.seekTo(expectedTime, true);
@@ -239,10 +277,10 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
       } else if (!mediaState.isPlaying && playerState === window.YT.PlayerState.PLAYING) {
         player.pauseVideo();
       }
-    }, 1500);
+    }, 600);
 
     return () => clearInterval(interval);
-  }, [isPlayerReady, mediaState, currentVideo]);
+  }, [isPlayerReady, mediaState, currentVideo, duration]);
 
   // Real-time local volume & mute controller
   useEffect(() => {
@@ -270,13 +308,84 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
     }
   };
 
+  // Playback Control Handlers (Admin Control)
+  const handleTogglePlayPause = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isAdmin && currentUserRole !== 'admin') return;
+    const targetState = !mediaState.isPlaying;
+    if (playerRef.current) {
+      if (targetState) {
+        playerRef.current.playVideo();
+      } else {
+        playerRef.current.pauseVideo();
+      }
+    }
+    onTogglePlayback(targetState, currentTime);
+  };
+
+  const handleRewind = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isAdmin && currentUserRole !== 'admin') return;
+    const target = Math.max(0, currentTime - 10);
+    if (playerRef.current) {
+      playerRef.current.seekTo(target, true);
+    }
+    onSeek(target);
+  };
+
+  const handleForward = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isAdmin && currentUserRole !== 'admin') return;
+    const target = Math.min(duration || currentTime + 10, currentTime + 10);
+    if (playerRef.current) {
+      playerRef.current.seekTo(target, true);
+    }
+    onSeek(target);
+  };
+
+  const handleSeekSlider = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const target = Number(e.target.value);
+    setCurrentTime(target);
+    if (playerRef.current) {
+      playerRef.current.seekTo(target, true);
+    }
+    onSeek(target);
+  };
+
+  const handleQuickAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickSearchUrl.trim() || !onAddVideo) return;
+    const videoId = extractYouTubeVideoId(quickSearchUrl);
+    if (!videoId) return;
+
+    setIsAddingQuickVideo(true);
+    try {
+      const info = await fetchYouTubeVideoInfo(quickSearchUrl);
+      if (info) {
+        onAddVideo({
+          id: `v_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+          url: info.cleanUrl,
+          videoId: info.videoId,
+          title: info.title,
+          thumbnailUrl: info.thumbnailUrl,
+          addedByUserId: 'admin',
+          addedByUserName: 'Administrador',
+          addedAt: Date.now(),
+        });
+        setQuickSearchUrl('');
+      }
+    } catch (_) {}
+    setIsAddingQuickVideo(false);
+  };
+
   return (
-    <div className="relative w-full h-full bg-black overflow-hidden flex items-center justify-center select-none">
+    <div
+      onMouseEnter={() => setIsHoveringControls(true)}
+      onMouseLeave={() => setIsHoveringControls(false)}
+      className="relative w-full h-full bg-black overflow-hidden flex items-center justify-center select-none group/player"
+    >
       {/* Target container for YT.Player iframe */}
       <div id={containerId.current} className="w-full h-full pointer-events-none" />
-
-      {/* Transparent shield overlay completely blocking click/tap interaction on the video player */}
-      <div className="absolute inset-0 z-10 pointer-events-auto bg-transparent" />
 
       {/* Autoplay / Unmute Prompt Overlay (browser policy) */}
       {needsAutoplayInteraction && (
@@ -308,8 +417,143 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
             Home Theater en Espera
           </h4>
           <p className="text-neutral-400 text-xs max-w-sm">
-            No hay ningún video en reproducción. Usa el botón de <strong className="text-cyan-300">Playlist</strong> para pegar un enlace de YouTube y tomar tu turno.
+            No hay ningún video en reproducción. Usa el botón de <strong className="text-cyan-300">Playlist</strong> para pegar un enlace de YouTube.
           </p>
+        </div>
+      )}
+
+      {/* ADMIN & ROOM PLAYBACK CONTROL BAR (HUD OVERLAY) */}
+      {currentVideo && (
+        <div
+          className={`absolute inset-x-0 bottom-0 z-30 p-2 sm:p-3 bg-gradient-to-t from-black/95 via-black/80 to-transparent transition-opacity duration-300 ${
+            isHoveringControls || !mediaState.isPlaying ? 'opacity-100' : 'opacity-0 hover:opacity-100'
+          }`}
+        >
+          {/* Progress Seek Scrubber Bar */}
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[10px] font-mono text-neutral-300 min-w-[32px]">
+              {formatTime(currentTime)}
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={duration || 100}
+              value={currentTime}
+              disabled={!isAdmin && currentUserRole !== 'admin'}
+              onChange={handleSeekSlider}
+              className={`flex-1 h-1.5 bg-white/20 rounded-lg accent-cyan-400 ${
+                isAdmin ? 'cursor-pointer hover:h-2 transition-all' : 'cursor-default opacity-80'
+              }`}
+              title={isAdmin ? 'Arrastrar para buscar / retroceder en el video' : 'Posición de video'}
+            />
+            <span className="text-[10px] font-mono text-neutral-400 min-w-[32px] text-right">
+              {formatTime(duration)}
+            </span>
+          </div>
+
+          {/* Control Buttons Row */}
+          <div className="flex items-center justify-between gap-2">
+            {/* Left Controls: Play/Pause, Rewind -10s, Forward +10s, Skip */}
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              {/* Play / Pause Toggle */}
+              <button
+                type="button"
+                onClick={handleTogglePlayPause}
+                disabled={!isAdmin && currentUserRole !== 'admin'}
+                className={`p-2 rounded-xl border transition active:scale-95 flex items-center justify-center ${
+                  isAdmin
+                    ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 border-cyan-400 cursor-pointer shadow-md shadow-cyan-500/20'
+                    : 'bg-white/10 text-neutral-400 border-white/10 cursor-not-allowed opacity-60'
+                }`}
+                title={
+                  isAdmin
+                    ? mediaState.isPlaying
+                      ? 'Pausar video (Admin)'
+                      : 'Reanudar video (Admin)'
+                    : 'Solo el administrador puede pausar/reproducir'
+                }
+              >
+                {mediaState.isPlaying ? (
+                  <Pause className="w-4 h-4 fill-current" />
+                ) : (
+                  <Play className="w-4 h-4 fill-current ml-0.5" />
+                )}
+              </button>
+
+              {/* Rewind -10s */}
+              <button
+                type="button"
+                onClick={handleRewind}
+                disabled={!isAdmin && currentUserRole !== 'admin'}
+                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:hover:bg-white/10 text-white border border-white/10 transition active:scale-95 cursor-pointer flex items-center gap-1 text-[11px] font-bold"
+                title="Retroceder 10 segundos (Admin)"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">10s</span>
+              </button>
+
+              {/* Forward +10s */}
+              <button
+                type="button"
+                onClick={handleForward}
+                disabled={!isAdmin && currentUserRole !== 'admin'}
+                className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:hover:bg-white/10 text-white border border-white/10 transition active:scale-95 cursor-pointer flex items-center gap-1 text-[11px] font-bold"
+                title="Adelantar 10 segundos (Admin)"
+              >
+                <RotateCw className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">10s</span>
+              </button>
+
+              {/* Skip to Next Video */}
+              {onSkip && (
+                <button
+                  type="button"
+                  onClick={onSkip}
+                  disabled={!isAdmin && currentUserRole !== 'admin'}
+                  className="p-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 disabled:opacity-40 disabled:hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 transition active:scale-95 cursor-pointer flex items-center gap-1 text-[11px] font-bold"
+                  title="Saltar al siguiente video de la playlist (Admin)"
+                >
+                  <SkipForward className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Saltar</span>
+                </button>
+              )}
+            </div>
+
+            {/* Right: Quick URL Search Input for Admin & Status Badge */}
+            <div className="flex items-center gap-2">
+              {isAdmin && onAddVideo && (
+                <form onSubmit={handleQuickAddSubmit} className="hidden sm:flex items-center gap-1">
+                  <input
+                    type="text"
+                    value={quickSearchUrl}
+                    onChange={(e) => setQuickSearchUrl(e.target.value)}
+                    placeholder="Pegar link YouTube..."
+                    className="w-36 lg:w-44 px-2 py-1 rounded-lg bg-black/60 border border-white/15 text-[11px] text-white focus:outline-none focus:border-cyan-400"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isAddingQuickVideo || !quickSearchUrl.trim()}
+                    className="p-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 text-slate-950 font-bold transition cursor-pointer"
+                    title="Reproducir / Agregar video a la cola"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </form>
+              )}
+
+              {/* Admin Badge Indicator */}
+              {isAdmin ? (
+                <span className="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[9px] font-black uppercase tracking-wider flex items-center gap-1">
+                  <Shield className="w-3 h-3 text-amber-400" />
+                  <span>Control Admin</span>
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-md bg-white/10 text-neutral-300 border border-white/10 text-[9px] font-medium uppercase">
+                  Sincronizado
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

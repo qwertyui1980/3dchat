@@ -17,6 +17,7 @@ import {
   Sun,
   Moon,
   Sparkles,
+  GripHorizontal,
 } from 'lucide-react';
 import { WhiteboardStroke, User } from '../../types';
 
@@ -67,6 +68,119 @@ export const WhiteboardPanel: React.FC<WhiteboardPanelProps> = ({
   const [lineWidth, setLineWidth] = useState<number>(4);
   const [isDarkTheme, setIsDarkTheme] = useState<boolean>(true);
   const [isMaximized, setIsMaximized] = useState<boolean>(false);
+
+  // Floating Window Geometry (Strict Minimum: 320px * 240px)
+  const [width, setWidth] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      return Math.min(640, Math.max(320, window.innerWidth - 32));
+    }
+    return 560;
+  });
+
+  const [height, setHeight] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      return Math.min(480, Math.max(240, window.innerHeight - 120));
+    }
+    return 440;
+  });
+
+  const [position, setPosition] = useState<{ x: number; y: number }>(() => {
+    if (typeof window !== 'undefined') {
+      return {
+        x: Math.max(16, (window.innerWidth - 640) / 2),
+        y: Math.max(60, (window.innerHeight - 480) / 2),
+      };
+    }
+    return { x: 40, y: 60 };
+  });
+
+  const isDraggingRef = useRef(false);
+  const dragStartRef = useRef<{ startX: number; startY: number; initX: number; initY: number }>({
+    startX: 0,
+    startY: 0,
+    initX: 0,
+    initY: 0,
+  });
+
+  const isResizingRef = useRef(false);
+  const resizeStartRef = useRef<{ startX: number; startY: number; initW: number; initH: number }>({
+    startX: 0,
+    startY: 0,
+    initW: 560,
+    initH: 440,
+  });
+
+  // Dragging handlers for header
+  const handlePointerDownHeader = (e: React.PointerEvent) => {
+    if (isMaximized) return;
+    if ((e.target as HTMLElement).closest('button, input, select, textarea')) return;
+
+    isDraggingRef.current = true;
+    dragStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initX: position.x,
+      initY: position.y,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMoveHeader = (e: React.PointerEvent) => {
+    if (!isDraggingRef.current || isMaximized) return;
+    const dx = e.clientX - dragStartRef.current.startX;
+    const dy = e.clientY - dragStartRef.current.startY;
+    const maxX = Math.max(0, window.innerWidth - width - 10);
+    const maxY = Math.max(0, window.innerHeight - height - 10);
+    setPosition({
+      x: Math.min(maxX, Math.max(0, dragStartRef.current.initX + dx)),
+      y: Math.min(maxY, Math.max(0, dragStartRef.current.initY + dy)),
+    });
+  };
+
+  const handlePointerUpHeader = (e: React.PointerEvent) => {
+    if (isDraggingRef.current) {
+      isDraggingRef.current = false;
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch (_) {}
+    }
+  };
+
+  // Resizing handlers for bottom-right corner (min 320x240)
+  const handlePointerDownResize = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (isMaximized) return;
+
+    isResizingRef.current = true;
+    resizeStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initW: width,
+      initH: height,
+    };
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMoveResize = (e: React.PointerEvent) => {
+    if (!isResizingRef.current || isMaximized) return;
+    const dx = e.clientX - resizeStartRef.current.startX;
+    const dy = e.clientY - resizeStartRef.current.startY;
+    const newW = Math.max(320, Math.min(window.innerWidth - position.x - 10, resizeStartRef.current.initW + dx));
+    const newH = Math.max(240, Math.min(window.innerHeight - position.y - 10, resizeStartRef.current.initH + dy));
+    setWidth(newW);
+    setHeight(newH);
+    requestAnimationFrame(resizeCanvas);
+  };
+
+  const handlePointerUpResize = (e: React.PointerEvent) => {
+    if (isResizingRef.current) {
+      isResizingRef.current = false;
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch (_) {}
+      resizeCanvas();
+    }
+  };
 
   // Drawing state
   const isDrawingRef = useRef(false);
@@ -455,25 +569,46 @@ export const WhiteboardPanel: React.FC<WhiteboardPanelProps> = ({
 
   return (
     <div
-      className={`fixed inset-0 md:relative md:inset-auto flex flex-col h-full z-50 md:z-20 shrink-0 transition-all duration-200 border-l border-white/[0.08] ${
+      style={
         isMaximized
-          ? 'w-full md:w-full md:absolute md:inset-0 md:z-30'
-          : 'w-full md:w-[420px] lg:w-[480px] xl:w-[560px]'
-      } ${isDarkTheme ? 'bg-[#0a0d14]/98 text-white' : 'bg-slate-50/98 text-slate-900'} backdrop-blur-2xl shadow-2xl select-none`}
+          ? { position: 'fixed', inset: 0, zIndex: 45, width: '100vw', height: '100vh' }
+          : {
+              position: 'fixed',
+              left: `${position.x}px`,
+              top: `${position.y}px`,
+              width: `${width}px`,
+              height: `${height}px`,
+              minWidth: '320px',
+              minHeight: '240px',
+              zIndex: 45,
+            }
+      }
+      className={`flex flex-col rounded-2xl overflow-hidden border border-white/[0.14] shadow-2xl shadow-cyan-950/40 ${
+        isDarkTheme ? 'bg-[#0a0d14]/98 text-white' : 'bg-slate-50/98 text-slate-900'
+      } backdrop-blur-2xl select-none`}
     >
-      {/* 1. Header Bar */}
+      {/* 1. Header Bar (Draggable) */}
       <div
-        className={`h-14 px-3 sm:px-4 border-b flex items-center justify-between shrink-0 ${
-          isDarkTheme ? 'border-white/[0.08] bg-[#0e121d]/90' : 'border-slate-200 bg-white/90'
+        onPointerDown={handlePointerDownHeader}
+        onPointerMove={handlePointerMoveHeader}
+        onPointerUp={handlePointerUpHeader}
+        onPointerCancel={handlePointerUpHeader}
+        className={`h-12 px-3 sm:px-4 border-b flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing ${
+          isDarkTheme ? 'border-white/[0.08] bg-[#0e121d]/95' : 'border-slate-200 bg-white/95'
         }`}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-amber-500 to-rose-500 text-slate-950 flex items-center justify-center font-bold shadow-md shadow-amber-500/20 shrink-0">
-            <PenTool className="w-4 h-4" />
+          <GripHorizontal className="w-4 h-4 text-neutral-500 shrink-0" />
+          <div className="w-6 h-6 rounded-lg bg-gradient-to-tr from-amber-500 to-rose-500 text-slate-950 flex items-center justify-center font-bold shadow-md shadow-amber-500/20 shrink-0">
+            <PenTool className="w-3.5 h-3.5" />
           </div>
           <div className="min-w-0">
-            <h3 className="text-xs sm:text-sm font-bold truncate">Pizarra Interactiva</h3>
-            <p className="text-[10px] text-neutral-400 truncate">Lápiz, borrador y figuras</p>
+            <h3 className="text-xs sm:text-sm font-bold truncate flex items-center gap-1.5">
+              <span>Pizarra</span>
+              <span className="text-[10px] text-cyan-400 font-mono font-normal hidden sm:inline">
+                (mín: 320x240)
+              </span>
+            </h3>
           </div>
         </div>
 
@@ -772,6 +907,20 @@ export const WhiteboardPanel: React.FC<WhiteboardPanelProps> = ({
           onPointerCancel={handlePointerUp}
           className="w-full h-full block"
         />
+
+        {/* 5. Resize Handle (Bottom-Right Corner) */}
+        {!isMaximized && (
+          <div
+            onPointerDown={handlePointerDownResize}
+            onPointerMove={handlePointerMoveResize}
+            onPointerUp={handlePointerUpResize}
+            onPointerCancel={handlePointerUpResize}
+            className="absolute bottom-0 right-0 w-6 h-6 flex items-end justify-end p-1 cursor-nwse-resize z-20 touch-none group/resize"
+            title="Arrastrar para redimensionar (mínimo 320x240)"
+          >
+            <div className="w-2.5 h-2.5 border-r-2 border-b-2 border-cyan-400 group-hover/resize:border-cyan-300 transition" />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -6,7 +6,7 @@ export class AudioService {
   private dataArray: Uint8Array | null = null;
   private animationId: number | null = null;
   private onVolumeChange: ((volume: number) => void) | null = null;
-  public isMuted: boolean = false;
+  public isMuted: boolean = true;
   private hasInteractionListeners: boolean = false;
 
   constructor() {
@@ -48,6 +48,11 @@ export class AudioService {
           noiseSuppression: true,
           autoGainControl: true,
         },
+      });
+
+      // Enforce default muted state on all audio tracks
+      this.mediaStream.getAudioTracks().forEach((track) => {
+        track.enabled = !this.isMuted;
       });
 
       const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
