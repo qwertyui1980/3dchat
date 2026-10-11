@@ -305,10 +305,12 @@ export default function App() {
     };
   }, [startMic]);
 
-  // Helper to preserve subpath when hosted on GitHub Pages (e.g. /3dchat)
+  // Helper to preserve subpath when hosted on GitHub Pages (e.g. /presidents or /3dchat)
   const getBasePath = useCallback(() => {
     if (typeof window === 'undefined') return '';
-    return window.location.pathname.startsWith('/3dchat') ? '/3dchat' : '';
+    if (window.location.pathname.startsWith('/presidents')) return '/presidents';
+    if (window.location.pathname.startsWith('/3dchat')) return '/3dchat';
+    return '';
   }, []);
 
   // Centralized Room, Call & Hardware Teardown (Cancels call, stops camera & mic sharing)

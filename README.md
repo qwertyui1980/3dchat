@@ -1,6 +1,7 @@
 # XSTREAMX - 3D Avatar Video Communication
 
-> **Origin:** Originally created and developed by **XStreamX** ([Repository Origin](https://github.com/qwertyui1980/3dchat)).
+> **Private Repository Source:** [https://github.com/qwertyui1980/presidents.git](https://github.com/qwertyui1980/presidents.git)  
+> **Origin:** Originally created and developed by **XStreamX**.
 
 Private, lightweight real-time 3D avatar telepresence powered by MediaPipe anatomical face tracking, Three.js WebGL graphics, and ultra-low-bandwidth WebRTC data channel mesh communication (zero video frame transmission).
 
@@ -51,5 +52,15 @@ npm run build
 
 ---
 
+## 🔒 Privacy-by-Design Architecture & Data Transmission
+
+XStreamX is built strictly around user privacy:
+- **Client-Side Edge AI Tracking:** All facial landmark detection, motion tracking, and blendshape calculations run strictly client-side on the user's local device. No raw video feed, camera footage, or biometric frames are transmitted to or stored on servers or peers for avatar communication.
+- **Lightweight Blendshape Micro-Stream:** Only a tiny stream of normalized numerical blendshape coefficients and orientation angles (a few hundred bytes per frame) is transmitted over WebRTC / WebSocket channels instead of heavy video.
+- **Local Client-Side 3D Rendering:** Each recipient renders the 3D avatar locally using WebGL and Three.js, maintaining maximum scalability, ultra-low server and bandwidth costs, and complete biometric privacy.
+
+---
+
 ## 📄 License
-Released under the **MIT-Custom License with Origin Attribution and Total Limitation of Liability**. See [LICENSE](LICENSE) for details.
+
+Released under the **Apache License, Version 2.0** with Origin Attribution and Privacy-by-Design Architecture terms. See [LICENSE](LICENSE) for full details.

@@ -5,9 +5,8 @@
   <title>XStreamX - Redirigiendo...</title>
   <script type="text/javascript">
     // Single Page Apps redirect for GitHub Pages
-    var pathSegmentsToKeep = 1; // For repo named 3dchat (e.g. /3dchat/...)
     var l = window.location;
-    var repoPath = l.pathname.startsWith('/3dchat') ? '/3dchat' : '';
+    var repoPath = l.pathname.startsWith('/presidents') ? '/presidents' : (l.pathname.startsWith('/3dchat') ? '/3dchat' : '');
     var subPath = l.pathname.slice(repoPath.length).replace(/^\/+/, '');
     
     // Convert deep path to hash so SPA loads index.html cleanly

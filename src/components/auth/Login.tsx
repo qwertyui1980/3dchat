@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, User, Eye, EyeOff, ArrowRight, AlertCircle } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, ArrowRight, AlertCircle, ShieldCheck } from 'lucide-react';
 import { dbServiceSingleton } from '../../services/dbService';
 import { LegalDisclaimerModal } from '../common/LegalDisclaimerModal';
 
@@ -170,10 +170,10 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
           </button>
         </form>
 
-        {/* Footer Legal & Origin Disclaimer */}
-        <div className="pt-6 text-center text-[10px] text-neutral-500 flex flex-col items-center gap-1">
+        {/* Footer Legal & Apache License Notice */}
+        <div className="pt-5 text-center text-[10px] text-neutral-500 flex flex-col items-center gap-1 border-t border-white/[0.06] mt-5">
           <span>
-            Software provisto &ldquo;TAL CUAL&rdquo; bajo total responsabilidad personal del usuario.
+            Licenciado bajo la <strong>Apache License 2.0</strong> &ldquo;TAL CUAL&rdquo; sin garantías expresas o implícitas.
           </span>
           <div className="flex items-center gap-2 text-neutral-400">
             <span>Origen: <strong className="text-neutral-300">XStreamX</strong></span>
@@ -183,11 +183,37 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
               onClick={() => setIsLegalOpen(true)}
               className="text-cyan-400/80 hover:text-cyan-300 underline cursor-pointer"
             >
-              Ver Licencia y Descargo Legal
+              Ver Licencia Apache 2.0 y Términos Legales
             </button>
           </div>
         </div>
 
+      </div>
+
+      {/* Privacy-by-Design Architecture Legal Card */}
+      <div className="w-full max-w-md mt-4 p-4 rounded-3xl bg-[#0d0d12]/90 border border-emerald-500/20 backdrop-blur-2xl space-y-2.5 text-xs text-neutral-300 shadow-2xl relative z-10">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2 text-emerald-400 font-bold text-[11px] uppercase tracking-wider">
+            <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>Garantía de Privacidad y Flujo de Blendshapes</span>
+          </div>
+          <span className="px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-[9px] font-mono font-black text-cyan-300 uppercase">
+            Apache 2.0
+          </span>
+        </div>
+        <p className="text-[11px] text-neutral-300/90 leading-relaxed">
+          El rastreo facial opera <strong>100% en el dispositivo del usuario (lado cliente)</strong> y transmite únicamente un flujo ultraligero de blendshapes numéricos (<strong>pocos cientos de bytes por fotograma</strong>) en lugar de video. Cada espectador renderiza el avatar 3D de forma local, garantizando <strong>privacidad total</strong>, optimizando el ancho de banda y eliminando costos de servidor.
+        </p>
+        <div className="pt-1.5 flex items-center justify-between text-[10px] text-neutral-400 border-t border-white/[0.06]">
+          <span>Sin almacenamiento ni filtración de video biométrico</span>
+          <button
+            type="button"
+            onClick={() => setIsLegalOpen(true)}
+            className="text-cyan-400 hover:text-cyan-300 underline font-semibold cursor-pointer"
+          >
+            Detalles Legales
+          </button>
+        </div>
       </div>
 
       <LegalDisclaimerModal isOpen={isLegalOpen} onClose={() => setIsLegalOpen(false)} />
