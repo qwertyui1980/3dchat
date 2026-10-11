@@ -22,6 +22,10 @@ import {
   Minimize2,
   Box,
   Image as ImageIcon,
+  Video,
+  VideoOff,
+  Shirt,
+  Palette,
 } from 'lucide-react';
 import {
   faceToBlendshapeServiceSingleton,
@@ -29,7 +33,9 @@ import {
   TransformDebugParams,
   DEFAULT_DEBUG_PARAMS,
 } from '../../services/face3d/faceToBlendshapeService';
-import { ARKIT_BLENDSHAPE_NAMES, ARKitBlendshapeName } from '../../services/face3d/arkitMapper';
+import { ARKIT_BLENDSHAPE_NAMES, ARKitBlendshapeName, ARKitBlendshapeMapper } from '../../services/face3d/arkitMapper';
+import { faceTrackerSingleton } from '../../services/mediapipeService';
+import { BustGenerator, ClothingStyle } from '../../services/face3d/bustGenerator';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
 
 interface FaceBlendshapeStudioModalProps {
@@ -46,7 +52,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   onSelectAvatar,
 }) => {
   // Tabs
-  const [activeTab, setActiveTab] = useState<'morphs' | 'tuning' | 'export'>('morphs');
+  const [activeTab, setActiveTab] = useState<'morphs' | 'clothing' | 'tuning' | 'export'>('morphs');
 
   // Image & Processing state
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -60,6 +66,13 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   const webcamVideoRef = useRef<HTMLVideoElement | null>(null);
   const webcamStreamRef = useRef<MediaStream | null>(null);
 
+  // Live Webcam Real-time Tracking state
+  const [isLiveTracking, setIsLiveTracking] = useState(false);
+  const liveVideoRef = useRef<HTMLVideoElement | null>(null);
+  const liveStreamRef = useRef<MediaStream | null>(null);
+  const arkitMapperRef = useRef<ARKitBlendshapeMapper>(new ARKitBlendshapeMapper());
+  const lastUiUpdateRef = useRef<number>(0);
+
   // 3D Viewport refs
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -71,12 +84,22 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   // Model Objects refs
   const faceMeshRef = useRef<THREE.Mesh | null>(null);
   const headModelRef = useRef<THREE.Group | null>(null);
+  const bustModelRef = useRef<THREE.Group | null>(null);
   const currentResultRef = useRef<Face3DGenerationResult | null>(null);
 
   // Display toggles
+  const [showFaceMesh, setShowFaceMesh] = useState(true);
   const [showWireframe, setShowWireframe] = useState(false);
   const [showHeadBase, setShowHeadBase] = useState(true);
+  const [showShoulders, setShowShoulders] = useState(true);
+  const [tuningTarget, setTuningTarget] = useState<'face' | 'head'>('face');
   const [isCopied, setIsCopied] = useState(false);
+
+  // Clothing & Bust Customization
+  const [clothingStyle, setClothingStyle] = useState<ClothingStyle>('suit');
+  const [suitColor, setSuitColor] = useState('#172554');
+  const [shirtColor, setShirtColor] = useState('#f8fafc');
+  const [tieColor, setTieColor] = useState('#991b1b');
 
   // Transform params
   const [debugParams, setDebugParams] = useState<TransformDebugParams>(DEFAULT_DEBUG_PARAMS);
@@ -181,6 +204,46 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     animate();
   }, []);
 
+  // Stop Live Webcam Tracking
+  const stopLiveWebcamTracking = useCallback(() => {
+    faceTrackerSingleton.stopTracking();
+    if (liveStreamRef.current) {
+      liveStreamRef.current.getTracks().forEach((t) => t.stop());
+      liveStreamRef.current = null;
+    }
+    if (liveVideoRef.current) {
+      liveVideoRef.current.srcObject = null;
+    }
+    setIsLiveTracking(false);
+
+    // Reset rotation to neutral
+    if (faceMeshRef.current) {
+      faceMeshRef.current.rotation.set(
+        THREE.MathUtils.degToRad(debugParams.face.rotationX),
+        THREE.MathUtils.degToRad(debugParams.face.rotationY),
+        THREE.MathUtils.degToRad(debugParams.face.rotationZ)
+      );
+    }
+    if (headModelRef.current) {
+      headModelRef.current.rotation.set(
+        THREE.MathUtils.degToRad(debugParams.head.rotationX),
+        THREE.MathUtils.degToRad(debugParams.head.rotationY),
+        THREE.MathUtils.degToRad(debugParams.head.rotationZ)
+      );
+    }
+    if (bustModelRef.current) {
+      const torso = bustModelRef.current.getObjectByName('torsoGroup');
+      if (torso) {
+        torso.rotation.set(0, 0, 0);
+        torso.position.x = 0;
+      }
+      const neck = bustModelRef.current.getObjectByName('neckPivot');
+      if (neck) {
+        neck.rotation.set(0, 0, 0);
+      }
+    }
+  }, [debugParams]);
+
   useEffect(() => {
     if (isOpen && isAdmin) {
       setTimeout(() => {
@@ -192,8 +255,9 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         cancelAnimationFrame(animationFrameIdRef.current);
       }
       stopWebcam();
+      stopLiveWebcamTracking();
     };
-  }, [isOpen, isAdmin, initThreeScene]);
+  }, [isOpen, isAdmin, initThreeScene, stopLiveWebcamTracking]);
 
   // Handle Resize
   useEffect(() => {
@@ -263,6 +327,97 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     img.src = dataUrl;
   };
 
+  // Start Live Webcam Tracking
+  const startLiveWebcamTracking = async () => {
+    try {
+      if (!faceMeshRef.current) {
+        setStatus('Genera el modelo 3D primero para animar los blendshapes en vivo.', 'error');
+        return;
+      }
+
+      stopLiveWebcamTracking();
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+        audio: false,
+      });
+      liveStreamRef.current = stream;
+      setIsLiveTracking(true);
+
+      if (liveVideoRef.current) {
+        liveVideoRef.current.srcObject = stream;
+        await liveVideoRef.current.play();
+
+        faceTrackerSingleton.startTracking(
+          liveVideoRef.current,
+          (features) => {
+            // Live head pose orientation (lerped)
+            if (faceMeshRef.current) {
+              const baseY = THREE.MathUtils.degToRad(debugParams.face.rotationY);
+              const baseX = THREE.MathUtils.degToRad(debugParams.face.rotationX);
+              const baseZ = THREE.MathUtils.degToRad(debugParams.face.rotationZ);
+
+              faceMeshRef.current.rotation.y = THREE.MathUtils.lerp(faceMeshRef.current.rotation.y, baseY + features.yaw * 0.75, 0.3);
+              faceMeshRef.current.rotation.x = THREE.MathUtils.lerp(faceMeshRef.current.rotation.x, baseX + features.pitch * 0.75, 0.3);
+              faceMeshRef.current.rotation.z = THREE.MathUtils.lerp(faceMeshRef.current.rotation.z, baseZ + features.roll * 0.75, 0.3);
+            }
+            if (headModelRef.current) {
+              const baseY = THREE.MathUtils.degToRad(debugParams.head.rotationY);
+              const baseX = THREE.MathUtils.degToRad(debugParams.head.rotationX);
+              const baseZ = THREE.MathUtils.degToRad(debugParams.head.rotationZ);
+
+              headModelRef.current.rotation.y = THREE.MathUtils.lerp(headModelRef.current.rotation.y, baseY + features.yaw * 0.75, 0.3);
+              headModelRef.current.rotation.x = THREE.MathUtils.lerp(headModelRef.current.rotation.x, baseX + features.pitch * 0.75, 0.3);
+              headModelRef.current.rotation.z = THREE.MathUtils.lerp(headModelRef.current.rotation.z, baseZ + features.roll * 0.75, 0.3);
+            }
+
+            // Natural Bust & Shoulder Kinematics (cuello y hombros reactivos a 60 FPS)
+            if (bustModelRef.current) {
+              const torso = bustModelRef.current.getObjectByName('torsoGroup');
+              if (torso) {
+                torso.rotation.y = THREE.MathUtils.lerp(torso.rotation.y, features.yaw * 0.12, 0.2);
+                torso.rotation.z = THREE.MathUtils.lerp(torso.rotation.z, -features.roll * 0.06, 0.2);
+                torso.position.x = THREE.MathUtils.lerp(torso.position.x, features.yaw * 0.08, 0.18);
+              }
+              const neck = bustModelRef.current.getObjectByName('neckPivot');
+              if (neck) {
+                neck.rotation.y = THREE.MathUtils.lerp(neck.rotation.y, features.yaw * 0.35, 0.25);
+                neck.rotation.x = THREE.MathUtils.lerp(neck.rotation.x, features.pitch * 0.30, 0.25);
+                neck.rotation.z = THREE.MathUtils.lerp(neck.rotation.z, features.roll * 0.45, 0.25);
+              }
+            }
+          },
+          undefined,
+          (categories, landmarks) => {
+            // Live ARKit blendshapes mapping
+            const mapped = arkitMapperRef.current.mapMediaPipeToARKit(categories, landmarks);
+            const mesh = faceMeshRef.current;
+            if (!mesh || !mesh.morphTargetDictionary || !mesh.morphTargetInfluences) return;
+
+            Object.entries(mapped).forEach(([name, val]) => {
+              const idx = mesh.morphTargetDictionary![name];
+              if (idx !== undefined && mesh.morphTargetInfluences) {
+                mesh.morphTargetInfluences[idx] = val;
+              }
+            });
+
+            // Throttle UI slider updates to every 60ms for silky 60 FPS ThreeJS + smooth React
+            const now = performance.now();
+            if (now - lastUiUpdateRef.current > 60) {
+              lastUiUpdateRef.current = now;
+              setTestBlendshapes({ ...mapped });
+            }
+          }
+        );
+      }
+      setStatus('¡Espejo facial activo! Mueve tu rostro o habla frente a la cámara.', 'success');
+    } catch (err: any) {
+      console.error('[FaceBlendshapeStudio] Live tracking error:', err);
+      setStatus(`Error al iniciar tracking en vivo: ${err?.message || err}`, 'error');
+      stopLiveWebcamTracking();
+    }
+  };
+
   // Load Image File
   const handleFileSelect = (file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -298,7 +453,15 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     setStatus('Detectando 478 puntos faciales y blendshapes ARKit con MediaPipe...', 'info');
 
     try {
-      const result = await faceToBlendshapeServiceSingleton.processFaceImage(selectedImageElement);
+      const result = await faceToBlendshapeServiceSingleton.processFaceImage(
+        selectedImageElement,
+        {
+          style: clothingStyle,
+          suitColor,
+          shirtColor,
+          tieColor,
+        }
+      );
       currentResultRef.current = result;
 
       const scene = sceneRef.current;
@@ -309,23 +472,35 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       if (oldFace) scene.remove(oldFace);
       const oldHead = scene.getObjectByName('headModel');
       if (oldHead) scene.remove(oldHead);
+      const oldBust = scene.getObjectByName('bustModel');
+      if (oldBust) scene.remove(oldBust);
 
       faceMeshRef.current = result.faceMesh;
       headModelRef.current = result.headModel;
+      bustModelRef.current = result.bustModel;
 
       scene.add(result.faceMesh);
       if (result.headModel) {
         result.headModel.visible = showHeadBase;
         scene.add(result.headModel);
       }
+      if (result.bustModel) {
+        result.bustModel.visible = showShoulders;
+        scene.add(result.bustModel);
+      }
 
       // Apply transforms
-      faceToBlendshapeServiceSingleton.applyTransforms(result.faceMesh, result.headModel, debugParams);
+      faceToBlendshapeServiceSingleton.applyTransforms(
+        result.faceMesh,
+        result.headModel,
+        result.bustModel,
+        debugParams
+      );
 
-      // Initialize blendshapes map
+      // Initialize blendshapes map to 0 (neutral rest pose)
       const initialBlendshapes: Record<string, number> = {};
       ARKIT_BLENDSHAPE_NAMES.forEach((name) => {
-        initialBlendshapes[name] = result.blendshapes[name] || 0;
+        initialBlendshapes[name] = 0;
       });
       setTestBlendshapes(initialBlendshapes);
 
@@ -344,10 +519,20 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     setTestBlendshapes((prev) => ({ ...prev, [name]: value }));
 
     const mesh = faceMeshRef.current;
-    if (!mesh || !mesh.morphTargetDictionary || !mesh.morphTargetInfluences) return;
+    if (!mesh) return;
 
-    const idx = mesh.morphTargetDictionary[name];
-    if (idx !== undefined) {
+    let idx = mesh.morphTargetDictionary ? mesh.morphTargetDictionary[name] : undefined;
+    if (idx === undefined && mesh.geometry?.userData?.targetNames) {
+      const targetNames = mesh.geometry.userData.targetNames as string[];
+      const found = targetNames.indexOf(name);
+      if (found !== -1) idx = found;
+    }
+    if (idx === undefined) {
+      const fallbackIdx = (ARKIT_BLENDSHAPE_NAMES as readonly string[]).indexOf(name);
+      if (fallbackIdx !== -1) idx = fallbackIdx;
+    }
+
+    if (idx !== undefined && mesh.morphTargetInfluences && idx < mesh.morphTargetInfluences.length) {
       mesh.morphTargetInfluences[idx] = value;
     }
   };
@@ -356,11 +541,14 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   const handleResetBlendshapes = () => {
     const mesh = faceMeshRef.current;
     const resetValues: Record<string, number> = {};
-    ARKIT_BLENDSHAPE_NAMES.forEach((name) => {
+    ARKIT_BLENDSHAPE_NAMES.forEach((name, i) => {
       resetValues[name] = 0;
-      if (mesh && mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
-        const idx = mesh.morphTargetDictionary[name];
-        if (idx !== undefined) mesh.morphTargetInfluences[idx] = 0;
+      if (mesh && mesh.morphTargetInfluences) {
+        let idx = mesh.morphTargetDictionary ? mesh.morphTargetDictionary[name] : i;
+        if (idx === undefined) idx = i;
+        if (idx < mesh.morphTargetInfluences.length) {
+          mesh.morphTargetInfluences[idx] = 0;
+        }
       }
     });
     setTestBlendshapes(resetValues);
@@ -381,6 +569,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         faceToBlendshapeServiceSingleton.applyTransforms(
           faceMeshRef.current,
           headModelRef.current,
+          bustModelRef.current,
           updated
         );
       }
@@ -388,15 +577,63 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     });
   };
 
-  // Reset Transforms
+  // Reset All Transforms
   const handleResetTransforms = () => {
     setDebugParams(DEFAULT_DEBUG_PARAMS);
     if (faceMeshRef.current) {
       faceToBlendshapeServiceSingleton.applyTransforms(
         faceMeshRef.current,
         headModelRef.current,
+        bustModelRef.current,
         DEFAULT_DEBUG_PARAMS
       );
+    }
+  };
+
+  // Reset Face Mesh Transforms Exclusively
+  const handleResetFaceTransforms = () => {
+    setDebugParams((prev) => {
+      const updated: TransformDebugParams = {
+        ...prev,
+        face: { ...DEFAULT_DEBUG_PARAMS.face },
+      };
+      if (faceMeshRef.current) {
+        faceToBlendshapeServiceSingleton.applyTransforms(
+          faceMeshRef.current,
+          headModelRef.current,
+          bustModelRef.current,
+          updated
+        );
+      }
+      return updated;
+    });
+  };
+
+  // Reset Head Base Transforms Exclusively
+  const handleResetHeadTransforms = () => {
+    setDebugParams((prev) => {
+      const updated: TransformDebugParams = {
+        ...prev,
+        head: { ...DEFAULT_DEBUG_PARAMS.head },
+      };
+      if (faceMeshRef.current) {
+        faceToBlendshapeServiceSingleton.applyTransforms(
+          faceMeshRef.current,
+          headModelRef.current,
+          bustModelRef.current,
+          updated
+        );
+      }
+      return updated;
+    });
+  };
+
+  // Toggle Face Mesh Visibility
+  const handleToggleFaceMesh = () => {
+    const next = !showFaceMesh;
+    setShowFaceMesh(next);
+    if (faceMeshRef.current) {
+      faceMeshRef.current.visible = next;
     }
   };
 
@@ -416,6 +653,54 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     if (headModelRef.current) {
       headModelRef.current.visible = next;
     }
+  };
+
+  // Toggle Shoulders / Bust Model
+  const handleToggleShoulders = () => {
+    const next = !showShoulders;
+    setShowShoulders(next);
+    if (bustModelRef.current) {
+      bustModelRef.current.visible = next;
+    }
+  };
+
+  // Re-generate or update bust style live
+  const handleUpdateBustStyle = (
+    style: ClothingStyle,
+    sColor = suitColor,
+    shColor = shirtColor,
+    tColor = tieColor
+  ) => {
+    setClothingStyle(style);
+    setSuitColor(sColor);
+    setShirtColor(shColor);
+    setTieColor(tColor);
+
+    const scene = sceneRef.current;
+    if (!scene || !faceMeshRef.current) return;
+
+    const oldBust = scene.getObjectByName('bustModel');
+    if (oldBust) scene.remove(oldBust);
+
+    const bustGen = new BustGenerator();
+    const newBust = bustGen.generateBust({
+      style,
+      suitColor: sColor,
+      shirtColor: shColor,
+      tieColor: tColor,
+      skinColor: faceMeshRef.current.userData.skinColor || { r: 0.85, g: 0.75, b: 0.65 },
+    });
+    newBust.name = 'bustModel';
+    newBust.visible = showShoulders;
+    bustModelRef.current = newBust;
+    scene.add(newBust);
+
+    faceToBlendshapeServiceSingleton.applyTransforms(
+      faceMeshRef.current,
+      headModelRef.current,
+      newBust,
+      debugParams
+    );
   };
 
   // Reset Camera View
@@ -449,7 +734,9 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       const buffer = await faceToBlendshapeServiceSingleton.exportGLB(
         faceMeshRef.current,
         headModelRef.current,
-        showHeadBase
+        bustModelRef.current,
+        showHeadBase,
+        showShoulders
       );
 
       const blob = new Blob([buffer], { type: 'model/gltf-binary' });
@@ -486,7 +773,9 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       const buffer = await faceToBlendshapeServiceSingleton.exportGLB(
         faceMeshRef.current,
         headModelRef.current,
-        showHeadBase
+        bustModelRef.current,
+        showHeadBase,
+        showShoulders
       );
 
       const file = new File([buffer], `${avatarName.toLowerCase().replace(/\s+/g, '_')}.glb`, {
@@ -727,9 +1016,20 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
               <div className="flex items-center gap-1.5 bg-[#0e1220]/80 backdrop-blur-md p-1 rounded-xl border border-white/[0.08] pointer-events-auto shadow-lg">
                 <button
                   type="button"
+                  onClick={handleToggleFaceMesh}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                    showFaceMesh ? 'bg-cyan-500 text-slate-950' : 'text-neutral-300 hover:bg-white/10'
+                  }`}
+                  title="Mostrar/Ocultar Malla Facial"
+                >
+                  <Smile className="w-3.5 h-3.5" />
+                  Malla
+                </button>
+                <button
+                  type="button"
                   onClick={handleToggleWireframe}
                   className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                    showWireframe ? 'bg-cyan-500 text-slate-950' : 'text-neutral-300 hover:bg-white/10'
+                    showWireframe ? 'bg-cyan-400 text-slate-950' : 'text-neutral-300 hover:bg-white/10'
                   }`}
                   title="Activar/Desactivar Malla Wireframe"
                 >
@@ -746,6 +1046,17 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                 >
                   <Layers className="w-3.5 h-3.5" />
                   Base Cabeza
+                </button>
+                <button
+                  type="button"
+                  onClick={handleToggleShoulders}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                    showShoulders ? 'bg-indigo-500 text-white' : 'text-neutral-300 hover:bg-white/10'
+                  }`}
+                  title="Mostrar/Ocultar Hombros y Vestimenta"
+                >
+                  <Shirt className="w-3.5 h-3.5" />
+                  Hombros
                 </button>
               </div>
 
@@ -774,6 +1085,25 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   </p>
                 </div>
               )}
+
+              {/* Live Tracking PiP Webcam Box */}
+              <div
+                className={`absolute bottom-3 left-3 z-20 w-32 aspect-square rounded-2xl overflow-hidden border border-cyan-500/50 shadow-2xl bg-black/90 backdrop-blur-md transition-all duration-300 ${
+                  isLiveTracking ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-90 pointer-events-none'
+                }`}
+              >
+                <video
+                  ref={liveVideoRef}
+                  playsInline
+                  autoPlay
+                  muted
+                  className="w-full h-full object-cover scale-x-[-1]"
+                />
+                <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-black/80 backdrop-blur-md border border-rose-500/40 text-[9px] font-black text-rose-300 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping" />
+                  EN VIVO
+                </div>
+              </div>
             </div>
 
             {/* Viewport Bottom Hint */}
@@ -787,44 +1117,61 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
           {/* Right Column: Controls, Blendshapes & Export (Col 4) */}
           <div className="lg:col-span-4 flex flex-col h-full rounded-2xl bg-[#0e1220]/90 border border-white/[0.08] overflow-hidden">
             {/* Tab Navigation */}
-            <div className="grid grid-cols-3 p-1.5 bg-[#090b14] border-b border-white/[0.06] gap-1 shrink-0">
+            <div className="grid grid-cols-4 p-1.5 bg-[#090b14] border-b border-white/[0.06] gap-1 shrink-0">
               <button
                 type="button"
                 onClick={() => setActiveTab('morphs')}
-                className={`py-2 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                className={`py-2 px-1 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                   activeTab === 'morphs'
                     ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
                     : 'text-neutral-400 hover:text-white hover:bg-white/[0.04]'
                 }`}
+                title="Probar y modificar los 52 blendshapes"
               >
                 <Smile className="w-3.5 h-3.5" />
-                Blendshapes
+                <span>Expresiones</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('clothing')}
+                className={`py-2 px-1 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                  activeTab === 'clothing'
+                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                    : 'text-neutral-400 hover:text-white hover:bg-white/[0.04]'
+                }`}
+                title="Hombros, traje ejecutivo, camisa o cuello redondo"
+              >
+                <Shirt className="w-3.5 h-3.5" />
+                <span>Hombros</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setActiveTab('tuning')}
-                className={`py-2 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                className={`py-2 px-1 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                   activeTab === 'tuning'
                     ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
                     : 'text-neutral-400 hover:text-white hover:bg-white/[0.04]'
                 }`}
+                title="Calibración y alineación 3D"
               >
                 <Sliders className="w-3.5 h-3.5" />
-                Ajustes 3D
+                <span>Ajustes</span>
               </button>
 
               <button
                 type="button"
                 onClick={() => setActiveTab('export')}
-                className={`py-2 px-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                className={`py-2 px-1 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                   activeTab === 'export'
                     ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
                     : 'text-neutral-400 hover:text-white hover:bg-white/[0.04]'
                 }`}
+                title="Descargar GLB o guardar en XStreamX"
               >
                 <Download className="w-3.5 h-3.5" />
-                Exportar
+                <span>Exportar</span>
               </button>
             </div>
 
@@ -842,6 +1189,53 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                     className="text-[11px] text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
                   >
                     Reset
+                  </button>
+                </div>
+
+                {/* Live Webcam Mirror Control Card */}
+                <div className="p-3 rounded-2xl bg-gradient-to-r from-cyan-950/40 via-indigo-950/30 to-purple-950/40 border border-cyan-500/30 flex items-center justify-between gap-3 shadow-lg shrink-0">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center transition ${
+                        isLiveTracking
+                          ? 'bg-rose-500 text-white animate-pulse shadow-lg shadow-rose-500/40'
+                          : 'bg-cyan-500/20 text-cyan-400'
+                      }`}
+                    >
+                      {isLiveTracking ? <Video className="w-5 h-5" /> : <Camera className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white">Espejo Webcam en Vivo</span>
+                        {isLiveTracking && (
+                          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[9px] font-black uppercase tracking-wider animate-pulse">
+                            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping" />
+                            EN VIVO
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-neutral-400">
+                        {isLiveTracking
+                          ? 'Modificando 52 blendshapes en vivo con tu cámara'
+                          : 'Anima el modelo en tiempo real con tu rostro'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={isLiveTracking ? stopLiveWebcamTracking : startLiveWebcamTracking}
+                    disabled={!hasGeneratedModel}
+                    className={`px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition cursor-pointer shadow-md ${
+                      !hasGeneratedModel
+                        ? 'opacity-40 cursor-not-allowed bg-neutral-800 text-neutral-500'
+                        : isLiveTracking
+                        ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/30'
+                        : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-cyan-500/30'
+                    }`}
+                  >
+                    {isLiveTracking ? <VideoOff className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
+                    {isLiveTracking ? 'Detener' : 'Activar Webcam'}
                   </button>
                 </div>
 
@@ -876,11 +1270,155 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
               </div>
             )}
 
-            {/* Tab 2: Fine Tuning (Transforms & Alignment) */}
-            {activeTab === 'tuning' && (
+            {/* Tab 2: Hombros y Vestimenta */}
+            {activeTab === 'clothing' && (
               <div className="flex-1 flex flex-col p-3 sm:p-4 overflow-y-auto gap-4">
                 <div className="flex items-center justify-between pb-1 border-b border-white/[0.06]">
-                  <span className="text-xs font-bold text-neutral-200">Calibración de Cabeza y Rostro</span>
+                  <div>
+                    <span className="text-xs font-bold text-neutral-200">Hombros y Vestimenta</span>
+                    <p className="text-[10px] text-neutral-400">Personaliza el busto, vestimenta y corbata del avatar</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleToggleShoulders}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                      showShoulders ? 'bg-indigo-500 text-white shadow-md' : 'bg-neutral-800 text-neutral-400'
+                    }`}
+                  >
+                    <Shirt className="w-3.5 h-3.5" />
+                    {showShoulders ? 'Hombros Visibles' : 'Ocultos'}
+                  </button>
+                </div>
+
+                {/* Estilos de Ropa */}
+                <div className="space-y-2">
+                  <span className="text-[11px] font-black text-cyan-300 uppercase tracking-wider block">
+                    Estilo de Vestimenta
+                  </span>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateBustStyle('suit')}
+                      className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center gap-1.5 cursor-pointer ${
+                        clothingStyle === 'suit'
+                          ? 'border-cyan-400 bg-cyan-950/40 text-cyan-300 shadow-md'
+                          : 'border-white/[0.08] bg-black/30 text-neutral-400 hover:border-white/20'
+                      }`}
+                    >
+                      <span className="text-lg">👔</span>
+                      <span className="text-[11px] font-bold">Traje Ejecutivo</span>
+                      <span className="text-[9px] text-neutral-500">Con corbata (Reagan)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateBustStyle('shirt')}
+                      className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center gap-1.5 cursor-pointer ${
+                        clothingStyle === 'shirt'
+                          ? 'border-cyan-400 bg-cyan-950/40 text-cyan-300 shadow-md'
+                          : 'border-white/[0.08] bg-black/30 text-neutral-400 hover:border-white/20'
+                      }`}
+                    >
+                      <span className="text-lg">👕</span>
+                      <span className="text-[11px] font-bold">Camisa Casual</span>
+                      <span className="text-[9px] text-neutral-500">Botones formales</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => handleUpdateBustStyle('crew')}
+                      className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center gap-1.5 cursor-pointer ${
+                        clothingStyle === 'crew'
+                          ? 'border-cyan-400 bg-cyan-950/40 text-cyan-300 shadow-md'
+                          : 'border-white/[0.08] bg-black/30 text-neutral-400 hover:border-white/20'
+                      }`}
+                    >
+                      <span className="text-lg">⚪</span>
+                      <span className="text-[11px] font-bold">Cuello Redondo</span>
+                      <span className="text-[9px] text-neutral-500">Playera / Suéter</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Colores */}
+                <div className="p-3.5 rounded-2xl bg-black/40 border border-white/[0.06] space-y-3">
+                  <span className="text-[11px] font-black text-indigo-300 uppercase tracking-wider block">
+                    Colores de la Vestimenta
+                  </span>
+
+                  {/* Color del Traje */}
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-neutral-300 font-medium">Color de Saco / Prenda</span>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={suitColor}
+                        onChange={(e) => {
+                          setSuitColor(e.target.value);
+                          handleUpdateBustStyle(clothingStyle, e.target.value, shirtColor, tieColor);
+                        }}
+                        className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
+                      />
+                      <span className="font-mono text-[11px] text-neutral-400 uppercase">{suitColor}</span>
+                    </div>
+                  </div>
+
+                  {/* Color de la Corbata (si es traje) */}
+                  {clothingStyle === 'suit' && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-neutral-300 font-medium">Color de Corbata</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={tieColor}
+                          onChange={(e) => {
+                            setTieColor(e.target.value);
+                            handleUpdateBustStyle(clothingStyle, suitColor, shirtColor, e.target.value);
+                          }}
+                          className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
+                        />
+                        <span className="font-mono text-[11px] text-neutral-400 uppercase">{tieColor}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Color de la Camisa */}
+                  {clothingStyle !== 'crew' && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-neutral-300 font-medium">Color de Camisa</span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={shirtColor}
+                          onChange={(e) => {
+                            setShirtColor(e.target.value);
+                            handleUpdateBustStyle(clothingStyle, suitColor, e.target.value, tieColor);
+                          }}
+                          className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
+                        />
+                        <span className="font-mono text-[11px] text-neutral-400 uppercase">{shirtColor}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="p-3 rounded-xl bg-cyan-950/20 border border-cyan-500/20 text-[11px] text-cyan-300 flex items-start gap-2">
+                  <Sparkles className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>
+                    El busto cuenta con cinemática bi-articular: al activar el <strong>Espejo Webcam</strong>, el cuello se flexiona y los hombros reaccionan con balanceo orgánico al movimiento de tu cuerpo en cámara a 60 FPS.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Tab 3: Fine Tuning (Transforms & Alignment) */}
+            {activeTab === 'tuning' && (
+              <div className="flex-1 flex flex-col p-3 sm:p-4 overflow-y-auto gap-3.5">
+                <div className="flex items-center justify-between pb-1 border-b border-white/[0.06]">
+                  <div>
+                    <span className="text-xs font-bold text-neutral-200">Ajuste y Calibración 3D</span>
+                    <p className="text-[10px] text-neutral-400">Alinea milimétricamente la malla sobre el cráneo base.</p>
+                  </div>
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -894,107 +1432,486 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                       type="button"
                       onClick={handleResetTransforms}
                       className="text-[11px] text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                      title="Restablecer todos los ajustes a los valores por defecto"
                     >
-                      Reset
+                      Reset Todo
                     </button>
                   </div>
                 </div>
 
-                {/* Head Controls */}
-                <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-3">
-                  <span className="text-[11px] font-black text-indigo-300 uppercase tracking-wider block">
-                    Alineación Base de Cabeza
-                  </span>
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-[10px] text-neutral-400">
-                      <span>Escala X ({debugParams.head.scaleMultiplierX.toFixed(2)})</span>
-                      <input
-                        type="range"
-                        min="0.5"
-                        max="2.0"
-                        step="0.05"
-                        value={debugParams.head.scaleMultiplierX}
-                        onChange={(e) => handleDebugParamChange('head', 'scaleMultiplierX', parseFloat(e.target.value))}
-                        className="w-32 accent-indigo-400"
-                      />
-                    </div>
-
-                    <div className="flex justify-between text-[10px] text-neutral-400">
-                      <span>Escala Y ({debugParams.head.scaleMultiplierY.toFixed(2)})</span>
-                      <input
-                        type="range"
-                        min="0.5"
-                        max="2.0"
-                        step="0.05"
-                        value={debugParams.head.scaleMultiplierY}
-                        onChange={(e) => handleDebugParamChange('head', 'scaleMultiplierY', parseFloat(e.target.value))}
-                        className="w-32 accent-indigo-400"
-                      />
-                    </div>
-
-                    <div className="flex justify-between text-[10px] text-neutral-400">
-                      <span>Profundidad Z ({debugParams.head.scaleMultiplierZ.toFixed(2)})</span>
-                      <input
-                        type="range"
-                        min="0.5"
-                        max="2.0"
-                        step="0.05"
-                        value={debugParams.head.scaleMultiplierZ}
-                        onChange={(e) => handleDebugParamChange('head', 'scaleMultiplierZ', parseFloat(e.target.value))}
-                        className="w-32 accent-indigo-400"
-                      />
-                    </div>
-
-                    <div className="flex justify-between text-[10px] text-neutral-400">
-                      <span>Push Back ({debugParams.head.pushBackFactor.toFixed(2)})</span>
-                      <input
-                        type="range"
-                        min="0.0"
-                        max="1.0"
-                        step="0.02"
-                        value={debugParams.head.pushBackFactor}
-                        onChange={(e) => handleDebugParamChange('head', 'pushBackFactor', parseFloat(e.target.value))}
-                        className="w-32 accent-indigo-400"
-                      />
-                    </div>
-                  </div>
+                {/* Sub-selector: Malla Facial vs Base de Cabeza */}
+                <div className="grid grid-cols-2 gap-1.5 p-1 bg-black/40 rounded-xl border border-white/[0.08]">
+                  <button
+                    type="button"
+                    onClick={() => setTuningTarget('face')}
+                    className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      tuningTarget === 'face'
+                        ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
+                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <Smile className="w-3.5 h-3.5" />
+                    Malla Facial (Exclusivo)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTuningTarget('head')}
+                    className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      tuningTarget === 'head'
+                        ? 'bg-indigo-500 text-white shadow-md font-black'
+                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <Layers className="w-3.5 h-3.5" />
+                    Base de Cabeza
+                  </button>
                 </div>
 
-                {/* Face Controls */}
-                <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-3">
-                  <span className="text-[11px] font-black text-cyan-300 uppercase tracking-wider block">
-                    Alineación Malla Facial
-                  </span>
-
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-[10px] text-neutral-400">
-                      <span>Posición Y ({debugParams.face.posOffsetY.toFixed(2)})</span>
-                      <input
-                        type="range"
-                        min="-0.5"
-                        max="0.5"
-                        step="0.02"
-                        value={debugParams.face.posOffsetY}
-                        onChange={(e) => handleDebugParamChange('face', 'posOffsetY', parseFloat(e.target.value))}
-                        className="w-32 accent-cyan-400"
-                      />
+                {/* --- 1. Malla Facial (Exclusivo) --- */}
+                {tuningTarget === 'face' && (
+                  <div className="space-y-3">
+                    <div className="p-2.5 rounded-xl bg-cyan-950/20 border border-cyan-500/20 text-[11px] text-cyan-300 flex items-center justify-between">
+                      <span>Estos controles afectan <strong>únicamente a la máscara facial</strong>.</span>
+                      <button
+                        type="button"
+                        onClick={handleResetFaceTransforms}
+                        className="text-[10px] text-cyan-400 underline hover:text-cyan-200 cursor-pointer"
+                      >
+                        Reset Malla
+                      </button>
                     </div>
 
-                    <div className="flex justify-between text-[10px] text-neutral-400">
-                      <span>Posición Z ({debugParams.face.posOffsetZ.toFixed(2)})</span>
-                      <input
-                        type="range"
-                        min="-0.5"
-                        max="0.5"
-                        step="0.02"
-                        value={debugParams.face.posOffsetZ}
-                        onChange={(e) => handleDebugParamChange('face', 'posOffsetZ', parseFloat(e.target.value))}
-                        className="w-32 accent-cyan-400"
-                      />
+                    {/* Tamaño y Escala */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <span className="text-[11px] font-black text-cyan-300 uppercase tracking-wider block">
+                        Tamaño y Escala de la Malla
+                      </span>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Tamaño General (Uniforme)</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.0"
+                              step="0.01"
+                              value={debugParams.face.scaleUniform ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('face', 'scaleUniform', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-cyan-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-cyan-300 font-bold">
+                              {(debugParams.face.scaleUniform ?? 1.0).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Ancho Malla (X)</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.0"
+                              step="0.01"
+                              value={debugParams.face.scaleX}
+                              onChange={(e) => handleDebugParamChange('face', 'scaleX', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-cyan-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-cyan-300 font-bold">
+                              {debugParams.face.scaleX.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Alto Malla (Y)</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.0"
+                              step="0.01"
+                              value={debugParams.face.scaleY}
+                              onChange={(e) => handleDebugParamChange('face', 'scaleY', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-cyan-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-cyan-300 font-bold">
+                              {debugParams.face.scaleY.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Profundidad / Grosor (Z)</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.3"
+                              max="2.5"
+                              step="0.01"
+                              value={debugParams.face.scaleZ}
+                              onChange={(e) => handleDebugParamChange('face', 'scaleZ', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-cyan-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-cyan-300 font-bold">
+                              {debugParams.face.scaleZ.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Ubicación y Desplazamiento */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <span className="text-[11px] font-black text-cyan-300 uppercase tracking-wider block">
+                        Ubicación de la Malla (Posición)
+                      </span>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Horizontal X (Izq / Der)</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-0.5"
+                              max="0.5"
+                              step="0.005"
+                              value={debugParams.face.posOffsetX}
+                              onChange={(e) => handleDebugParamChange('face', 'posOffsetX', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-cyan-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-cyan-300 font-bold">
+                              {debugParams.face.posOffsetX.toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Vertical Y (Arriba / Abajo)</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-0.5"
+                              max="0.5"
+                              step="0.005"
+                              value={debugParams.face.posOffsetY}
+                              onChange={(e) => handleDebugParamChange('face', 'posOffsetY', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-cyan-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-cyan-300 font-bold">
+                              {debugParams.face.posOffsetY.toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Profundidad Z (Delante / Atrás)</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-0.5"
+                              max="0.5"
+                              step="0.005"
+                              value={debugParams.face.posOffsetZ}
+                              onChange={(e) => handleDebugParamChange('face', 'posOffsetZ', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-cyan-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-cyan-300 font-bold">
+                              {debugParams.face.posOffsetZ.toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Inclinación y Rotación */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <span className="text-[11px] font-black text-cyan-300 uppercase tracking-wider block">
+                        Rotación y Ángulo de la Malla
+                      </span>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Pitch X (Inclinación vertical)</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-45"
+                              max="45"
+                              step="1"
+                              value={debugParams.face.rotationX}
+                              onChange={(e) => handleDebugParamChange('face', 'rotationX', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-cyan-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-cyan-300 font-bold">
+                              {debugParams.face.rotationX}°
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Yaw Y (Giro horizontal)</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-45"
+                              max="45"
+                              step="1"
+                              value={debugParams.face.rotationY}
+                              onChange={(e) => handleDebugParamChange('face', 'rotationY', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-cyan-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-cyan-300 font-bold">
+                              {debugParams.face.rotationY}°
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Roll Z (Inclinación lateral)</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-45"
+                              max="45"
+                              step="1"
+                              value={debugParams.face.rotationZ}
+                              onChange={(e) => handleDebugParamChange('face', 'rotationZ', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-cyan-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-cyan-300 font-bold">
+                              {debugParams.face.rotationZ}°
+                            </span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
+
+                {/* --- 2. Base de Cabeza --- */}
+                {tuningTarget === 'head' && (
+                  <div className="space-y-3">
+                    <div className="p-2.5 rounded-xl bg-indigo-950/20 border border-indigo-500/20 text-[11px] text-indigo-300 flex items-center justify-between">
+                      <span>Estos controles calibran el <strong>cráneo y contorno posterior</strong>.</span>
+                      <button
+                        type="button"
+                        onClick={handleResetHeadTransforms}
+                        className="text-[10px] text-indigo-400 underline hover:text-indigo-200 cursor-pointer"
+                      >
+                        Reset Cabeza
+                      </button>
+                    </div>
+
+                    {/* Escala Cabeza */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <span className="text-[11px] font-black text-indigo-300 uppercase tracking-wider block">
+                        Escala de Base de Cabeza
+                      </span>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Escala Ancho X</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.2"
+                              step="0.02"
+                              value={debugParams.head.scaleMultiplierX}
+                              onChange={(e) => handleDebugParamChange('head', 'scaleMultiplierX', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-indigo-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-indigo-300 font-bold">
+                              {debugParams.head.scaleMultiplierX.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Escala Alto Y</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.2"
+                              step="0.02"
+                              value={debugParams.head.scaleMultiplierY}
+                              onChange={(e) => handleDebugParamChange('head', 'scaleMultiplierY', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-indigo-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-indigo-300 font-bold">
+                              {debugParams.head.scaleMultiplierY.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Profundidad Z</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.2"
+                              step="0.02"
+                              value={debugParams.head.scaleMultiplierZ}
+                              onChange={(e) => handleDebugParamChange('head', 'scaleMultiplierZ', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-indigo-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-indigo-300 font-bold">
+                              {debugParams.head.scaleMultiplierZ.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Push Back (Atrás)</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.0"
+                              max="1.0"
+                              step="0.02"
+                              value={debugParams.head.pushBackFactor}
+                              onChange={(e) => handleDebugParamChange('head', 'pushBackFactor', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-indigo-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-indigo-300 font-bold">
+                              {debugParams.head.pushBackFactor.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Ubicación Cabeza */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <span className="text-[11px] font-black text-indigo-300 uppercase tracking-wider block">
+                        Ubicación de la Cabeza
+                      </span>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Horizontal X</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-0.5"
+                              max="0.5"
+                              step="0.005"
+                              value={debugParams.head.posOffsetX}
+                              onChange={(e) => handleDebugParamChange('head', 'posOffsetX', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-indigo-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-indigo-300 font-bold">
+                              {debugParams.head.posOffsetX.toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Vertical Y</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-0.5"
+                              max="0.5"
+                              step="0.005"
+                              value={debugParams.head.posOffsetY}
+                              onChange={(e) => handleDebugParamChange('head', 'posOffsetY', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-indigo-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-indigo-300 font-bold">
+                              {debugParams.head.posOffsetY.toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Profundidad Z</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-0.5"
+                              max="0.5"
+                              step="0.005"
+                              value={debugParams.head.posOffsetZ}
+                              onChange={(e) => handleDebugParamChange('head', 'posOffsetZ', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-indigo-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-indigo-300 font-bold">
+                              {debugParams.head.posOffsetZ.toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Rotación Cabeza */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <span className="text-[11px] font-black text-indigo-300 uppercase tracking-wider block">
+                        Rotación de la Cabeza
+                      </span>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Inclinación Pitch X</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-45"
+                              max="45"
+                              step="1"
+                              value={debugParams.head.rotationX}
+                              onChange={(e) => handleDebugParamChange('head', 'rotationX', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-indigo-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-indigo-300 font-bold">
+                              {debugParams.head.rotationX}°
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Giro Yaw Y</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-45"
+                              max="45"
+                              step="1"
+                              value={debugParams.head.rotationY}
+                              onChange={(e) => handleDebugParamChange('head', 'rotationY', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-indigo-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-indigo-300 font-bold">
+                              {debugParams.head.rotationY}°
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Inclinación Roll Z</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-45"
+                              max="45"
+                              step="1"
+                              value={debugParams.head.rotationZ}
+                              onChange={(e) => handleDebugParamChange('head', 'rotationZ', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-indigo-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-indigo-300 font-bold">
+                              {debugParams.head.rotationZ}°
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

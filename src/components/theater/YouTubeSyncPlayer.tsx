@@ -311,7 +311,7 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
   // Playback Control Handlers (Admin Control)
   const handleTogglePlayPause = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isAdmin && currentUserRole !== 'admin') return;
+    if (!isAdmin) return;
     const targetState = !mediaState.isPlaying;
     if (playerRef.current) {
       if (targetState) {
@@ -325,7 +325,7 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
 
   const handleRewind = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isAdmin && currentUserRole !== 'admin') return;
+    if (!isAdmin) return;
     const target = Math.max(0, currentTime - 10);
     if (playerRef.current) {
       playerRef.current.seekTo(target, true);
@@ -335,7 +335,7 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
 
   const handleForward = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!isAdmin && currentUserRole !== 'admin') return;
+    if (!isAdmin) return;
     const target = Math.min(duration || currentTime + 10, currentTime + 10);
     if (playerRef.current) {
       playerRef.current.seekTo(target, true);
@@ -439,7 +439,7 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
               min={0}
               max={duration || 100}
               value={currentTime}
-              disabled={!isAdmin && currentUserRole !== 'admin'}
+              disabled={!isAdmin}
               onChange={handleSeekSlider}
               className={`flex-1 h-1.5 bg-white/20 rounded-lg accent-cyan-400 ${
                 isAdmin ? 'cursor-pointer hover:h-2 transition-all' : 'cursor-default opacity-80'
@@ -459,7 +459,7 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
               <button
                 type="button"
                 onClick={handleTogglePlayPause}
-                disabled={!isAdmin && currentUserRole !== 'admin'}
+                disabled={!isAdmin}
                 className={`p-2 rounded-xl border transition active:scale-95 flex items-center justify-center ${
                   isAdmin
                     ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 border-cyan-400 cursor-pointer shadow-md shadow-cyan-500/20'
@@ -484,7 +484,7 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
               <button
                 type="button"
                 onClick={handleRewind}
-                disabled={!isAdmin && currentUserRole !== 'admin'}
+                disabled={!isAdmin}
                 className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:hover:bg-white/10 text-white border border-white/10 transition active:scale-95 cursor-pointer flex items-center gap-1 text-[11px] font-bold"
                 title="Retroceder 10 segundos (Admin)"
               >
@@ -496,7 +496,7 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
               <button
                 type="button"
                 onClick={handleForward}
-                disabled={!isAdmin && currentUserRole !== 'admin'}
+                disabled={!isAdmin}
                 className="p-1.5 rounded-lg bg-white/10 hover:bg-white/20 disabled:opacity-40 disabled:hover:bg-white/10 text-white border border-white/10 transition active:scale-95 cursor-pointer flex items-center gap-1 text-[11px] font-bold"
                 title="Adelantar 10 segundos (Admin)"
               >
@@ -509,7 +509,7 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
                 <button
                   type="button"
                   onClick={onSkip}
-                  disabled={!isAdmin && currentUserRole !== 'admin'}
+                  disabled={!isAdmin}
                   className="p-1.5 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 disabled:opacity-40 disabled:hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 transition active:scale-95 cursor-pointer flex items-center gap-1 text-[11px] font-bold"
                   title="Saltar al siguiente video de la playlist (Admin)"
                 >

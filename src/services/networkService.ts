@@ -54,6 +54,7 @@ export class NetworkService {
   public onChatMessage: ((message: ChatMessage) => void) | null = null;
   public onRoomLockChanged: ((isLocked: boolean) => void) | null = null;
   public onKicked: ((reason: string) => void) | null = null;
+  public onRoomClosed: ((reason: string) => void) | null = null;
   public onForceMute: ((isMuted: boolean) => void) | null = null;
   public onRoomStatusChanged: ((status: { isOpen: boolean; hasActiveAdmin?: boolean; activeAdminName?: string | null; activeAdminId?: string | null; room: any }) => void) | null = null;
   public onMediaStateChanged: ((state: RoomMediaState) => void) | null = null;
@@ -151,10 +152,27 @@ export class NetworkService {
 
         this.socket.on('user_left', ({ userId, participants }: { userId: string; participants: User[] }) => {
           if (this.currentRoom) {
+            const isAdmin =
+              this.currentRoom.adminId === userId ||
+              this.currentRoom.participants.some((p) => p.id === userId && p.role === 'admin');
+
+            if (isAdmin && this.currentUser && this.currentUser.id !== userId) {
+              console.log('[Room Teardown] Admin left room via socket. Closing room.');
+              this.cleanup();
+              this.onRoomClosed?.('El administrador ha abandonado el espacio. La sala ha sido cerrada y la llamada ha finalizado.');
+              return;
+            }
+
             this.currentRoom.participants = this.deduplicateParticipants(participants);
           }
           this.closePeer(userId);
           if (this.onUserLeft) this.onUserLeft(userId, this.currentRoom?.participants || participants);
+        });
+
+        this.socket.on('room_closed', ({ reason }: { reason?: string } = {}) => {
+          console.log('[Room Teardown] Room closed via socket broadcast.');
+          this.cleanup();
+          this.onRoomClosed?.(reason || 'El administrador ha cerrado la sala. La llamada ha finalizado.');
         });
 
         this.socket.on('user_updated', ({ user }: { user: User }) => {
@@ -634,6 +652,10 @@ export class NetworkService {
         if (this.onWhiteboardClear) {
           this.onWhiteboardClear();
         }
+      } else if (data.type === 'room_closed') {
+        console.log('[Room Teardown] Room closed via PeerJS P2P data connection.');
+        this.cleanup();
+        this.onRoomClosed?.(data.reason || 'El administrador ha cerrado la sala. La llamada ha finalizado.');
       }
     });
 
@@ -807,6 +829,17 @@ export class NetworkService {
             if (peerId !== this.currentUser?.id && now - lastSeen > 12000) {
               this.peerHeartbeats.delete(peerId);
               if (this.currentRoom) {
+                const isAdmin =
+                  (this.currentRoom.adminId && peerId === this.currentRoom.adminId) ||
+                  this.currentRoom.participants.some((p) => p.id === peerId && p.role === 'admin');
+
+                if (isAdmin) {
+                  console.log('[Room Teardown] Admin heartbeat timed out. Closing room for all.');
+                  this.cleanup();
+                  this.onRoomClosed?.('El administrador se ha desconectado. La sala se ha cerrado y la llamada ha finalizado.');
+                  return;
+                }
+
                 const updatedList = this.currentRoom.participants.filter(
                   (p) => p.id !== peerId
                 );
@@ -935,8 +968,27 @@ export class NetworkService {
         break;
       }
 
+      case 'room_closed': {
+        console.log('[Room Teardown] Received room_closed mesh message from admin.');
+        this.cleanup();
+        this.onRoomClosed?.(msg.reason || 'El administrador ha abandonado el espacio. La sala ha sido cerrada y la llamada ha finalizado.');
+        break;
+      }
+
       case 'user_left': {
         if (msg.userId && msg.userId !== this.currentUser.id) {
+          const isAdmin =
+            (this.currentRoom.adminId && msg.userId === this.currentRoom.adminId) ||
+            msg.isAdmin === true ||
+            this.currentRoom.participants.some((p) => p.id === msg.userId && p.role === 'admin');
+
+          if (isAdmin) {
+            console.log('[Room Teardown] Admin left room via MQTT mesh. Closing room for all.');
+            this.cleanup();
+            this.onRoomClosed?.('El administrador ha abandonado el espacio. La sala ha sido cerrada y la llamada ha finalizado.');
+            break;
+          }
+
           const nextList = this.currentRoom.participants.filter(
             (p) => p.id !== msg.userId
           );
@@ -1259,6 +1311,11 @@ export class NetworkService {
             }
           }
         })
+        .on('broadcast', { event: 'room_closed' }, ({ payload }) => {
+          console.log('[Room Teardown] Room closed via Supabase broadcast.');
+          this.cleanup();
+          this.onRoomClosed?.(payload?.reason || 'El administrador ha abandonado el espacio. La sala ha sido cerrada y la llamada ha finalizado.');
+        })
         .on('broadcast', { event: 'whiteboard_stroke' }, ({ payload }) => {
           if (payload && payload.stroke && payload.stroke.userId !== this.currentUser?.id) {
             if (this.onWhiteboardStroke) {
@@ -1324,6 +1381,16 @@ export class NetworkService {
   }
 
   setLocalAudioStream(stream: MediaStream | null) {
+    if (!stream && this.localAudioStream) {
+      // Close all ongoing audio calls
+      this.peerMediaCalls.forEach((call) => {
+        try {
+          call.close();
+        } catch (_) {}
+      });
+      this.peerMediaCalls.clear();
+    }
+
     this.localAudioStream = stream;
 
     const peer = this.peer;
@@ -1331,11 +1398,11 @@ export class NetworkService {
     const currentUser = this.currentUser;
 
     // Update all PeerJS audio calls
-    if (peer && room && currentUser) {
+    if (peer && room && currentUser && stream) {
       room.participants.forEach((p) => {
         if (p.id !== currentUser.id) {
           const targetPeerId = this.getPeerJsId(room.id, p.id);
-          if (stream && !this.peerMediaCalls.has(targetPeerId)) {
+          if (!this.peerMediaCalls.has(targetPeerId)) {
             try {
               const call = peer.call(targetPeerId, stream);
               this.setupMediaCall(call);
@@ -2192,8 +2259,27 @@ export class NetworkService {
         break;
       }
 
+      case 'tab_room_closed': {
+        console.log('[Room Teardown] Room closed via BroadcastChannel.');
+        this.cleanup();
+        this.onRoomClosed?.(msg.reason || 'El administrador ha abandonado el espacio. La sala ha sido cerrada y la llamada ha finalizado.');
+        break;
+      }
+
       case 'tab_user_left': {
         if (msg.userId && msg.userId !== this.currentUser.id) {
+          const isAdmin =
+            (this.currentRoom.adminId && msg.userId === this.currentRoom.adminId) ||
+            msg.isAdmin === true ||
+            this.currentRoom.participants.some((p) => p.id === msg.userId && p.role === 'admin');
+
+          if (isAdmin) {
+            console.log('[Room Teardown] Admin left room via BroadcastChannel. Closing room for all.');
+            this.cleanup();
+            this.onRoomClosed?.('El administrador ha abandonado el espacio. La sala ha sido cerrada y la llamada ha finalizado.');
+            break;
+          }
+
           const nextList = this.currentRoom.participants.filter(
             (p) => p.id !== msg.userId
           );
@@ -2406,19 +2492,122 @@ export class NetworkService {
     this.burstTimeouts.forEach((t) => clearTimeout(t));
     this.burstTimeouts = [];
 
-    if (this.mqttClient && this.currentRoom && this.currentUser) {
-      try {
-        this.publishMeshMessage({
-          type: 'user_left',
-          roomId: this.currentRoom.id,
-          userId: this.currentUser.id,
+    const isAdmin =
+      (this.currentUser && this.currentUser.role === 'admin') ||
+      (this.currentRoom && this.currentUser && this.currentRoom.adminId === this.currentUser.id);
+
+    const closeReason = 'El administrador ha abandonado el espacio. La sala se ha cerrado y la llamada ha finalizado.';
+
+    if (this.currentRoom && this.currentUser) {
+      if (isAdmin) {
+        console.log('[Room Teardown] Admin is leaving. Broadcasting room_closed across all channels.');
+        // 1. PeerJS Direct WebRTC Data Connections
+        this.peerDataConnections.forEach((conn) => {
+          try {
+            conn.send({
+              type: 'room_closed',
+              roomId: this.currentRoom?.id,
+              reason: closeReason,
+            });
+          } catch (_) {}
         });
-        this.mqttClient.end(true);
+
+        // 2. Global MQTT Mesh
+        if (this.mqttClient && this.mqttClient.connected) {
+          try {
+            this.publishMeshMessage({
+              type: 'room_closed',
+              roomId: this.currentRoom.id,
+              reason: closeReason,
+            });
+          } catch (_) {}
+        }
+
+        // 3. Supabase Realtime
+        if (this.supabaseChannel) {
+          try {
+            this.supabaseChannel.send({
+              type: 'broadcast',
+              event: 'room_closed',
+              payload: {
+                type: 'room_closed',
+                roomId: this.currentRoom.id,
+                reason: closeReason,
+              },
+            });
+          } catch (_) {}
+        }
+
+        // 4. Socket.io
+        if (this.socket) {
+          try {
+            this.socket.emit('admin_close_room', {
+              roomId: this.currentRoom.id,
+              reason: closeReason,
+            });
+            this.socket.emit('room_closed', {
+              roomId: this.currentRoom.id,
+              reason: closeReason,
+            });
+          } catch (_) {}
+        }
+
+        // 5. BroadcastChannel (cross-tab)
+        try {
+          this.broadcastChannel?.postMessage({
+            type: 'tab_room_closed',
+            roomId: this.currentRoom.id,
+            reason: closeReason,
+          });
+        } catch (_) {}
+      } else {
+        // Standard participant left
+        if (this.mqttClient && this.mqttClient.connected) {
+          try {
+            this.publishMeshMessage({
+              type: 'user_left',
+              roomId: this.currentRoom.id,
+              userId: this.currentUser.id,
+            });
+          } catch (_) {}
+        }
+
+        try {
+          this.broadcastChannel?.postMessage({
+            type: 'tab_user_left',
+            roomId: this.currentRoom.id,
+            userId: this.currentUser.id,
+          });
+        } catch (_) {}
+      }
+
+      if (this.mqttClient) {
+        try {
+          this.mqttClient.end(true);
+        } catch (_) {}
+        this.mqttClient = null;
+      }
+    }
+
+    // Explicitly hang up and close all WebRTC media calls
+    this.peerMediaCalls.forEach((call) => {
+      try {
+        call.close();
       } catch (e) {
         // Ignored
       }
-      this.mqttClient = null;
-    }
+    });
+    this.peerMediaCalls.clear();
+
+    // Explicitly close all PeerJS data connections
+    this.peerDataConnections.forEach((conn) => {
+      try {
+        conn.close();
+      } catch (e) {
+        // Ignored
+      }
+    });
+    this.peerDataConnections.clear();
 
     if (this.peer) {
       try {
@@ -2429,8 +2618,15 @@ export class NetworkService {
       this.peer = null;
     }
 
-    this.peerDataConnections.clear();
-    this.peerMediaCalls.clear();
+    // Stop and release local audio tracks held by network layer
+    if (this.localAudioStream) {
+      try {
+        this.localAudioStream.getTracks().forEach((track) => track.stop());
+      } catch (e) {
+        // Ignored
+      }
+      this.localAudioStream = null;
+    }
 
     if (this.supabaseChannel) {
       const supabase = getSupabaseClient();
@@ -2440,22 +2636,23 @@ export class NetworkService {
       this.supabaseChannel = null;
     }
 
-    if (this.currentRoom && this.currentUser) {
+    this.socketPeerConnections.forEach((pc) => {
       try {
-        this.broadcastChannel?.postMessage({
-          type: 'tab_user_left',
-          roomId: this.currentRoom.id,
-          userId: this.currentUser.id,
-        });
+        pc.close();
       } catch (e) {
         // Ignored
       }
-    }
-
-    this.socketPeerConnections.forEach((pc) => pc.close());
+    });
     this.socketPeerConnections.clear();
+
     this.remoteAudioElements.forEach((el) => {
-      el.srcObject = null;
+      try {
+        el.pause();
+        el.srcObject = null;
+        el.remove();
+      } catch (e) {
+        // Ignored
+      }
     });
     this.remoteAudioElements.clear();
 
@@ -2475,6 +2672,10 @@ export class NetworkService {
       lastSyncTimestamp: 0,
       syncedByUserId: '',
     };
+  }
+
+  leaveRoom() {
+    this.cleanup();
   }
 }
 

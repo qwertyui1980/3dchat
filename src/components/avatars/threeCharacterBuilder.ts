@@ -2110,7 +2110,7 @@ export function buildLincolnCharacter(gltf: GLTF): Character3DController {
       const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
       headPivot.position.y = 3.75 + breath + voiceNod;
 
-      const mouthOpen = Math.max(features.jawOpen || 0, features.mouthOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
+      const mouthOpen = Math.max(features.jawOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
       applyMorph('jaw', mouthOpen, 0.35);
       applyMorph('mouth', mouthOpen, 0.35);
       applyMorph('open', mouthOpen, 0.35);
@@ -2257,7 +2257,7 @@ export function buildBidenCharacter(gltf: GLTF): Character3DController {
       const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
       model.position.y = -0.2 + breath + voiceNod;
 
-      const mouthOpen = Math.max(features.jawOpen || 0, features.mouthOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
+      const mouthOpen = Math.max(features.jawOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
       applyMorph('jaw', mouthOpen, 0.35);
       applyMorph('mouth', mouthOpen, 0.35);
       applyMorph('open', mouthOpen, 0.35);
@@ -2377,7 +2377,7 @@ export function buildObamaCharacter(gltf: GLTF): Character3DController {
       const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
       headPivot.position.y = 3.75 + breath + voiceNod;
 
-      const mouthOpen = Math.max(features.jawOpen || 0, features.mouthOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
+      const mouthOpen = Math.max(features.jawOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
       applyMorph('jaw', mouthOpen, 0.35);
       applyMorph('mouth', mouthOpen, 0.35);
       applyMorph('open', mouthOpen, 0.35);
@@ -2497,7 +2497,7 @@ export function buildTrumpCharacter(gltf: GLTF): Character3DController {
       const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
       headPivot.position.y = 3.75 + breath + voiceNod;
 
-      const mouthOpen = Math.max(features.jawOpen || 0, features.mouthOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
+      const mouthOpen = Math.max(features.jawOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
       applyMorph('jaw', mouthOpen, 0.35);
       applyMorph('mouth', mouthOpen, 0.35);
       applyMorph('open', mouthOpen, 0.35);
@@ -2615,12 +2615,12 @@ export function buildMipipiCharacter(gltf: GLTF): Character3DController {
       headPivot.position.y = 3.75 + breath + voiceNod;
 
       // Morph targets handling (jawOpen, mouthSmile, browDown, eyeBlinkLeft, eyeBlinkRight)
-      const mouthOpen = Math.max(features.mouthOpen || 0, Math.min((features.audioVolume || 0) * 1.8, 1));
+      const mouthOpen = Math.max(features.jawOpen || 0, Math.min((features.audioVolume || 0) * 1.8, 1));
       applyMorph('jawOpen', mouthOpen, 0.35);
       applyMorph('mouthSmile', features.mouthSmile || 0, 0.2);
-      applyMorph('browDown', features.browDown || 0, 0.2);
-      applyMorph('eyeBlinkLeft', features.blinkL || 0, 0.4);
-      applyMorph('eyeBlinkRight', features.blinkR || 0, 0.4);
+      applyMorph('browDown', features.browFurrow || 0, 0.2);
+      applyMorph('eyeBlinkLeft', features.eyeBlinkLeft || 0, 0.4);
+      applyMorph('eyeBlinkRight', features.eyeBlinkRight || 0, 0.4);
     },
     dispose: () => {
       pedGeo.dispose();

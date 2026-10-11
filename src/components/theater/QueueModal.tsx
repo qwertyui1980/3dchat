@@ -41,6 +41,7 @@ export const QueueModal: React.FC<QueueModalProps> = ({
   onSkipVideo,
   onPlayNow,
   onRequestSync,
+  onReorderQueue,
 }) => {
   const [urlInput, setUrlInput] = useState('');
   const [isLoadingInfo, setIsLoadingInfo] = useState(false);

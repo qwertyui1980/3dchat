@@ -35,6 +35,7 @@ export class MediaPipeFaceTracker {
   private currentFeatures: FaceFeatures = { ...INITIAL_FACE_FEATURES };
   private onFeaturesCallback: ((features: FaceFeatures) => void) | null = null;
   private onLandmarksCallback: ((landmarks: Array<{ x: number; y: number; z: number }> | null) => void) | null = null;
+  private onBlendshapesCallback: ((categories: Array<{ categoryName: string; score: number }>, landmarks: Array<{ x: number; y: number; z: number }>) => void) | null = null;
   private missedFramesCount: number = 0;
   public isModelLoaded: boolean = false;
   public loadError: string | null = null;
@@ -99,11 +100,13 @@ export class MediaPipeFaceTracker {
   startTracking(
     video: HTMLVideoElement,
     onFeatures: (features: FaceFeatures) => void,
-    onLandmarks?: (landmarks: Array<{ x: number; y: number; z: number }> | null) => void
+    onLandmarks?: (landmarks: Array<{ x: number; y: number; z: number }> | null) => void,
+    onBlendshapes?: (categories: Array<{ categoryName: string; score: number }>, landmarks: Array<{ x: number; y: number; z: number }>) => void
   ) {
     this.videoElement = video;
     this.onFeaturesCallback = onFeatures;
     this.onLandmarksCallback = onLandmarks || null;
+    this.onBlendshapesCallback = onBlendshapes || null;
     this.isRunning = true;
 
     // Auto-initialize landmarker if not already ready
@@ -136,6 +139,11 @@ export class MediaPipeFaceTracker {
             if (results.faceLandmarks && results.faceLandmarks.length > 0) {
               const landmarks = results.faceLandmarks[0];
               const blendshapes = results.faceBlendshapes?.[0]?.categories || [];
+
+              // Optional direct blendshapes stream callback
+              if (this.onBlendshapesCallback && blendshapes.length > 0) {
+                this.onBlendshapesCallback(blendshapes, landmarks);
+              }
 
               // Extract blendshapes map
               const bsMap: Record<string, number> = {};

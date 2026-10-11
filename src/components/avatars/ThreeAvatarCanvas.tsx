@@ -4,7 +4,7 @@ import { GLTF, GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { AvatarId, FaceFeatures } from '../../types';
+import { AvatarId, FaceFeatures, AvatarDefinition } from '../../types';
 import { getAvatarTrackingProfile } from './avatarTrackingProfiles';
 import { AVATAR_LIST } from './avatarConfigs';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
@@ -306,14 +306,20 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
   const trackingGroup3DRef = useRef<THREE.Group | null>(null);
   const trackingProfile = getAvatarTrackingProfile(avatarId);
 
-  const avatarDef = useMemo(() => {
-    return avatarModelServiceSingleton.getAvatarById(avatarId) || AVATAR_LIST.find((a) => a.id === avatarId) || {
+  const avatarDef = useMemo<AvatarDefinition>(() => {
+    const custom = avatarModelServiceSingleton.getAvatarById(avatarId);
+    if (custom) return custom;
+    const std = AVATAR_LIST.find((a) => a.id === avatarId);
+    if (std) return std as unknown as AvatarDefinition;
+    return {
       id: avatarId,
       name: 'Avatar 3D',
       emoji: '👤',
       themeColor: '#06b6d4',
       accentColor: '#38bdf8',
       badge: '3D',
+      tagline: 'Avatar 3D',
+      category: 'Sci-Fi',
     };
   }, [avatarId]);
 
@@ -799,6 +805,9 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           if (isDisposed) return;
           setIsLoading(false);
           const rootGroup = new THREE.Group();
+          const headPivot = new THREE.Group();
+          rootGroup.add(headPivot);
+
           const clonedScene = SkeletonUtils.clone(gltf.scene) as THREE.Group;
           clonedScene.traverse((child) => {
             if ((child as THREE.Mesh).isMesh) {
@@ -807,66 +816,171 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             }
           });
 
-          // Fit and normalize scale to viewport
-          const box = new THREE.Box3().setFromObject(clonedScene);
-          const size = box.getSize(new THREE.Vector3());
-          const maxDim = Math.max(size.x, size.y, size.z) || 1;
-          const scaleFactor = 3.2 / maxDim;
-          clonedScene.scale.setScalar(scaleFactor);
-          const center = box.getCenter(new THREE.Vector3());
-          clonedScene.position.set(-center.x * scaleFactor, -box.min.y * scaleFactor, -center.z * scaleFactor);
-
-          rootGroup.add(clonedScene);
-
-          // Find head bone or head mesh
-          let customHeadBone: THREE.Object3D | null = null;
+          // Check if this model is a full-body character with a skeleton rig
+          let hasSkeletalBones = false;
+          let customHeadBone: THREE.Bone | null = null;
           clonedScene.traverse((child) => {
-            if (!customHeadBone && child.name && child.name.toLowerCase().includes('head')) {
-              customHeadBone = child;
+            if ((child as THREE.Bone).isBone) {
+              hasSkeletalBones = true;
+              if (!customHeadBone && child.name && child.name.toLowerCase().includes('head')) {
+                customHeadBone = child as THREE.Bone;
+              }
             }
           });
 
+          // Calculate bounding box and dimensions
+          const box = new THREE.Box3().setFromObject(clonedScene);
+          const size = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+          const maxDim = Math.max(size.x, size.y, size.z) || 1;
+          const isFullBodyRig = hasSkeletalBones && (size.y > size.x * 1.8);
+
+          if (isFullBodyRig) {
+            // Full-body skeletal character standing on the ground
+            const scaleFactor = 3.2 / maxDim;
+            clonedScene.scale.setScalar(scaleFactor);
+            clonedScene.position.set(-center.x * scaleFactor, -box.min.y * scaleFactor, -center.z * scaleFactor);
+            rootGroup.add(clonedScene);
+          } else {
+            // Face mask / Head avatar (e.g. ARKit 3D Face or Face-to-Blendshape generated model)
+            // Scale to fill avatar portrait viewport nicely (~2.35 units height)
+            const headScaleFactor = 2.35 / maxDim;
+            clonedScene.scale.setScalar(headScaleFactor);
+            // Center the geometry precisely on the local origin of headPivot
+            clonedScene.position.set(
+              -center.x * headScaleFactor,
+              -center.y * headScaleFactor,
+              -center.z * headScaleFactor
+            );
+            // Position headPivot at (0, 3.8, 0) which is precisely where the camera looks (0, 3.8, 0)
+            headPivot.position.set(0, 3.8, 0);
+            headPivot.add(clonedScene);
+          }
+
+          // Index all morph target meshes for 60fps real-time tracking
+          const morphMeshes: Array<{
+            mesh: THREE.Mesh;
+            dict: Record<string, number>;
+            infl: number[];
+            keys: string[];
+          }> = [];
+
+          clonedScene.traverse((child) => {
+            const mesh = child as THREE.Mesh;
+            if (mesh.isMesh && mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
+              morphMeshes.push({
+                mesh,
+                dict: mesh.morphTargetDictionary,
+                infl: mesh.morphTargetInfluences,
+                keys: Object.keys(mesh.morphTargetDictionary),
+              });
+            }
+          });
+
+          const torsoNode = clonedScene.getObjectByName('torsoGroup');
+          const neckNode = clonedScene.getObjectByName('neckPivot');
+          const faceMeshNode = clonedScene.getObjectByName('faceMesh');
+          const headBaseNode = clonedScene.getObjectByName('headBaseMesh');
+
           const controller: Character3DController = {
             group: rootGroup,
-            headPivot: rootGroup,
+            headPivot: isFullBodyRig && customHeadBone ? (customHeadBone as unknown as THREE.Group) : headPivot,
             update: (features, _dt, _now) => {
-              const targetPitch = features.pitch * 0.45;
-              const targetYaw = features.yaw * 0.55;
-              const targetRoll = features.roll * 0.35;
-
-              if (customHeadBone && customHeadBone !== clonedScene) {
-                customHeadBone.rotation.x = THREE.MathUtils.lerp(customHeadBone.rotation.x, -targetPitch, 0.15);
-                customHeadBone.rotation.y = THREE.MathUtils.lerp(customHeadBone.rotation.y, targetYaw, 0.15);
-                customHeadBone.rotation.z = THREE.MathUtils.lerp(customHeadBone.rotation.z, -targetRoll, 0.15);
+              // 1:1 Head & Bust rotation tracking
+              if (torsoNode && faceMeshNode) {
+                torsoNode.rotation.y = THREE.MathUtils.lerp(torsoNode.rotation.y, features.yaw * 0.12, 0.2);
+                torsoNode.rotation.z = THREE.MathUtils.lerp(torsoNode.rotation.z, -features.roll * 0.06, 0.2);
+                torsoNode.position.x = THREE.MathUtils.lerp(torsoNode.position.x, features.yaw * 0.08, 0.18);
+                if (neckNode) {
+                  neckNode.rotation.y = THREE.MathUtils.lerp(neckNode.rotation.y, features.yaw * 0.35, 0.25);
+                  neckNode.rotation.x = THREE.MathUtils.lerp(neckNode.rotation.x, features.pitch * 0.30, 0.25);
+                  neckNode.rotation.z = THREE.MathUtils.lerp(neckNode.rotation.z, features.roll * 0.45, 0.25);
+                }
+                faceMeshNode.rotation.y = THREE.MathUtils.lerp(faceMeshNode.rotation.y, features.yaw * 0.75, 0.3);
+                faceMeshNode.rotation.x = THREE.MathUtils.lerp(faceMeshNode.rotation.x, features.pitch * 0.75, 0.3);
+                faceMeshNode.rotation.z = THREE.MathUtils.lerp(faceMeshNode.rotation.z, features.roll * 0.75, 0.3);
+                if (headBaseNode) {
+                  headBaseNode.rotation.y = faceMeshNode.rotation.y;
+                  headBaseNode.rotation.x = faceMeshNode.rotation.x;
+                  headBaseNode.rotation.z = faceMeshNode.rotation.z;
+                }
+              } else if (isFullBodyRig && customHeadBone) {
+                customHeadBone.rotation.x = features.pitch;
+                customHeadBone.rotation.y = features.yaw;
+                customHeadBone.rotation.z = features.roll;
               } else {
-                rootGroup.rotation.x = THREE.MathUtils.lerp(rootGroup.rotation.x, -targetPitch * 0.4, 0.15);
-                rootGroup.rotation.y = THREE.MathUtils.lerp(rootGroup.rotation.y, targetYaw * 0.6, 0.15);
-                rootGroup.rotation.z = THREE.MathUtils.lerp(rootGroup.rotation.z, -targetRoll * 0.4, 0.15);
+                headPivot.rotation.x = features.pitch;
+                headPivot.rotation.y = features.yaw;
+                headPivot.rotation.z = features.roll;
               }
 
-              // Lip sync & expression morph targets
+              // Facial expressions & 52 ARKit blendshapes synchronization
+              const bShapes = features.blendshapes;
               const effectiveVol = Math.max(0, features.audioVolume || 0);
-              const jawOpen = Math.max(features.jawOpen || 0, effectiveVol * 1.5);
-              clonedScene.traverse((child) => {
-                const mesh = child as THREE.Mesh;
-                if (mesh.isMesh && mesh.morphTargetDictionary && mesh.morphTargetInfluences) {
-                  const dict = mesh.morphTargetDictionary;
-                  const infl = mesh.morphTargetInfluences;
-                  Object.keys(dict).forEach((key) => {
+              const speechJaw = effectiveVol > 0.003 ? Math.min(1, (effectiveVol - 0.003) * 5.0) : 0;
+              const rawJaw = features.jawOpen || 0;
+              const finalJaw = Math.max(rawJaw, speechJaw);
+
+              // Build lower-case lookup map for bShapes once per frame if available
+              let bsLookup: Record<string, number> | null = null;
+              if (bShapes) {
+                bsLookup = {};
+                for (const k of Object.keys(bShapes)) {
+                  bsLookup[k.toLowerCase()] = bShapes[k];
+                }
+              }
+
+              for (let m = 0; m < morphMeshes.length; m++) {
+                const { dict, infl, keys } = morphMeshes[m];
+
+                if (bShapes && bsLookup) {
+                  // Direct 1:1 ARKit 52 Blendshapes tracking from camera
+                  for (let k = 0; k < keys.length; k++) {
+                    const key = keys[k];
                     const lk = key.toLowerCase();
                     const idx = dict[key];
-                    if (lk.includes('jaw') || lk.includes('mouth') || lk.includes('aa') || lk.includes('open')) {
-                      infl[idx] = THREE.MathUtils.lerp(infl[idx], jawOpen, 0.25);
+
+                    let targetVal: number | undefined = undefined;
+                    if (bShapes[key] !== undefined) {
+                      targetVal = bShapes[key];
+                    } else if (bsLookup[lk] !== undefined) {
+                      targetVal = bsLookup[lk];
                     }
-                    if (lk.includes('blinkleft') || lk.includes('blink_l')) {
-                      infl[idx] = THREE.MathUtils.lerp(infl[idx], features.eyeBlinkLeft, 0.3);
+
+                    // Dynamically blend voice speech into jawOpen
+                    if (lk === 'jawopen') {
+                      targetVal = Math.max(targetVal ?? 0, finalJaw);
                     }
-                    if (lk.includes('blinkright') || lk.includes('blink_r')) {
-                      infl[idx] = THREE.MathUtils.lerp(infl[idx], features.eyeBlinkRight, 0.3);
+
+                    if (targetVal !== undefined) {
+                      infl[idx] = THREE.MathUtils.lerp(infl[idx], Math.min(1, Math.max(0, targetVal)), 0.45);
                     }
-                  });
+                  }
+                } else {
+                  // Fallback mode: generic feature mapping when camera blendshapes are not present
+                  for (let k = 0; k < keys.length; k++) {
+                    const key = keys[k];
+                    const lk = key.toLowerCase();
+                    const idx = dict[key];
+
+                    if (lk === 'jawopen' || lk === 'mouthopen' || lk === 'viseme_aa') {
+                      infl[idx] = THREE.MathUtils.lerp(infl[idx], finalJaw, 0.35);
+                    } else if (lk === 'eyeblinkleft' || lk === 'blink_l') {
+                      infl[idx] = THREE.MathUtils.lerp(infl[idx], features.eyeBlinkLeft || 0, 0.4);
+                    } else if (lk === 'eyeblinkright' || lk === 'blink_r') {
+                      infl[idx] = THREE.MathUtils.lerp(infl[idx], features.eyeBlinkRight || 0, 0.4);
+                    } else if (lk === 'mouthsmileleft' || lk === 'mouthsmileright' || lk === 'smile') {
+                      infl[idx] = THREE.MathUtils.lerp(infl[idx], Math.max(0, features.mouthSmile || 0), 0.35);
+                    } else if (lk === 'mouthpucker') {
+                      infl[idx] = THREE.MathUtils.lerp(infl[idx], features.mouthPucker || 0, 0.35);
+                    } else if (lk === 'browinnerup' || lk === 'browup') {
+                      infl[idx] = THREE.MathUtils.lerp(infl[idx], features.browRaise || 0, 0.35);
+                    } else if (lk === 'browdownleft' || lk === 'browdownright') {
+                      infl[idx] = THREE.MathUtils.lerp(infl[idx], features.browFurrow || 0, 0.35);
+                    }
+                  }
                 }
-              });
+              }
             },
             dispose: () => {
               rootGroup.traverse((child) => {
@@ -1114,6 +1228,56 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           const sadIdx = dict['Sad'];
           if (sadIdx !== undefined) {
             influences[sadIdx] = THREE.MathUtils.lerp(influences[sadIdx], targetSad, 0.25);
+          }
+
+          // ARKit Blendshapes (for custom 3D face models)
+          const jawOpenIdx = dict['jawOpen'];
+          if (jawOpenIdx !== undefined) {
+            influences[jawOpenIdx] = THREE.MathUtils.lerp(influences[jawOpenIdx], activeMouthOpen, 0.4);
+          }
+          const blinkLIdx = dict['eyeBlinkLeft'];
+          if (blinkLIdx !== undefined) {
+            influences[blinkLIdx] = THREE.MathUtils.lerp(influences[blinkLIdx], cur.eyeBlinkLeft, 0.4);
+          }
+          const blinkRIdx = dict['eyeBlinkRight'];
+          if (blinkRIdx !== undefined) {
+            influences[blinkRIdx] = THREE.MathUtils.lerp(influences[blinkRIdx], cur.eyeBlinkRight, 0.4);
+          }
+          const smileLIdx = dict['mouthSmileLeft'];
+          if (smileLIdx !== undefined) {
+            const smileVal = Math.max(0, cur.mouthSmile);
+            influences[smileLIdx] = THREE.MathUtils.lerp(influences[smileLIdx], smileVal, 0.35);
+          }
+          const smileRIdx = dict['mouthSmileRight'];
+          if (smileRIdx !== undefined) {
+            const smileVal = Math.max(0, cur.mouthSmile);
+            influences[smileRIdx] = THREE.MathUtils.lerp(influences[smileRIdx], smileVal, 0.35);
+          }
+          const frownLIdx = dict['mouthFrownLeft'];
+          if (frownLIdx !== undefined) {
+            const frownVal = cur.mouthSmile < 0 ? -cur.mouthSmile : 0;
+            influences[frownLIdx] = THREE.MathUtils.lerp(influences[frownLIdx], frownVal, 0.35);
+          }
+          const frownRIdx = dict['mouthFrownRight'];
+          if (frownRIdx !== undefined) {
+            const frownVal = cur.mouthSmile < 0 ? -cur.mouthSmile : 0;
+            influences[frownRIdx] = THREE.MathUtils.lerp(influences[frownRIdx], frownVal, 0.35);
+          }
+          const puckerIdx = dict['mouthPucker'];
+          if (puckerIdx !== undefined) {
+            influences[puckerIdx] = THREE.MathUtils.lerp(influences[puckerIdx], cur.mouthPucker, 0.35);
+          }
+          const browUpIdx = dict['browInnerUp'];
+          if (browUpIdx !== undefined) {
+            influences[browUpIdx] = THREE.MathUtils.lerp(influences[browUpIdx], cur.browRaise, 0.35);
+          }
+          const browDownLIdx = dict['browDownLeft'];
+          if (browDownLIdx !== undefined) {
+            influences[browDownLIdx] = THREE.MathUtils.lerp(influences[browDownLIdx], cur.browFurrow, 0.35);
+          }
+          const browDownRIdx = dict['browDownRight'];
+          if (browDownRIdx !== undefined) {
+            influences[browDownRIdx] = THREE.MathUtils.lerp(influences[browDownRIdx], cur.browFurrow, 0.35);
           }
         });
       }

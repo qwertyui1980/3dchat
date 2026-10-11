@@ -1,50 +1,24 @@
 import * as THREE from 'three';
 import { FACEMESH_TESSELATION } from './face-mesh-triangulation';
+import { ARKIT_BLENDSHAPE_NAMES } from './arkitMapper';
 
-export const MORPH_TARGET_NAMES = [
-  'eyeBlinkLeft',
-  'eyeBlinkRight',
-  'eyeLookUpLeft',
-  'eyeLookUpRight',
-  'eyeLookDownLeft',
-  'eyeLookDownRight',
-  'eyeLookInLeft',
-  'eyeLookInRight',
-  'eyeLookOutLeft',
-  'eyeLookOutRight',
-  'eyeSquintLeft',
-  'eyeSquintRight',
-  'eyeWideLeft',
-  'eyeWideRight',
-  'browDownLeft',
-  'browDownRight',
-  'browInnerUp',
-  'browOuterUpLeft',
-  'browOuterUpRight',
-  'jawOpen',
-  'jawForward',
-  'jawLeft',
-  'jawRight',
-  'mouthClose',
-  'mouthFunnel',
-  'mouthPucker',
-  'mouthLeft',
-  'mouthRight',
-  'mouthSmileLeft',
-  'mouthSmileRight',
-  'mouthFrownLeft',
-  'mouthFrownRight',
-  'mouthUpperUpLeft',
-  'mouthUpperUpRight',
-  'mouthLowerDownLeft',
-  'mouthLowerDownRight',
-  'cheekPuff',
-  'cheekSquintLeft',
-  'cheekSquintRight',
-  'noseSneerLeft',
-  'noseSneerRight',
-  'tongueOut',
-] as const;
+export const MORPH_TARGET_NAMES = ARKIT_BLENDSHAPE_NAMES;
+
+export interface Point3D {
+  x: number;
+  y: number;
+  z: number;
+}
+
+/**
+ * Smooth Hermite / radial falloff function:
+ * Returns 1 at dist = 0, decaying smoothly to 0 at dist = radius with 0 tangent at the boundary.
+ */
+function smoothRadialFalloff(dist: number, radius: number): number {
+  if (dist >= radius) return 0;
+  const t = 1 - (dist / radius) * (dist / radius);
+  return t * t;
+}
 
 export class FaceMeshGenerator {
   public baseVertices: Float32Array | null = null;
@@ -53,67 +27,177 @@ export class FaceMeshGenerator {
   public mesh: THREE.Mesh | null = null;
   public skinColor: { r: number; g: number; b: number } = { r: 0.85, g: 0.75, b: 0.65 };
 
+  /**
+   * Aligns 3D landmarks into a canonical frontal facial frame.
+   * Completely eliminates any camera tilt, roll, or pitch from the photo.
+   */
+  canonicalizeLandmarks(landmarks: Array<{ x: number; y: number; z: number }>): Point3D[] {
+    // 1. Convert MediaPipe raw coordinates to 3D points
+    // (+X is right, +Y is up, +Z is forward towards viewer)
+    const points: Point3D[] = landmarks.map((lm) => ({
+      x: lm.x,
+      y: -lm.y,
+      z: -lm.z,
+    }));
+
+    // 2. Facial Center anchor: glabella / nose bridge (landmark 168)
+    const center = points[168] ? { ...points[168] } : { x: 0.5, y: -0.5, z: 0 };
+
+    // 3. Horizontal facial axis: between outer eye corners (33, 263) and temples (234, 454)
+    const pEyeLeft = points[33] || { x: 0.3, y: -0.4, z: 0 };
+    const pEyeRight = points[263] || { x: 0.7, y: -0.4, z: 0 };
+    const pTempleLeft = points[234] || pEyeLeft;
+    const pTempleRight = points[454] || pEyeRight;
+
+    const eyeVec = {
+      x: pEyeRight.x - pEyeLeft.x,
+      y: pEyeRight.y - pEyeLeft.y,
+      z: pEyeRight.z - pEyeLeft.z,
+    };
+    const templeVec = {
+      x: pTempleRight.x - pTempleLeft.x,
+      y: pTempleRight.y - pTempleLeft.y,
+      z: pTempleRight.z - pTempleLeft.z,
+    };
+
+    const rawUx = {
+      x: eyeVec.x * 0.65 + templeVec.x * 0.35,
+      y: eyeVec.y * 0.65 + templeVec.y * 0.35,
+      z: eyeVec.z * 0.65 + templeVec.z * 0.35,
+    };
+    const lenUx = Math.hypot(rawUx.x, rawUx.y, rawUx.z) || 1;
+    const ux = { x: rawUx.x / lenUx, y: rawUx.y / lenUx, z: rawUx.z / lenUx };
+
+    // 4. Vertical facial axis: from chin (landmark 152) to forehead (landmark 10)
+    const pChin = points[152] || { x: 0.5, y: -0.8, z: 0 };
+    const pForehead = points[10] || { x: 0.5, y: -0.2, z: 0 };
+    const rawUy = {
+      x: pForehead.x - pChin.x,
+      y: pForehead.y - pChin.y,
+      z: pForehead.z - pChin.z,
+    };
+
+    // Gram-Schmidt orthogonalization: ensure uy is strictly perpendicular to ux
+    const dotUyUx = rawUy.x * ux.x + rawUy.y * ux.y + rawUy.z * ux.z;
+    const perpUy = {
+      x: rawUy.x - dotUyUx * ux.x,
+      y: rawUy.y - dotUyUx * ux.y,
+      z: rawUy.z - dotUyUx * ux.z,
+    };
+    const lenUy = Math.hypot(perpUy.x, perpUy.y, perpUy.z) || 1;
+    const uy = { x: perpUy.x / lenUy, y: perpUy.y / lenUy, z: perpUy.z / lenUy };
+
+    // 5. Normal axis: cross product ux x uy -> points straight forward out of face (+Z)
+    const uz = {
+      x: ux.y * uy.z - ux.z * uy.y,
+      y: ux.z * uy.x - ux.x * uy.z,
+      z: ux.x * uy.y - ux.y * uy.x,
+    };
+
+    // Ensure uz points outward (nose tip landmark 1 is in front of glabella)
+    const pNoseTip = points[1] || { x: center.x, y: center.y, z: center.z + 0.1 };
+    const noseVec = {
+      x: pNoseTip.x - center.x,
+      y: pNoseTip.y - center.y,
+      z: pNoseTip.z - center.z,
+    };
+    const noseDotUz = noseVec.x * uz.x + noseVec.y * uz.y + noseVec.z * uz.z;
+    if (noseDotUz < 0) {
+      uz.x = -uz.x;
+      uz.y = -uz.y;
+      uz.z = -uz.z;
+    }
+
+    // 6. Project all landmarks onto the canonical orthonormal basis
+    return points.map((p) => {
+      const dx = p.x - center.x;
+      const dy = p.y - center.y;
+      const dz = p.z - center.z;
+      return {
+        x: dx * ux.x + dy * ux.y + dz * ux.z,
+        y: dx * uy.x + dy * uy.y + dz * uy.z,
+        z: dx * uz.x + dy * uz.y + dz * uz.z,
+      };
+    });
+  }
+
   generateWithMorphTargets(
     landmarks: Array<{ x: number; y: number; z: number }>,
-    blendshapes: Record<string, number>,
-    transformMatrix: any,
+    _blendshapes: Record<string, number>,
+    _transformMatrix: any,
     textureCanvas: HTMLCanvasElement
   ): THREE.Mesh {
     this.geometry = new THREE.BufferGeometry();
 
-    // Sample skin color
+    // Sample skin color for head base model
     this.skinColor = this.sampleSkinColorFromTexture(textureCanvas);
 
-    // Calculate bounds for geometry AND UV mapping
-    let minX = Infinity,
-      maxX = -Infinity;
-    let minY = Infinity,
-      maxY = -Infinity;
-    let minZ = Infinity,
-      maxZ = -Infinity;
+    // 1. CANONICALIZE LANDMARKS: 100% upright, level, and front-facing
+    const canonicalPoints = this.canonicalizeLandmarks(landmarks);
 
-    landmarks.forEach((landmark) => {
-      minX = Math.min(minX, landmark.x);
-      maxX = Math.max(maxX, landmark.x);
-      minY = Math.min(minY, landmark.y);
-      maxY = Math.max(maxY, landmark.y);
-      minZ = Math.min(minZ, landmark.z);
-      maxZ = Math.max(maxZ, landmark.z);
+    // 2. Compute canonical bounds for geometry
+    let minX = Infinity, maxX = -Infinity;
+    let minY = Infinity, maxY = -Infinity;
+    let minZ = Infinity, maxZ = -Infinity;
+
+    canonicalPoints.forEach((p) => {
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
+      minY = Math.min(minY, p.y);
+      maxY = Math.max(maxY, p.y);
+      minZ = Math.min(minZ, p.z);
+      maxZ = Math.max(maxZ, p.z);
     });
 
     const centerX = (minX + maxX) / 2;
     const centerY = (minY + maxY) / 2;
     const centerZ = (minZ + maxZ) / 2;
 
-    const scaleX = maxX - minX || 1;
-    const scaleY = maxY - minY || 1;
-    const correctedScaleX = scaleX * 1.05;
-    const scaleZ = Math.max(scaleX, scaleY) * 1.5;
+    const faceWidth = maxX - minX || 1;
+    const faceHeight = maxY - minY || 1;
 
-    // Calculate texture crop bounds
+    // Normalization scales: puts face inside ~[-1, 1] bounds while preserving depth
+    const scaleX = faceWidth * 0.52;
+    const scaleY = faceHeight * 0.5;
+    const scaleZ = faceHeight * 0.55;
+
+    // 3. Compute 2D texture bounds for UV mapping from original photo coordinates
+    let minX2D = Infinity, maxX2D = -Infinity;
+    let minY2D = Infinity, maxY2D = -Infinity;
+    landmarks.forEach((lm) => {
+      minX2D = Math.min(minX2D, lm.x);
+      maxX2D = Math.max(maxX2D, lm.x);
+      minY2D = Math.min(minY2D, lm.y);
+      maxY2D = Math.max(maxY2D, lm.y);
+    });
+
     const padding = 0.2;
-    const faceWidth = maxX - minX;
-    const faceHeight = maxY - minY;
-    const cropSize = Math.max(faceWidth, faceHeight) * (1 + padding);
-    const textureCenterX = centerX;
-    const textureCenterY = centerY;
+    const faceWidth2D = maxX2D - minX2D;
+    const faceHeight2D = maxY2D - minY2D;
+    const cropSize = Math.max(faceWidth2D, faceHeight2D) * (1 + padding);
+    const textureCenterX = (minX2D + maxX2D) / 2;
+    const textureCenterY = (minY2D + maxY2D) / 2;
     const textureMinX = textureCenterX - cropSize / 2;
     const textureMinY = textureCenterY - cropSize / 2;
 
+    // 4. Generate base vertices, UVs, and vertex colors
     const vertices: number[] = [];
     const colors: number[] = [];
     const uvs: number[] = [];
+    const basePoints: Point3D[] = [];
 
-    landmarks.forEach((landmark) => {
-      const x = ((landmark.x - centerX) / correctedScaleX) * 2;
-      const y = -((landmark.y - centerY) / scaleY) * 2;
-      const z = -(((landmark.z - centerZ) / scaleZ) * 2);
+    canonicalPoints.forEach((p, index) => {
+      const x = (p.x - centerX) / scaleX;
+      const y = (p.y - centerY) / scaleY;
+      const z = (p.z - centerZ) / scaleZ;
       vertices.push(x, y, z);
+      basePoints.push({ x, y, z });
 
       colors.push(1, 1, 1);
 
-      const u = (landmark.x - textureMinX) / cropSize;
-      const v = 1.0 - (landmark.y - textureMinY) / cropSize;
+      const rawLandmark = landmarks[index];
+      const u = (rawLandmark.x - textureMinX) / cropSize;
+      const v = 1.0 - (rawLandmark.y - textureMinY) / cropSize;
       uvs.push(u, v);
     });
 
@@ -135,26 +219,17 @@ export class FaceMeshGenerator {
     this.geometry.setIndex(indices);
     this.geometry.computeVertexNormals();
 
-    // Morph targets
-    this.createMorphTargets(
-      landmarks,
-      blendshapes,
-      centerX,
-      centerY,
-      centerZ,
-      correctedScaleX,
-      scaleY,
-      scaleZ
-    );
+    // 5. Create 52 ARKit Morph Targets with smooth continuous Hermite falloffs
+    this.createMorphTargets(basePoints);
 
-    // Texture
+    // 6. Texture
     const texture = new THREE.CanvasTexture(textureCanvas);
     texture.needsUpdate = true;
     texture.colorSpace = THREE.SRGBColorSpace;
     texture.minFilter = THREE.LinearFilter;
     texture.magFilter = THREE.LinearFilter;
 
-    // Material
+    // 7. Material
     this.material = new THREE.MeshStandardMaterial({
       map: texture,
       roughness: 0.5,
@@ -164,26 +239,26 @@ export class FaceMeshGenerator {
       side: THREE.DoubleSide,
       transparent: true,
       alphaTest: 0.1,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
     });
 
     this.mesh = new THREE.Mesh(this.geometry, this.material);
     this.mesh.castShadow = true;
     this.mesh.receiveShadow = true;
 
+    // Force Three.js to construct morphTargetDictionary and morphTargetInfluences
+    this.mesh.updateMorphTargets();
+
     this.mesh.userData.faceWidth = 2.0;
     this.mesh.userData.faceHeight = 2.0;
-    this.mesh.userData.aspectRatio = (maxX - minX) / (maxY - minY);
+    this.mesh.userData.aspectRatio = faceWidth / faceHeight;
     this.mesh.userData.skinColor = this.skinColor;
 
-    // Apply blendshapes
-    Object.entries(blendshapes).forEach(([_, value], index) => {
-      if (this.mesh?.morphTargetInfluences && index < this.mesh.morphTargetInfluences.length) {
-        this.mesh.morphTargetInfluences[index] = value;
-      }
-    });
-
-    if (transformMatrix) {
-      this.applyTransformMatrix(transformMatrix);
+    // 8. REST POSE: Initialize ALL morph target influences to 0
+    if (this.mesh.morphTargetDictionary && this.mesh.morphTargetInfluences) {
+      this.mesh.morphTargetInfluences.fill(0);
     }
 
     return this.mesh;
@@ -247,116 +322,463 @@ export class FaceMeshGenerator {
     };
   }
 
-  createMorphTargets(
-    landmarks: Array<{ x: number; y: number; z: number }>,
-    _blendshapes: Record<string, number>,
-    centerX: number,
-    centerY: number,
-    centerZ: number,
-    scaleX: number,
-    scaleY: number,
-    scaleZ: number
-  ): void {
+  createMorphTargets(basePoints: Point3D[]): void {
     if (!this.geometry) return;
 
-    const morphTargets: Array<{ name: string; vertices: Float32Array }> = [];
+    this.geometry.morphAttributes.position = [];
     const morphTargetNames: string[] = [];
 
-    MORPH_TARGET_NAMES.forEach((blendshapeName) => {
-      const morphPositions = this.calculateMorphTarget(
-        landmarks,
-        blendshapeName,
-        centerX,
-        centerY,
-        centerZ,
-        scaleX,
-        scaleY,
-        scaleZ
-      );
-
-      morphTargets.push({ name: blendshapeName, vertices: morphPositions });
+    ARKIT_BLENDSHAPE_NAMES.forEach((blendshapeName, index) => {
+      const morphPositions = this.calculateMorphTarget(basePoints, blendshapeName);
+      const attr = new THREE.Float32BufferAttribute(morphPositions, 3);
+      attr.name = blendshapeName;
+      if (this.geometry && this.geometry.morphAttributes.position) {
+        this.geometry.morphAttributes.position[index] = attr;
+      }
       morphTargetNames.push(blendshapeName);
-    });
-
-    morphTargets.forEach((target, index) => {
-      if (!this.geometry) return;
-      this.geometry.morphAttributes.position = this.geometry.morphAttributes.position || [];
-      this.geometry.morphAttributes.position[index] = new THREE.Float32BufferAttribute(
-        target.vertices,
-        3
-      );
     });
 
     this.geometry.morphTargetsRelative = false;
     this.geometry.userData.targetNames = morphTargetNames;
   }
 
-  calculateMorphTarget(
-    landmarks: Array<{ x: number; y: number; z: number }>,
-    blendshapeName: string,
-    centerX: number,
-    centerY: number,
-    centerZ: number,
-    scaleX: number,
-    scaleY: number,
-    scaleZ: number
-  ): Float32Array {
+  /**
+   * Calculates smooth, continuous morph target positions using cubic Hermite radial falloffs.
+   * Completely avoids spiky tearing or jagged boundary artifacts.
+   */
+  calculateMorphTarget(basePoints: Point3D[], blendshapeName: string): Float32Array {
     const vertices: number[] = [];
-    const multiplier = 0.1;
 
-    landmarks.forEach((landmark, index) => {
-      let x = ((landmark.x - centerX) / scaleX) * 2;
-      let y = -((landmark.y - centerY) / scaleY) * 2;
-      let z = -(((landmark.z - centerZ) / scaleZ) * 2);
+    // Helper: 3D distance between vertex and anchor landmark
+    const distTo = (index: number, anchorIdx: number): number => {
+      const p = basePoints[index];
+      const a = basePoints[anchorIdx];
+      if (!p || !a) return 999;
+      return Math.hypot(p.x - a.x, p.y - a.y, p.z - a.z);
+    };
+
+    // Helper: 3D distance between vertex and a custom 3D point
+    const distToPoint = (index: number, pt: Point3D): number => {
+      const p = basePoints[index];
+      if (!p) return 999;
+      return Math.hypot(p.x - pt.x, p.y - pt.y, p.z - pt.z);
+    };
+
+    // Key Anchor Points (Canonical Normalized Space):
+    const pChin = basePoints[152] || { x: 0, y: -0.9, z: 0 };
+    const pUpperLip = basePoints[13] || { x: 0, y: -0.3, z: 0 };
+    const pLowerLip = basePoints[14] || { x: 0, y: -0.35, z: 0 };
+    const pMouthCenter = {
+      x: (pUpperLip.x + pLowerLip.x) / 2,
+      y: (pUpperLip.y + pLowerLip.y) / 2,
+      z: (pUpperLip.z + pLowerLip.z) / 2,
+    };
+    const pMouthCornerLeft = basePoints[61] || { x: -0.3, y: -0.32, z: 0 };
+    const pMouthCornerRight = basePoints[291] || { x: 0.3, y: -0.32, z: 0 };
+
+    basePoints.forEach((base, index) => {
+      let x = base.x;
+      let y = base.y;
+      let z = base.z;
 
       switch (blendshapeName) {
-        case 'jawOpen':
-          if (y < 0) y -= multiplier * 0.5;
-          break;
-        case 'eyeBlinkLeft':
-          if (index >= 33 && index <= 133) y -= multiplier * 0.2;
-          break;
-        case 'eyeBlinkRight':
-          if (index >= 362 && index <= 398) y -= multiplier * 0.2;
-          break;
-        case 'mouthSmileLeft':
-          if (index === 61 || (index >= 76 && index <= 91)) {
-            y += multiplier * 0.3;
-            x -= multiplier * 0.2;
+        // ==========================================
+        // 1. JAW BLENDSHAPES
+        // ==========================================
+        case 'jawOpen': {
+          // Jaw rotates downward around upper lip threshold
+          if (base.y < pUpperLip.y + 0.05) {
+            const jawRange = Math.abs(pUpperLip.y - pChin.y) || 0.6;
+            const t = THREE.MathUtils.clamp((pUpperLip.y + 0.05 - base.y) / jawRange, 0, 1);
+            const w = t * t;
+            y -= 0.28 * w;
+            z -= 0.05 * w;
+
+            // Extra downward drop specifically for lower lip margin to open mouth cavity
+            const lipDist = distTo(index, 14);
+            const lipFalloff = smoothRadialFalloff(lipDist, 0.22);
+            y -= 0.12 * lipFalloff;
           }
           break;
-        case 'mouthSmileRight':
-          if (index === 291 || (index >= 306 && index <= 321)) {
-            y += multiplier * 0.3;
-            x += multiplier * 0.2;
+        }
+
+        case 'jawForward': {
+          if (base.y < pUpperLip.y) {
+            const jawRange = Math.abs(pUpperLip.y - pChin.y) || 0.6;
+            const t = THREE.MathUtils.clamp((pUpperLip.y - base.y) / jawRange, 0, 1);
+            z += 0.14 * (t * t);
           }
           break;
-        case 'browInnerUp':
-          if (index === 107 || index === 336 || index === 68 || index === 298) {
-            y += multiplier * 0.3;
+        }
+
+        case 'jawLeft': {
+          if (base.y < pUpperLip.y) {
+            const jawRange = Math.abs(pUpperLip.y - pChin.y) || 0.6;
+            const t = THREE.MathUtils.clamp((pUpperLip.y - base.y) / jawRange, 0, 1);
+            x -= 0.14 * (t * t);
           }
           break;
+        }
+
+        case 'jawRight': {
+          if (base.y < pUpperLip.y) {
+            const jawRange = Math.abs(pUpperLip.y - pChin.y) || 0.6;
+            const t = THREE.MathUtils.clamp((pUpperLip.y - base.y) / jawRange, 0, 1);
+            x += 0.14 * (t * t);
+          }
+          break;
+        }
+
+        // ==========================================
+        // 2. MOUTH & SMILE BLENDSHAPES
+        // ==========================================
+        case 'mouthSmileLeft': {
+          const wCorner = smoothRadialFalloff(distTo(index, 61), 0.38);
+          y += 0.22 * wCorner;
+          x -= 0.14 * wCorner;
+          z += 0.06 * wCorner;
+
+          // Upper lip follow-through
+          const wUpper = smoothRadialFalloff(distTo(index, 37), 0.25);
+          y += 0.08 * wUpper;
+          break;
+        }
+
+        case 'mouthSmileRight': {
+          const wCorner = smoothRadialFalloff(distTo(index, 291), 0.38);
+          y += 0.22 * wCorner;
+          x += 0.14 * wCorner;
+          z += 0.06 * wCorner;
+
+          const wUpper = smoothRadialFalloff(distTo(index, 267), 0.25);
+          y += 0.08 * wUpper;
+          break;
+        }
+
+        case 'mouthFrownLeft': {
+          const w = smoothRadialFalloff(distTo(index, 61), 0.32);
+          y -= 0.18 * w;
+          x += 0.04 * w;
+          break;
+        }
+
+        case 'mouthFrownRight': {
+          const w = smoothRadialFalloff(distTo(index, 291), 0.32);
+          y -= 0.18 * w;
+          x -= 0.04 * w;
+          break;
+        }
+
+        case 'mouthPucker': {
+          const w = smoothRadialFalloff(distToPoint(index, pMouthCenter), 0.42);
+          const dx = base.x - pMouthCenter.x;
+          x -= dx * 0.45 * w;
+          z += 0.18 * w;
+          break;
+        }
+
+        case 'mouthFunnel': {
+          const w = smoothRadialFalloff(distToPoint(index, pMouthCenter), 0.45);
+          const dy = base.y - pMouthCenter.y;
+          y += Math.sign(dy) * 0.12 * w;
+          z += 0.14 * w;
+          break;
+        }
+
+        case 'mouthDimpleLeft': {
+          const w = smoothRadialFalloff(distTo(index, 61), 0.28);
+          x -= 0.08 * w;
+          z -= 0.12 * w;
+          break;
+        }
+
+        case 'mouthDimpleRight': {
+          const w = smoothRadialFalloff(distTo(index, 291), 0.28);
+          x += 0.08 * w;
+          z -= 0.12 * w;
+          break;
+        }
+
+        case 'mouthStretchLeft': {
+          const w = smoothRadialFalloff(distTo(index, 61), 0.35);
+          x -= 0.18 * w;
+          break;
+        }
+
+        case 'mouthStretchRight': {
+          const w = smoothRadialFalloff(distTo(index, 291), 0.35);
+          x += 0.18 * w;
+          break;
+        }
+
+        case 'mouthRollUpper': {
+          const w = smoothRadialFalloff(distTo(index, 0), 0.22);
+          z -= 0.12 * w;
+          y -= 0.06 * w;
+          break;
+        }
+
+        case 'mouthRollLower': {
+          const w = smoothRadialFalloff(distTo(index, 17), 0.22);
+          z -= 0.12 * w;
+          y += 0.06 * w;
+          break;
+        }
+
+        case 'mouthShrugUpper': {
+          const w = smoothRadialFalloff(distTo(index, 0), 0.25);
+          y += 0.14 * w;
+          break;
+        }
+
+        case 'mouthShrugLower': {
+          const w = smoothRadialFalloff(distTo(index, 17), 0.25);
+          y += 0.16 * w;
+          z += 0.08 * w;
+          break;
+        }
+
+        case 'mouthPressLeft': {
+          const w = smoothRadialFalloff(distTo(index, 61), 0.28);
+          z -= 0.08 * w;
+          break;
+        }
+
+        case 'mouthPressRight': {
+          const w = smoothRadialFalloff(distTo(index, 291), 0.28);
+          z -= 0.08 * w;
+          break;
+        }
+
+        case 'mouthLowerDownLeft': {
+          const w = smoothRadialFalloff(distTo(index, 87), 0.25);
+          y -= 0.15 * w;
+          break;
+        }
+
+        case 'mouthLowerDownRight': {
+          const w = smoothRadialFalloff(distTo(index, 317), 0.25);
+          y -= 0.15 * w;
+          break;
+        }
+
+        case 'mouthUpperUpLeft': {
+          const w = smoothRadialFalloff(distTo(index, 37), 0.25);
+          y += 0.15 * w;
+          break;
+        }
+
+        case 'mouthUpperUpRight': {
+          const w = smoothRadialFalloff(distTo(index, 267), 0.25);
+          y += 0.15 * w;
+          break;
+        }
+
+        case 'mouthClose': {
+          const wUpper = smoothRadialFalloff(distTo(index, 13), 0.25);
+          const wLower = smoothRadialFalloff(distTo(index, 14), 0.25);
+          y -= 0.07 * wUpper;
+          y += 0.07 * wLower;
+          break;
+        }
+
+        case 'mouthLeft': {
+          const w = smoothRadialFalloff(distToPoint(index, pMouthCenter), 0.45);
+          x -= 0.14 * w;
+          break;
+        }
+
+        case 'mouthRight': {
+          const w = smoothRadialFalloff(distToPoint(index, pMouthCenter), 0.45);
+          x += 0.14 * w;
+          break;
+        }
+
+        // ==========================================
+        // 3. EYES BLENDSHAPES
+        // ==========================================
+        case 'eyeBlinkLeft': {
+          // Upper lid drops down smoothly to meet lower lid
+          const wUpper = smoothRadialFalloff(distTo(index, 159), 0.16);
+          const pLower = basePoints[145] || basePoints[159];
+          const dy = pLower.y - (basePoints[159]?.y || pLower.y);
+          y += dy * 0.95 * wUpper;
+
+          // Lower lid rises subtly
+          const wLower = smoothRadialFalloff(distTo(index, 145), 0.12);
+          y += 0.02 * wLower;
+          break;
+        }
+
+        case 'eyeBlinkRight': {
+          const wUpper = smoothRadialFalloff(distTo(index, 386), 0.16);
+          const pLower = basePoints[374] || basePoints[386];
+          const dy = pLower.y - (basePoints[386]?.y || pLower.y);
+          y += dy * 0.95 * wUpper;
+
+          const wLower = smoothRadialFalloff(distTo(index, 374), 0.12);
+          y += 0.02 * wLower;
+          break;
+        }
+
+        case 'eyeWideLeft': {
+          const wUpper = smoothRadialFalloff(distTo(index, 159), 0.20);
+          const wLower = smoothRadialFalloff(distTo(index, 145), 0.18);
+          y += 0.10 * wUpper;
+          y -= 0.05 * wLower;
+          break;
+        }
+
+        case 'eyeWideRight': {
+          const wUpper = smoothRadialFalloff(distTo(index, 386), 0.20);
+          const wLower = smoothRadialFalloff(distTo(index, 374), 0.18);
+          y += 0.10 * wUpper;
+          y -= 0.05 * wLower;
+          break;
+        }
+
+        case 'eyeSquintLeft': {
+          const w = smoothRadialFalloff(distTo(index, 145), 0.20);
+          const wCheek = smoothRadialFalloff(distTo(index, 116), 0.25);
+          y += 0.08 * w + 0.04 * wCheek;
+          break;
+        }
+
+        case 'eyeSquintRight': {
+          const w = smoothRadialFalloff(distTo(index, 374), 0.20);
+          const wCheek = smoothRadialFalloff(distTo(index, 345), 0.25);
+          y += 0.08 * w + 0.04 * wCheek;
+          break;
+        }
+
+        case 'eyeLookUpLeft':
+        case 'eyeLookUpRight': {
+          const anchor = blendshapeName === 'eyeLookUpLeft' ? 159 : 386;
+          const w = smoothRadialFalloff(distTo(index, anchor), 0.18);
+          y += 0.06 * w;
+          break;
+        }
+
+        case 'eyeLookDownLeft':
+        case 'eyeLookDownRight': {
+          const anchor = blendshapeName === 'eyeLookDownLeft' ? 145 : 374;
+          const w = smoothRadialFalloff(distTo(index, anchor), 0.18);
+          y -= 0.06 * w;
+          break;
+        }
+
+        case 'eyeLookInLeft': {
+          const w = smoothRadialFalloff(distTo(index, 133), 0.18);
+          x += 0.06 * w;
+          break;
+        }
+
+        case 'eyeLookOutLeft': {
+          const w = smoothRadialFalloff(distTo(index, 33), 0.18);
+          x -= 0.06 * w;
+          break;
+        }
+
+        case 'eyeLookInRight': {
+          const w = smoothRadialFalloff(distTo(index, 362), 0.18);
+          x -= 0.06 * w;
+          break;
+        }
+
+        case 'eyeLookOutRight': {
+          const w = smoothRadialFalloff(distTo(index, 263), 0.18);
+          x += 0.06 * w;
+          break;
+        }
+
+        // ==========================================
+        // 4. EYEBROWS BLENDSHAPES
+        // ==========================================
+        case 'browInnerUp': {
+          const w = smoothRadialFalloff(distTo(index, 168), 0.35);
+          y += 0.20 * w;
+          break;
+        }
+
+        case 'browDownLeft': {
+          const w = smoothRadialFalloff(distTo(index, 105), 0.30);
+          y -= 0.18 * w;
+          x += 0.05 * w;
+          break;
+        }
+
+        case 'browDownRight': {
+          const w = smoothRadialFalloff(distTo(index, 334), 0.30);
+          y -= 0.18 * w;
+          x -= 0.05 * w;
+          break;
+        }
+
+        case 'browOuterUpLeft': {
+          const w = smoothRadialFalloff(distTo(index, 70), 0.28);
+          y += 0.18 * w;
+          break;
+        }
+
+        case 'browOuterUpRight': {
+          const w = smoothRadialFalloff(distTo(index, 300), 0.28);
+          y += 0.18 * w;
+          break;
+        }
+
+        // ==========================================
+        // 5. CHEEKS & NOSE BLENDSHAPES
+        // ==========================================
+        case 'cheekPuff': {
+          const wLeft = smoothRadialFalloff(distTo(index, 205), 0.38);
+          const wRight = smoothRadialFalloff(distTo(index, 425), 0.38);
+          z += 0.18 * (wLeft + wRight);
+          x -= 0.14 * wLeft;
+          x += 0.14 * wRight;
+          break;
+        }
+
+        case 'cheekSquintLeft': {
+          const w = smoothRadialFalloff(distTo(index, 205), 0.32);
+          y += 0.14 * w;
+          break;
+        }
+
+        case 'cheekSquintRight': {
+          const w = smoothRadialFalloff(distTo(index, 425), 0.32);
+          y += 0.14 * w;
+          break;
+        }
+
+        case 'noseSneerLeft': {
+          const w = smoothRadialFalloff(distTo(index, 198), 0.22);
+          y += 0.14 * w;
+          z += 0.06 * w;
+          break;
+        }
+
+        case 'noseSneerRight': {
+          const w = smoothRadialFalloff(distTo(index, 420), 0.22);
+          y += 0.14 * w;
+          z += 0.06 * w;
+          break;
+        }
+
+        // ==========================================
+        // 6. TONGUE BLENDSHAPE
+        // ==========================================
+        case 'tongueOut': {
+          const w = smoothRadialFalloff(distTo(index, 14), 0.18);
+          z += 0.32 * w;
+          y -= 0.08 * w;
+          break;
+        }
       }
 
       vertices.push(x, y, z);
     });
 
     return Float32Array.from(vertices);
-  }
-
-  applyTransformMatrix(matrix: any): void {
-    if (!this.mesh || !matrix) return;
-
-    if (matrix.data && Array.isArray(matrix.data)) {
-      const m = new THREE.Matrix4();
-      m.set(
-        matrix.data[0], matrix.data[1], matrix.data[2], matrix.data[3],
-        matrix.data[4], matrix.data[5], matrix.data[6], matrix.data[7],
-        matrix.data[8], matrix.data[9], matrix.data[10], matrix.data[11],
-        matrix.data[12], matrix.data[13], matrix.data[14], matrix.data[15]
-      );
-      this.mesh.applyMatrix4(m);
-    }
   }
 
   dispose(): void {

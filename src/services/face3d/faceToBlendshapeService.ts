@@ -5,10 +5,12 @@ import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 import { ARKitBlendshapeMapper } from './arkitMapper';
 import { TextureMapper } from './textureMapper';
 import { FaceMeshGenerator } from './faceMeshGenerator';
+import { BustGenerator, BustOptions, ClothingStyle } from './bustGenerator';
 
 export interface Face3DGenerationResult {
   faceMesh: THREE.Mesh;
   headModel: THREE.Group | null;
+  bustModel: THREE.Group | null;
   blendshapes: Record<string, number>;
   textureCanvas: HTMLCanvasElement;
   landmarks: Array<{ x: number; y: number; z: number }>;
@@ -29,6 +31,7 @@ export interface TransformDebugParams {
     pushBackFactor: number;
   };
   face: {
+    scaleUniform: number;
     scaleX: number;
     scaleY: number;
     scaleZ: number;
@@ -55,6 +58,7 @@ export const DEFAULT_DEBUG_PARAMS: TransformDebugParams = {
     pushBackFactor: 0.4,
   },
   face: {
+    scaleUniform: 1.0,
     scaleX: 1.0,
     scaleY: 1.0,
     scaleZ: 1.0,
@@ -160,7 +164,8 @@ export class FaceToBlendshapeService {
   }
 
   async processFaceImage(
-    imageElement: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement
+    imageElement: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement,
+    bustOptions?: Partial<BustOptions>
   ): Promise<Face3DGenerationResult> {
     const landmarker = await this.initLandmarker();
     const results = landmarker.detect(imageElement);
@@ -215,53 +220,77 @@ export class FaceToBlendshapeService {
       });
     }
 
+    // Generate Torso & Shoulders Bust
+    const bustGenerator = new BustGenerator();
+    const skinColor = faceMesh.userData.skinColor || { r: 0.85, g: 0.75, b: 0.65 };
+    const bustModel = bustGenerator.generateBust({
+      style: bustOptions?.style || 'suit',
+      suitColor: bustOptions?.suitColor || '#172554',
+      shirtColor: bustOptions?.shirtColor || '#f8fafc',
+      tieColor: bustOptions?.tieColor || '#991b1b',
+      skinColor,
+    });
+    bustModel.name = 'bustModel';
+
     return {
       faceMesh,
       headModel,
+      bustModel,
       blendshapes,
       textureCanvas,
       landmarks,
-      skinColor: faceMesh.userData.skinColor || { r: 0.85, g: 0.75, b: 0.65 },
+      skinColor,
     };
   }
 
   applyTransforms(
     faceMesh: THREE.Mesh,
     headModel: THREE.Group | null,
-    params: TransformDebugParams
+    bustModel: THREE.Group | null = null,
+    params: TransformDebugParams = DEFAULT_DEBUG_PARAMS
   ): void {
     if (!faceMesh) return;
 
-    faceMesh.scale.set(params.face.scaleX, params.face.scaleY, params.face.scaleZ);
+    // 1. Calculate intrinsic (geometry-level) base dimensions of the canonical face
+    if (!faceMesh.geometry.boundingBox) {
+      faceMesh.geometry.computeBoundingBox();
+    }
+    const geoBox = faceMesh.geometry.boundingBox!;
+    const baseFaceWidth = Math.max(0.001, geoBox.max.x - geoBox.min.x);
+    const baseFaceHeight = Math.max(0.001, geoBox.max.y - geoBox.min.y);
+    const baseFaceCenter = geoBox.getCenter(new THREE.Vector3());
+
+    // 2. Apply EXCLUSIVE transforms to faceMesh
+    const uniScale = params.face.scaleUniform ?? 1.0;
+    const effScaleX = (params.face.scaleX ?? 1.0) * uniScale;
+    const effScaleY = (params.face.scaleY ?? 1.0) * uniScale;
+    const effScaleZ = (params.face.scaleZ ?? 1.0) * uniScale;
+
+    faceMesh.scale.set(effScaleX, effScaleY, effScaleZ);
     faceMesh.rotation.set(
-      THREE.MathUtils.degToRad(params.face.rotationX),
-      THREE.MathUtils.degToRad(params.face.rotationY),
-      THREE.MathUtils.degToRad(params.face.rotationZ)
+      THREE.MathUtils.degToRad(params.face.rotationX || 0),
+      THREE.MathUtils.degToRad(params.face.rotationY || 0),
+      THREE.MathUtils.degToRad(params.face.rotationZ || 0)
     );
     faceMesh.position.set(
-      params.face.posOffsetX,
-      params.face.posOffsetY,
-      params.face.posOffsetZ
+      params.face.posOffsetX || 0,
+      params.face.posOffsetY || 0,
+      params.face.posOffsetZ || 0
     );
 
+    // 3. Align Head Base Model independently based on stable base face dimensions
     if (headModel) {
-      faceMesh.geometry.computeBoundingBox();
-      const faceBox = new THREE.Box3().setFromObject(faceMesh);
-      const faceWidth = faceBox.max.x - faceBox.min.x;
-      const faceHeight = faceBox.max.y - faceBox.min.y;
-      const faceCenter = faceBox.getCenter(new THREE.Vector3());
-
       headModel.scale.set(1, 1, 1);
       headModel.rotation.set(0, 0, 0);
       headModel.position.set(0, 0, 0);
       headModel.updateMatrixWorld(true);
 
       const resetHeadBox = new THREE.Box3().setFromObject(headModel);
-      const headWidth = resetHeadBox.max.x - resetHeadBox.min.x || 1;
-      const headHeight = resetHeadBox.max.y - resetHeadBox.min.y || 1;
+      const headWidth = Math.max(0.001, resetHeadBox.max.x - resetHeadBox.min.x);
+      const headHeight = Math.max(0.001, resetHeadBox.max.y - resetHeadBox.min.y);
 
-      const targetHeadWidth = faceWidth * params.head.scaleMultiplierX;
-      const targetHeadHeight = faceHeight * params.head.scaleMultiplierY;
+      const targetHeadWidth = baseFaceWidth * params.head.scaleMultiplierX;
+      const targetHeadHeight = baseFaceHeight * params.head.scaleMultiplierY;
 
       const scaleX = targetHeadWidth / headWidth;
       const scaleY = targetHeadHeight / headHeight;
@@ -271,9 +300,9 @@ export class FaceToBlendshapeService {
 
       headModel.scale.set(scaleX, scaleY, scaleZ);
       headModel.rotation.set(
-        THREE.MathUtils.degToRad(params.head.rotationX),
-        THREE.MathUtils.degToRad(params.head.rotationY),
-        THREE.MathUtils.degToRad(params.head.rotationZ)
+        THREE.MathUtils.degToRad(params.head.rotationX || 0),
+        THREE.MathUtils.degToRad(params.head.rotationY || 0),
+        THREE.MathUtils.degToRad(params.head.rotationZ || 0)
       );
       headModel.updateMatrixWorld(true);
 
@@ -281,29 +310,60 @@ export class FaceToBlendshapeService {
       const scaledHeadCenter = scaledHeadBox.getCenter(new THREE.Vector3());
       const scaledHeadDepth = scaledHeadBox.max.z - scaledHeadBox.min.z;
 
-      const offsetX = faceCenter.x - scaledHeadCenter.x + params.head.posOffsetX;
-      const offsetY = faceCenter.y - scaledHeadCenter.y + params.head.posOffsetY;
-      const targetZ = faceCenter.z - scaledHeadCenter.z;
-      const pushBack = scaledHeadDepth * params.head.pushBackFactor;
-      const offsetZ = targetZ - pushBack + params.head.posOffsetZ;
+      const offsetX = baseFaceCenter.x - scaledHeadCenter.x + (params.head.posOffsetX || 0);
+      const offsetY = baseFaceCenter.y - scaledHeadCenter.y + (params.head.posOffsetY || 0);
+      const targetZ = baseFaceCenter.z - scaledHeadCenter.z;
+      const pushBack = scaledHeadDepth * (params.head.pushBackFactor ?? 0.4);
+      const offsetZ = targetZ - pushBack + (params.head.posOffsetZ || 0);
 
       headModel.position.set(offsetX, offsetY, offsetZ);
+    }
+
+    // 4. Align Torso & Bust Model seamlessly below the neck
+    if (bustModel) {
+      const headBaseY = headModel ? headModel.position.y : baseFaceCenter.y;
+      const bustY = headBaseY - baseFaceHeight * 0.48;
+      const bustZ = baseFaceCenter.z - 0.08 + (params.head?.posOffsetZ || 0) * 0.5;
+      bustModel.position.set(
+        baseFaceCenter.x + (params.head?.posOffsetX || 0) * 0.5,
+        bustY,
+        bustZ
+      );
     }
   }
 
   async exportGLB(
     faceMesh: THREE.Mesh,
     headModel: THREE.Group | null,
-    includeHead: boolean = true
+    bustModel: THREE.Group | null = null,
+    includeHead: boolean = true,
+    includeBust: boolean = true
   ): Promise<ArrayBuffer> {
     return new Promise((resolve, reject) => {
       const exporter = new GLTFExporter();
       const exportGroup = new THREE.Group();
       exportGroup.name = 'FaceToBlendshapeModel';
 
-      exportGroup.add(faceMesh.clone());
+      const clonedFace = faceMesh.clone();
+      clonedFace.name = 'faceMesh';
+      if (clonedFace.morphTargetInfluences) {
+        clonedFace.morphTargetInfluences = new Array(clonedFace.morphTargetInfluences.length).fill(0);
+      }
+      if (faceMesh.morphTargetDictionary) {
+        clonedFace.morphTargetDictionary = { ...faceMesh.morphTargetDictionary };
+      }
+      exportGroup.add(clonedFace);
+
       if (headModel && includeHead) {
-        exportGroup.add(headModel.clone());
+        const clonedHead = headModel.clone();
+        clonedHead.name = 'headBaseMesh';
+        exportGroup.add(clonedHead);
+      }
+
+      if (bustModel && includeBust) {
+        const clonedBust = bustModel.clone();
+        clonedBust.name = 'torsoBustMesh';
+        exportGroup.add(clonedBust);
       }
 
       exporter.parse(

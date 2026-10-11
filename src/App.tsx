@@ -305,6 +305,71 @@ export default function App() {
     };
   }, [startMic]);
 
+  // Helper to preserve subpath when hosted on GitHub Pages (e.g. /3dchat)
+  const getBasePath = useCallback(() => {
+    if (typeof window === 'undefined') return '';
+    return window.location.pathname.startsWith('/3dchat') ? '/3dchat' : '';
+  }, []);
+
+  // Centralized Room, Call & Hardware Teardown (Cancels call, stops camera & mic sharing)
+  const terminateRoomAndMedia = useCallback((noticeMessage?: string) => {
+    // 1. Fully release camera hardware lock and stop facial AI tracker
+    if (cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch (_) {}
+      });
+      cameraStreamRef.current = null;
+    }
+    setCameraStream(null);
+    setIsCameraActive(false);
+    faceTrackerSingleton.stopTracking();
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+    setLandmarks(null);
+    setLocalFeatures((prev) => ({
+      ...INITIAL_FACE_FEATURES,
+      audioVolume: 0,
+    }));
+    networkServiceSingleton.toggleCamera(false);
+
+    // 2. Fully shut down microphone hardware sharing, audio processing, and lip-sync
+    audioServiceSingleton.setMute(true);
+    audioServiceSingleton.stop();
+    setIsMicActive(false);
+    setHasMicPermission(false);
+    networkServiceSingleton.setLocalAudioStream(null);
+
+    // 3. Hang up and cancel WebRTC room call, disconnect sockets/peer mesh
+    networkServiceSingleton.cleanup();
+
+    // 4. Exit fullscreen if active
+    if (typeof document !== 'undefined' && document.fullscreenElement && document.exitFullscreen) {
+      document.exitFullscreen().catch(() => {});
+    }
+
+    // 5. Reset room state
+    setIsInRoom(false);
+    setRoom(null);
+    setCurrentUser(null);
+    setMessages([]);
+    setMediaState(INITIAL_MEDIA_STATE);
+
+    if (typeof window !== 'undefined') {
+      const basePath = getBasePath();
+      const targetHash = '#lobby';
+      if (window.location.hash !== targetHash) {
+        window.history.replaceState({ screen: 'lobby' }, '', `${basePath}/${targetHash}`);
+      }
+    }
+
+    if (noticeMessage) {
+      addToast(noticeMessage, 'info');
+    }
+  }, [addToast, getBasePath]);
+
   // 2. Set up Network Service listeners
   useEffect(() => {
     networkServiceSingleton.onRoomJoined = (joinedRoom, user) => {
@@ -409,11 +474,11 @@ export default function App() {
     };
 
     networkServiceSingleton.onKicked = (reason) => {
-      setIsInRoom(false);
-      setRoom(null);
-      setCurrentUser(null);
-      setMediaState(INITIAL_MEDIA_STATE);
-      addToast(reason || 'Has sido expulsado del espacio por el administrador', 'warning');
+      terminateRoomAndMedia(reason || 'Has sido expulsado del espacio por el administrador');
+    };
+
+    networkServiceSingleton.onRoomClosed = (reason) => {
+      terminateRoomAndMedia(reason || 'El administrador ha abandonado el espacio. La sala se ha cerrado y la llamada ha finalizado.');
     };
 
     networkServiceSingleton.onError = (errMsg) => {
@@ -423,13 +488,27 @@ export default function App() {
     return () => {
       networkServiceSingleton.cleanup();
     };
-  }, [addToast]);
+  }, [addToast, terminateRoomAndMedia]);
 
-  // Helper to preserve subpath when hosted on GitHub Pages (e.g. /3dchat)
-  const getBasePath = () => {
-    if (typeof window === 'undefined') return '';
-    return window.location.pathname.startsWith('/3dchat') ? '/3dchat' : '';
-  };
+  // Window / tab unload safety: release camera/mic and cancel call immediately
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (cameraStreamRef.current) {
+        cameraStreamRef.current.getTracks().forEach((t) => {
+          try {
+            t.stop();
+          } catch (_) {}
+        });
+      }
+      audioServiceSingleton.stop();
+      networkServiceSingleton.cleanup();
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, []);
 
   // Synchronize browser URL (#lobby, #espacio/nombre, /)
   useEffect(() => {
@@ -453,7 +532,7 @@ export default function App() {
         window.history.replaceState({ screen: 'lobby' }, '', `${basePath}/${targetHash}`);
       }
     }
-  }, [authenticatedUser, isInRoom, room?.id]);
+  }, [authenticatedUser, isInRoom, room?.id, getBasePath]);
 
   // Handle browser back / forward buttons
   useEffect(() => {
@@ -463,18 +542,14 @@ export default function App() {
       const hash = window.location.hash;
       if (hash === '#lobby' || hash === '' || !hash) {
         if (isInRoom) {
-          networkServiceSingleton.cleanup();
-          setIsInRoom(false);
-          setRoom(null);
-          setCurrentUser(null);
-          setMessages([]);
+          terminateRoomAndMedia('Has regresado al lobby. Llamada finalizada y dispositivos liberados.');
         }
       }
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [isInRoom]);
+  }, [isInRoom, terminateRoomAndMedia]);
 
   // Handle Login
   const handleLogin = (user: AuthenticatedUser) => {
@@ -500,7 +575,7 @@ export default function App() {
   };
 
   // Handle joining room from lobby
-  const handleJoinRoom = ({
+  const handleJoinRoom = async ({
     userName,
     roomId,
     avatarId,
@@ -511,6 +586,20 @@ export default function App() {
     avatarId: AvatarId;
     createAsAdmin: boolean;
   }) => {
+    // If microphone stream is not active or closed, re-acquire it before joining
+    const activeStream = audioServiceSingleton.getStream();
+    const hasLiveTracks =
+      activeStream &&
+      activeStream.getAudioTracks().some((t) => t.readyState === 'live');
+
+    if (!hasLiveTracks) {
+      const ok = await startMic();
+      if (!ok) {
+        addToast('Se requiere acceso al micrófono para ingresar al espacio.', 'warning');
+        return;
+      }
+    }
+
     networkServiceSingleton.joinRoom(roomId, userName, avatarId, createAsAdmin);
   };
 
@@ -651,22 +740,9 @@ export default function App() {
     );
   };
 
-  // Leave room
+  // Leave room (cancels call, turns off camera & mic sharing completely)
   const handleLeaveCall = () => {
-    networkServiceSingleton.cleanup();
-    setIsInRoom(false);
-    setRoom(null);
-    setCurrentUser(null);
-    setMessages([]);
-    setMediaState(INITIAL_MEDIA_STATE);
-    if (typeof window !== 'undefined') {
-      const basePath = getBasePath();
-      const targetHash = '#lobby';
-      if (window.location.hash !== targetHash) {
-        window.history.replaceState({ screen: 'lobby' }, '', `${basePath}/${targetHash}`);
-      }
-    }
-    addToast('Has salido del espacio', 'info');
+    terminateRoomAndMedia('Has salido del espacio. Llamada finalizada y dispositivos liberados.');
   };
 
   // Media Theater Actions
