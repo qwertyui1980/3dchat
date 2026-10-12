@@ -4,7 +4,8 @@ import { GLTF, GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
-import { AvatarId, FaceFeatures, AvatarDefinition } from '../../types';
+import { AvatarId, FaceFeatures, AvatarDefinition, DynamicTrackingMode } from '../../types';
+import { normalizeTrackingMode } from '../../services/face3d/dynamicModeHelper';
 import { getAvatarTrackingProfile } from './avatarTrackingProfiles';
 import { AVATAR_LIST } from './avatarConfigs';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
@@ -25,7 +26,7 @@ import {
   buildMipipiCharacter,
 } from './threeCharacterBuilder';
 import { getAssetUrl } from '../../utils/assetUrl';
-import { UPPER_LIP_SET, LOWER_LIP_SET } from '../../services/face3d/faceMeshGenerator';
+import { UPPER_LIP_SET, LOWER_LIP_SET, MOUTH_CORNER_SET } from '../../services/face3d/faceMeshGenerator';
 
 const ROBOT_GLB_URL =
   'https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/examples/models/gltf/RobotExpressive/RobotExpressive.glb';
@@ -270,6 +271,7 @@ interface ThreeAvatarCanvasProps {
   className?: string;
   cameraOffsetX?: number;
   cameraOffsetY?: number;
+  trackingMode?: DynamicTrackingMode;
 }
 
 export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
@@ -280,6 +282,7 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
   className = '',
   cameraOffsetX = 0,
   cameraOffsetY = 0,
+  trackingMode,
 }) => {
   const mountRef = useRef<HTMLDivElement | null>(null);
   const isGLBRobot = avatarId === 'three_robot';
@@ -349,6 +352,11 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
   cameraOffsetXRef.current = cameraOffsetX;
   const cameraOffsetYRef = useRef(cameraOffsetY);
   cameraOffsetYRef.current = cameraOffsetY;
+
+  const trackingModeRef = useRef(trackingMode);
+  trackingModeRef.current = trackingMode;
+
+  const currentZoomPunchRef = useRef(0);
 
   // Internal continuous smoothed tracking state to eliminate all jitter/sobresaltos
   const smoothPoseRef = useRef({
@@ -893,16 +901,20 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             if (jawIdx !== undefined && fGeo.morphAttributes && fGeo.morphAttributes.position && fGeo.morphAttributes.position[jawIdx]) {
               const morphAttr = fGeo.morphAttributes.position[jawIdx];
               const posAttr = fGeo.getAttribute('position');
+              const isRelative = Boolean(fGeo.morphTargetsRelative);
+
               if (posAttr && posAttr.count >= 468) {
                 const y13_base = posAttr.getY(13);
                 const y13_morph = morphAttr.getY(13);
                 const y14_base = posAttr.getY(14);
                 const y14_morph = morphAttr.getY(14);
-                const drop13 = y13_base - y13_morph;
-                const drop14 = y14_base - y14_morph;
 
-                // If upper lip dropped along with lower lip, or opening gap is < 0.20 units
-                if (drop13 > 0.05 || (drop14 - drop13) < 0.20) {
+                // Compute actual jaw drop delta on lower lip vs upper lip
+                const delta13 = isRelative ? y13_morph : (y13_morph - y13_base);
+                const delta14 = isRelative ? y14_morph : (y14_morph - y14_base);
+
+                // Upgrade if upper lip drops downward or mouth separation is too shallow (< 0.22)
+                if (delta13 < -0.02 || delta14 > -0.22) {
                   const pMouthCenter = {
                     x: (posAttr.getX(13) + posAttr.getX(14)) / 2,
                     y: (posAttr.getY(13) + posAttr.getY(14)) / 2,
@@ -918,12 +930,17 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                     y: posAttr.getY(14),
                     z: posAttr.getZ(14),
                   };
-                  const pUpperLip = {
-                    x: posAttr.getX(13),
-                    y: posAttr.getY(13),
-                    z: posAttr.getZ(13),
+                  const pCornerL = {
+                    x: posAttr.getX(61),
+                    y: posAttr.getY(61),
+                    z: posAttr.getZ(61),
                   };
-
+                  const pCornerR = {
+                    x: posAttr.getX(291),
+                    y: posAttr.getY(291),
+                    z: posAttr.getZ(291),
+                  };
+                  const mouthHalfWidth = Math.max(0.18, Math.abs(pCornerR.x - pCornerL.x) * 0.5);
                   const jawRange = Math.abs(pMouthCenter.y - pChin.y) || 0.6;
 
                   for (let i = 0; i < posAttr.count; i++) {
@@ -931,49 +948,57 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                     const by = posAttr.getY(i);
                     const bz = posAttr.getZ(i);
 
-                    const isUpper = UPPER_LIP_SET.has(i) || by > pMouthCenter.y + 0.02;
-                    const isLower = LOWER_LIP_SET.has(i);
+                    const isCorner = MOUTH_CORNER_SET.has(i);
+                    const isUpper = !isCorner && (UPPER_LIP_SET.has(i) || (by >= pMouthCenter.y && !LOWER_LIP_SET.has(i)));
+                    const isLower = !isCorner && (LOWER_LIP_SET.has(i) || by < pMouthCenter.y);
 
                     let my = by;
                     let mz = bz;
+                    let mx = bx;
 
-                    if (isUpper) {
-                      const d13 = Math.hypot(bx - pUpperLip.x, by - pUpperLip.y, bz - pUpperLip.z);
-                      if (d13 < 0.18) {
-                        const t = 1 - (d13 / 0.18) * (d13 / 0.18);
-                        const upW = t * t;
-                        my += 0.02 * upW;
-                        mz -= 0.01 * upW;
-                      }
-                    } else {
-                      if (isLower) {
-                        const d14 = Math.hypot(bx - pLowerLip.x, by - pLowerLip.y, bz - pLowerLip.z);
-                        let lipW = 1.0;
-                        if (d14 < 0.28) {
-                          const t = 1 - (d14 / 0.28) * (d14 / 0.28);
-                          lipW = Math.max(0.65, t * t);
-                        } else {
-                          lipW = 0.65;
-                        }
-                        my -= 0.38 * lipW;
-                        mz -= 0.16 * lipW;
-                      } else if (by < pMouthCenter.y) {
-                        const t = Math.min(1, Math.max(0, (pMouthCenter.y - by) / jawRange));
+                    if (isCorner) {
+                      const d61 = Math.hypot(bx - pCornerL.x, by - pCornerL.y, bz - pCornerL.z);
+                      const d291 = Math.hypot(bx - pCornerR.x, by - pCornerR.y, bz - pCornerR.z);
+                      const dCorner = Math.min(d61, d291);
+                      if (dCorner < 0.16) {
+                        const t = 1 - (dCorner / 0.16) ** 2;
                         const w = t * t;
-                        my -= 0.26 * w;
-                        mz -= 0.08 * w;
+                        my -= 0.04 * w;
+                        mx -= Math.sign(bx - pMouthCenter.x) * 0.02 * w;
+                      }
+                    } else if (isUpper) {
+                      // Upper lip stays anchored to skull (0 drop: closing reference)
+                    } else if (isLower) {
+                      const dx = Math.abs(bx - pMouthCenter.x);
+                      const latW = Math.max(0, 1 - Math.min(1, (dx / mouthHalfWidth) ** 1.8));
 
-                        const d14 = Math.hypot(bx - pLowerLip.x, by - pLowerLip.y, bz - pLowerLip.z);
-                        if (d14 < 0.25) {
-                          const tf = 1 - (d14 / 0.25) * (d14 / 0.25);
-                          const fall = tf * tf;
-                          my -= 0.18 * fall;
-                          mz -= 0.10 * fall;
+                      const d14 = Math.hypot(bx - pLowerLip.x, by - pLowerLip.y, bz - pLowerLip.z);
+                      const isLipMargin = LOWER_LIP_SET.has(i) || d14 < 0.28;
+                      if (isLipMargin) {
+                        let lipDistW = 1.0;
+                        if (d14 < 0.28) {
+                          const t = 1 - (d14 / 0.28) ** 2;
+                          lipDistW = Math.max(0.60, t * t);
+                        } else {
+                          lipDistW = 0.60;
                         }
+                        my -= 0.38 * latW * lipDistW;
+                        mz -= 0.12 * latW * lipDistW;
+                      }
+
+                      if (by < pMouthCenter.y) {
+                        const t = Math.min(1, Math.max(0, (pMouthCenter.y - by) / jawRange));
+                        const jawBoneW = Math.sin(t * Math.PI * 0.5);
+                        my -= 0.24 * jawBoneW;
+                        mz -= 0.07 * jawBoneW;
                       }
                     }
 
-                    morphAttr.setXYZ(i, bx, my, mz);
+                    if (isRelative) {
+                      morphAttr.setXYZ(i, mx - bx, my - by, mz - bz);
+                    } else {
+                      morphAttr.setXYZ(i, mx, my, mz);
+                    }
                   }
                   morphAttr.needsUpdate = true;
                 }
@@ -1162,9 +1187,9 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                     targetVal = Math.max(targetVal ?? 0, finalJaw * 0.45);
                   }
 
-                  // 5. Upper Lip lift synchronization
+                  // 5. Upper Lip stays stable during speech to maintain anatomical ceiling
                   if (cleanKey.includes('mouthupperup') || cleanKey.includes('mouth_upper_up')) {
-                    targetVal = Math.max(targetVal ?? 0, finalJaw * 0.15);
+                    targetVal = bShapes?.[key] ?? bsLookup?.[cleanKey] ?? 0;
                   }
 
                   // 6. Smile & Frown synchronization
@@ -1351,6 +1376,44 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
       lastTime = now;
       const feat = featuresRef.current;
       const cur = smoothPoseRef.current;
+      const curTrackingMode = normalizeTrackingMode(trackingModeRef.current || feat.trackingMode);
+
+      // Voice Rhythm & Dynamic Zoom (Modo Parafernalia: animación y zoom reactivos al ritmo de la voz)
+      let dynamicZoomOffset = 0;
+      if (curTrackingMode === 'parafernalia') {
+        const rawVol = Number.isFinite(feat.audioVolume) ? (feat.audioVolume as number) : 0;
+        const speechPunch = rawVol > 0.004 ? Math.min(0.60, (rawVol - 0.004) * 2.2) : 0;
+
+        // Ataque rápido al hablar, decaimiento suave y fluido
+        const zoomAlpha = speechPunch > currentZoomPunchRef.current
+          ? 1 - Math.exp(-dt * 20)
+          : 1 - Math.exp(-dt * 6.5);
+
+        currentZoomPunchRef.current = THREE.MathUtils.lerp(
+          currentZoomPunchRef.current,
+          speechPunch,
+          zoomAlpha
+        );
+
+        // Pulso rítmico sincronizado con la cadencia vocal
+        const rhythmPulse = currentZoomPunchRef.current > 0.03
+          ? Math.sin(now * 0.015) * (currentZoomPunchRef.current * 0.08)
+          : 0;
+        dynamicZoomOffset = currentZoomPunchRef.current + rhythmPulse;
+
+        // Inclinación/cadencia sutil de cabeza al ritmo de la voz
+        if (currentZoomPunchRef.current > 0.04) {
+          const speechBob = Math.sin(now * 0.018) * 0.025 * currentZoomPunchRef.current;
+          cur.pitch += speechBob;
+        }
+      } else {
+        currentZoomPunchRef.current = THREE.MathUtils.lerp(
+          currentZoomPunchRef.current,
+          0,
+          1 - Math.exp(-dt * 12)
+        );
+        dynamicZoomOffset = currentZoomPunchRef.current;
+      }
 
       // ========================================================
       // 1:1 FAITHFUL HIGH-SPEED SMOOTHING FILTER
@@ -1578,12 +1641,13 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
         }
       }
 
-      // Dynamic viewer camera recentering
+      // Dynamic viewer camera recentering and dynamic voice-rhythm zoom (Parafernalia)
       if (camera) {
         const offX = cameraOffsetXRef.current || 0;
         const offY = cameraOffsetYRef.current || 0;
         camera.position.x = -offX;
         camera.position.y = 4.4 - offY;
+        camera.position.z = 4.8 - dynamicZoomOffset;
         camera.lookAt(-offX, 3.8 - offY, 0);
       }
 

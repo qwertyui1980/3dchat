@@ -36,19 +36,26 @@ export const OUTER_LIP_INDICES = [
   61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146,
 ];
 
+// Upper lip: strictly upper lip contours and upper philtrum (no lower lip landmarks)
 export const UPPER_LIP_INDICES = [
   61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291,
   78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308,
-  164, 167, 165, 92, 186, 57, 43, 106, 182, 83,
+  164, 167, 165, 92, 186, 393, 391, 322, 410, 287,
+  11, 12, 38, 41, 42, 72, 73, 74, 76, 183, 184, 268, 271, 272, 302, 303, 304, 306,
 ];
 
+// Lower lip: strictly lower lip contours and vermilion (divides downward when speaking)
 export const LOWER_LIP_INDICES = [
   95, 88, 178, 87, 14, 317, 402, 318, 324,
   146, 91, 181, 84, 17, 314, 405, 321, 375,
+  18, 83, 182, 106, 43, 313, 406, 335, 273, 85, 86, 89, 90, 179, 180, 315, 316, 319, 320,
 ];
+
+export const MOUTH_CORNER_INDICES = [61, 78, 291, 308];
 
 export const UPPER_LIP_SET = new Set(UPPER_LIP_INDICES);
 export const LOWER_LIP_SET = new Set(LOWER_LIP_INDICES);
+export const MOUTH_CORNER_SET = new Set(MOUTH_CORNER_INDICES);
 
 /**
  * Creates a dark anatomical oral cavity backing mesh with dental arches
@@ -543,40 +550,45 @@ export class FaceMeshGenerator {
         // ==========================================
         case 'jawOpen': {
           const jawScale = this.mouthParams.jawOpenScale ?? 1.0;
-          const isUpper = UPPER_LIP_SET.has(index) || base.y > pMouthCenter.y + 0.02;
-          const isLower = LOWER_LIP_SET.has(index);
+          const isCorner = MOUTH_CORNER_SET.has(index);
+          const isUpper = !isCorner && (UPPER_LIP_SET.has(index) || (base.y >= pMouthCenter.y && !LOWER_LIP_SET.has(index)));
+          const isLower = !isCorner && (LOWER_LIP_SET.has(index) || base.y < pMouthCenter.y);
 
-          if (isUpper) {
-            // Upper lip stays anchored to skull, slight natural upward lift (+Y)
-            const upDist = distTo(index, 13);
-            if (upDist < 0.18) {
-              const upFalloff = smoothRadialFalloff(upDist, 0.18);
-              y += 0.02 * jawScale * upFalloff;
-              z -= 0.01 * jawScale * upFalloff;
+          if (isCorner) {
+            // Mouth corners act as bilateral hinges: subtle inward tension and tiny vertical drop
+            const dCorner = Math.min(distTo(index, 61), distTo(index, 291), distTo(index, 78), distTo(index, 308));
+            const cornerW = smoothRadialFalloff(dCorner, 0.16);
+            y -= 0.04 * jawScale * cornerW;
+            x -= Math.sign(base.x - pMouthCenter.x) * 0.02 * jawScale * cornerW;
+          } else if (isUpper) {
+            // UPPER LIP: Stays anchored to the skull, serving as the ceiling/reference that closes with the lower lip.
+            // 0 downward drop: ensures the mouth divides cleanly from the lower lip down!
+          } else if (isLower) {
+            // LOWER LIP, MANDIBLE AND CHIN: Divides cleanly from the lower lip downwards!
+            const mouthHalfWidth = Math.max(0.18, Math.abs(pMouthCornerRight.x - pMouthCornerLeft.x) * 0.5);
+            const dx = Math.abs(base.x - pMouthCenter.x);
+            // Lateral falloff from center (1.0) to mouth corners (0.0)
+            const latW = Math.max(0, 1 - Math.min(1, (dx / mouthHalfWidth) ** 1.8));
+
+            // 1. Lower lip separation and drop
+            const d14 = distTo(index, 14);
+            const isLipMargin = LOWER_LIP_SET.has(index) || d14 < 0.28;
+
+            if (isLipMargin) {
+              const lipDistW = Math.max(0.60, smoothRadialFalloff(d14, 0.28));
+              // Full lower lip downward drop (-Y) and slight oral cavity recession (-Z)
+              y -= 0.38 * jawScale * latW * lipDistW;
+              z -= 0.12 * jawScale * latW * lipDistW;
             }
-          } else {
-            // Lower lip & jaw
-            if (isLower) {
-              // Direct, pronounced lower lip downward drop (-Y) and inward oral recession (-Z)
-              const lipDist = distTo(index, 14);
-              const lipFalloff = Math.max(0.65, smoothRadialFalloff(lipDist, 0.28));
-              y -= 0.38 * jawScale * lipFalloff;
-              z -= 0.16 * jawScale * lipFalloff;
-            } else if (base.y < pMouthCenter.y) {
-              // Chin and mandible bone rotation
+
+            // 2. Continuous anatomical mandible bone rotation down through the chin
+            if (base.y < pMouthCenter.y) {
               const jawRange = Math.abs(pMouthCenter.y - pChin.y) || 0.6;
               const t = THREE.MathUtils.clamp((pMouthCenter.y - base.y) / jawRange, 0, 1);
-              const w = t * t;
-              y -= 0.26 * jawScale * w;
-              z -= 0.08 * jawScale * w;
-
-              // Smooth transition near the lower lip
-              const lipDist = distTo(index, 14);
-              if (lipDist < 0.25) {
-                const fall = smoothRadialFalloff(lipDist, 0.25);
-                y -= 0.18 * jawScale * fall;
-                z -= 0.10 * jawScale * fall;
-              }
+              // Smooth sinusoidal progression down the jaw bone towards the chin
+              const jawBoneW = Math.sin(t * Math.PI * 0.5);
+              y -= 0.24 * jawScale * jawBoneW;
+              z -= 0.07 * jawScale * jawBoneW;
             }
           }
           break;
@@ -741,7 +753,7 @@ export class FaceMeshGenerator {
         case 'mouthLowerDownLeft': {
           if (!UPPER_LIP_SET.has(index) && base.y <= pMouthCenter.y + 0.01) {
             const w = smoothRadialFalloff(distTo(index, 87), 0.25);
-            y -= 0.20 * w;
+            y -= 0.22 * w;
             z -= 0.06 * w;
           }
           break;
@@ -750,7 +762,7 @@ export class FaceMeshGenerator {
         case 'mouthLowerDownRight': {
           if (!UPPER_LIP_SET.has(index) && base.y <= pMouthCenter.y + 0.01) {
             const w = smoothRadialFalloff(distTo(index, 317), 0.25);
-            y -= 0.20 * w;
+            y -= 0.22 * w;
             z -= 0.06 * w;
           }
           break;
@@ -773,9 +785,10 @@ export class FaceMeshGenerator {
         }
 
         case 'mouthClose': {
+          // Upper lip presses subtly downward, lower lip moves upward to cleanly seal the mouth opening
           if (UPPER_LIP_SET.has(index) || base.y > pMouthCenter.y) {
             const wUpper = smoothRadialFalloff(distTo(index, 13), 0.22);
-            y -= 0.08 * wUpper;
+            y -= 0.04 * wUpper;
           } else if (LOWER_LIP_SET.has(index) || base.y < pMouthCenter.y) {
             const wLower = smoothRadialFalloff(distTo(index, 14), 0.22);
             y += 0.08 * wLower;

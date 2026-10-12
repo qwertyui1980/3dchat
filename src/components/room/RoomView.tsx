@@ -9,6 +9,7 @@ import {
   RoomMediaState,
   VideoQueueItem,
   WhiteboardStroke,
+  DynamicTrackingMode,
 } from '../../types';
 import { Header } from '../common/Header';
 import { ParticipantCard } from './ParticipantCard';
@@ -35,6 +36,12 @@ interface RoomViewProps {
   messages: ChatMessage[];
   videoRef: React.RefObject<HTMLVideoElement | null>;
   landmarks: Array<{ x: number; y: number; z: number }> | null;
+  trackingMode?: DynamicTrackingMode;
+  onSelectTrackingMode?: (mode: DynamicTrackingMode) => void;
+  cameraOffsetX?: number;
+  cameraOffsetY?: number;
+  trackingSensitivity?: number;
+  initialTrackingPip?: boolean;
   onToggleMic: () => void;
   onToggleCamera: () => void;
   onSelectAvatar: (id: AvatarId) => void;
@@ -72,6 +79,12 @@ export const RoomView: React.FC<RoomViewProps> = ({
   messages,
   videoRef,
   landmarks,
+  trackingMode = 'hybrid',
+  onSelectTrackingMode,
+  cameraOffsetX = 0,
+  cameraOffsetY = 0,
+  trackingSensitivity = 1.0,
+  initialTrackingPip = true,
   onToggleMic,
   onToggleCamera,
   onSelectAvatar,
@@ -102,7 +115,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
   const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isTrackingPipVisible, setIsTrackingPipVisible] = useState(true);
+  const [isTrackingPipVisible, setIsTrackingPipVisible] = useState(() => initialTrackingPip ?? true);
   const [lastReadMessageCount, setLastReadMessageCount] = useState(messages.length);
 
   // Home Theater & Cue Modal States
@@ -234,6 +247,9 @@ export const RoomView: React.FC<RoomViewProps> = ({
                   features={features}
                   isSelf={isSelf}
                   isAdmin={isAdmin}
+                  cameraOffsetX={isSelf ? cameraOffsetX : 0}
+                  cameraOffsetY={isSelf ? cameraOffsetY : 0}
+                  trackingMode={isSelf ? trackingMode : participant.trackingMode}
                   onAdminMute={onAdminMute}
                   onAdminKick={onAdminKick}
                 />
@@ -333,6 +349,8 @@ export const RoomView: React.FC<RoomViewProps> = ({
           isMicActive={isMicActive}
           isCameraActive={isCameraActive}
           currentAvatarId={currentUser.avatarId}
+          trackingMode={trackingMode}
+          onSelectTrackingMode={onSelectTrackingMode}
           unreadChatCount={unreadCount}
           isChatOpen={isChatOpen}
           isAdmin={isAdmin}

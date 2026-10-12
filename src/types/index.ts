@@ -100,7 +100,16 @@ export interface FaceFeatures {
   blendshapes?: Record<string, number>;
   fps?: number;
   latencyMs?: number;
+  trackingMode?: DynamicTrackingMode;
 }
+
+export type DynamicTrackingMode =
+  | 'parafernalia'
+  | 'gestures'
+  | 'lipsync'
+  | 'hybrid'
+  | 'camera_only'
+  | 'audio_only';
 
 export interface User {
   id: string;
@@ -110,6 +119,7 @@ export interface User {
   roomId: string;
   isMuted: boolean;
   isCameraActive: boolean;
+  trackingMode?: DynamicTrackingMode;
 }
 
 export interface RoomInfo {

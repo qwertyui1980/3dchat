@@ -21,8 +21,10 @@ import {
   AlertTriangle,
   Play,
   Plus,
+  Layers,
+  ScanFace,
 } from 'lucide-react';
-import { AvatarId, FaceFeatures, AvatarDefinition } from '../../types';
+import { AvatarId, FaceFeatures, AvatarDefinition, DynamicTrackingMode } from '../../types';
 import { AVATAR_LIST } from '../avatars/avatarConfigs';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
 import { AvatarCanvas } from '../avatars/AvatarCanvas';
@@ -34,6 +36,7 @@ import { networkServiceSingleton } from '../../services/networkService';
 import { LegalDisclaimerModal } from '../common/LegalDisclaimerModal';
 import { AdminControlPanel } from '../room/AdminControlPanel';
 import { FaceBlendshapeStudioModal } from '../admin/FaceBlendshapeStudioModal';
+import { applyDynamicMode, TRACKING_MODES_CONFIG, normalizeTrackingMode } from '../../services/face3d/dynamicModeHelper';
 
 interface LobbyProps {
   onJoinRoom: (config: {
@@ -41,6 +44,13 @@ interface LobbyProps {
     roomId: string;
     avatarId: AvatarId;
     createAsAdmin: boolean;
+    isMicActive: boolean;
+    isCameraActive: boolean;
+    trackingMode: DynamicTrackingMode;
+    cameraOffsetX: number;
+    cameraOffsetY: number;
+    trackingSensitivity: number;
+    showTrackingPip: boolean;
   }) => void;
   localFeatures: FaceFeatures;
   isCameraActive: boolean;
@@ -102,6 +112,10 @@ function generateRandomAlias(): string {
 }
 
 const STORAGE_AVATAR_KEY = 'xstreamx_selected_avatar';
+const STORAGE_TRACKING_MODE_KEY = 'xstreamx_tracking_mode';
+const STORAGE_OFFSET_X_KEY = 'xstreamx_camera_offset_x';
+const STORAGE_OFFSET_Y_KEY = 'xstreamx_camera_offset_y';
+const STORAGE_SENSITIVITY_KEY = 'xstreamx_tracking_sensitivity';
 const SINGLE_ROOM_ID = 'main';
 
 export const Lobby: React.FC<LobbyProps> = ({
@@ -164,13 +178,70 @@ export const Lobby: React.FC<LobbyProps> = ({
 
   const [error, setError] = useState<string | null>(null);
   const [showCameraPip, setShowCameraPip] = useState(false);
-  const [showAdjustments, setShowAdjustments] = useState(true);
+  const [showAdjustments, setShowAdjustments] = useState(false);
   const [isLegalOpen, setIsLegalOpen] = useState(false);
 
-  // Calibration & Offset Controls
-  const [cameraOffsetX, setCameraOffsetX] = useState(0);
-  const [cameraOffsetY, setCameraOffsetY] = useState(0);
-  const [trackingSensitivity, setTrackingSensitivity] = useState(1.0);
+  // Dynamic Tracking Modes ('parafernalia' | 'gestures' | 'lipsync')
+  const [trackingMode, setTrackingMode] = useState<DynamicTrackingMode>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(STORAGE_TRACKING_MODE_KEY) as DynamicTrackingMode;
+      if (saved) {
+        return normalizeTrackingMode(saved);
+      }
+    }
+    return 'parafernalia';
+  });
+
+  const handleSelectTrackingMode = (mode: DynamicTrackingMode) => {
+    setTrackingMode(mode);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_TRACKING_MODE_KEY, mode);
+    }
+  };
+
+  // Calibration & Offset Controls initialized from localStorage
+  const [cameraOffsetX, setCameraOffsetX] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(STORAGE_OFFSET_X_KEY);
+      if (saved) return parseFloat(saved) || 0;
+    }
+    return 0;
+  });
+  const [cameraOffsetY, setCameraOffsetY] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(STORAGE_OFFSET_Y_KEY);
+      if (saved) return parseFloat(saved) || 0;
+    }
+    return 0;
+  });
+  const [trackingSensitivity, setTrackingSensitivity] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(STORAGE_SENSITIVITY_KEY);
+      if (saved) return parseFloat(saved) || 1.0;
+    }
+    return 1.0;
+  });
+
+  const handleCameraOffsetX = (val: number) => {
+    setCameraOffsetX(val);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_OFFSET_X_KEY, val.toString());
+    }
+  };
+
+  const handleCameraOffsetY = (val: number) => {
+    setCameraOffsetY(val);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_OFFSET_Y_KEY, val.toString());
+    }
+  };
+
+  const handleTrackingSensitivity = (val: number) => {
+    setTrackingSensitivity(val);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_SENSITIVITY_KEY, val.toString());
+    }
+  };
 
   // Single Room State & Real-time Active Status
   const [isRoomActive, setIsRoomActive] = useState<boolean>(true);
@@ -429,6 +500,13 @@ export const Lobby: React.FC<LobbyProps> = ({
         roomId: SINGLE_ROOM_ID,
         avatarId: selectedAvatarId,
         createAsAdmin: true,
+        isMicActive,
+        isCameraActive,
+        trackingMode,
+        cameraOffsetX,
+        cameraOffsetY,
+        trackingSensitivity,
+        showTrackingPip: showCameraPip,
       });
     } catch (err: any) {
       setError(err?.message || 'Error al crear el espacio.');
@@ -454,6 +532,13 @@ export const Lobby: React.FC<LobbyProps> = ({
       roomId: SINGLE_ROOM_ID,
       avatarId: selectedAvatarId,
       createAsAdmin: false,
+      isMicActive,
+      isCameraActive,
+      trackingMode,
+      cameraOffsetX,
+      cameraOffsetY,
+      trackingSensitivity,
+      showTrackingPip: showCameraPip,
     });
   };
 
@@ -487,6 +572,13 @@ export const Lobby: React.FC<LobbyProps> = ({
       roomId: SINGLE_ROOM_ID,
       avatarId: selectedAvatarId,
       createAsAdmin: isAdminUser,
+      isMicActive,
+      isCameraActive,
+      trackingMode,
+      cameraOffsetX,
+      cameraOffsetY,
+      trackingSensitivity,
+      showTrackingPip: showCameraPip,
     });
   };
 
@@ -525,12 +617,15 @@ export const Lobby: React.FC<LobbyProps> = ({
             <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-[#040406] border border-white/[0.06] flex items-center justify-center shadow-inner">
               <AvatarCanvas
                 avatarId={selectedAvatarId}
-                features={{
-                  ...localFeatures,
-                  pitch: (localFeatures.pitch + cameraOffsetY) * trackingSensitivity,
-                  yaw: (localFeatures.yaw + cameraOffsetX) * trackingSensitivity,
-                }}
-                isSpeaking={isMicActive && localFeatures.audioVolume > 0.08}
+                features={applyDynamicMode(
+                  localFeatures,
+                  trackingMode,
+                  trackingSensitivity,
+                  cameraOffsetX,
+                  cameraOffsetY
+                )}
+                trackingMode={trackingMode}
+                isSpeaking={normalizeTrackingMode(trackingMode) !== 'gestures' && isMicActive && localFeatures.audioVolume > 0.08}
                 cameraOffsetX={cameraOffsetX}
                 cameraOffsetY={cameraOffsetY}
                 className="w-full h-full"
@@ -559,19 +654,32 @@ export const Lobby: React.FC<LobbyProps> = ({
               {/* Status Indicator */}
               <div className="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur-sm px-2.5 py-1 rounded-md text-xs font-mono text-cyan-300 flex items-center gap-1.5 border border-slate-800 z-20">
                 <span
-                  className={`w-2 h-2 rounded-full ${localFeatures.isFaceDetected
-                    ? 'bg-emerald-400 animate-pulse'
-                    : !isCameraActive
+                  className={`w-2 h-2 rounded-full ${
+                    normalizeTrackingMode(trackingMode) === 'lipsync'
+                      ? 'bg-amber-400 animate-pulse'
+                      : normalizeTrackingMode(trackingMode) === 'gestures'
+                      ? localFeatures.isFaceDetected
+                        ? 'bg-emerald-400 animate-pulse'
+                        : 'bg-amber-400'
+                      : localFeatures.isFaceDetected
+                      ? 'bg-cyan-400 animate-pulse'
+                      : !isCameraActive
                       ? 'bg-cyan-400'
                       : 'bg-amber-400'
-                    }`}
+                  }`}
                 />
                 <span className="text-[11px]">
-                  {localFeatures.isFaceDetected
-                    ? 'Rostro Detectado (MediaPipe)'
+                  {normalizeTrackingMode(trackingMode) === 'lipsync'
+                    ? 'Modo Lip Sync (Máscara Estática • Audio Boca)'
+                    : normalizeTrackingMode(trackingMode) === 'gestures'
+                    ? localFeatures.isFaceDetected
+                      ? 'Reconocimiento de Gestos (100% Cámara)'
+                      : 'Buscando Rostro...'
+                    : localFeatures.isFaceDetected
+                    ? 'Modo Parafernalia (Voz, Ritmo & Zoom)'
                     : !isCameraActive
-                      ? 'Modo Solo Voz (Lip-Sync Activo)'
-                      : 'Buscando Rostro...'}
+                    ? 'Modo Parafernalia (Solo Micrófono)'
+                    : 'Buscando Rostro...'}
                 </span>
               </div>
 
@@ -594,9 +702,9 @@ export const Lobby: React.FC<LobbyProps> = ({
                   <button
                     type="button"
                     onClick={() => {
-                      setCameraOffsetX(0);
-                      setCameraOffsetY(0);
-                      setTrackingSensitivity(1.0);
+                      handleCameraOffsetX(0);
+                      handleCameraOffsetY(0);
+                      handleTrackingSensitivity(1.0);
                     }}
                     className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 cursor-pointer"
                   >
@@ -615,7 +723,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                     max="0.5"
                     step="0.02"
                     value={cameraOffsetX}
-                    onChange={(e) => setCameraOffsetX(parseFloat(e.target.value))}
+                    onChange={(e) => handleCameraOffsetX(parseFloat(e.target.value))}
                     className="w-full accent-cyan-400 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
                   />
                 </div>
@@ -630,7 +738,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                     max="0.5"
                     step="0.02"
                     value={cameraOffsetY}
-                    onChange={(e) => setCameraOffsetY(parseFloat(e.target.value))}
+                    onChange={(e) => handleCameraOffsetY(parseFloat(e.target.value))}
                     className="w-full accent-cyan-400 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
                   />
                 </div>
@@ -645,12 +753,82 @@ export const Lobby: React.FC<LobbyProps> = ({
                     max="2.0"
                     step="0.1"
                     value={trackingSensitivity}
-                    onChange={(e) => setTrackingSensitivity(parseFloat(e.target.value))}
+                    onChange={(e) => handleTrackingSensitivity(parseFloat(e.target.value))}
                     className="w-full accent-cyan-400 h-1.5 bg-slate-800 rounded-lg cursor-pointer"
                   />
                 </div>
               </div>
             )}
+
+            {/* Selector de Modos Dinámicos */}
+            <div className="mt-3.5 p-2.5 bg-slate-950/80 rounded-xl border border-white/[0.08] space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-neutral-300 flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Modos Dinámicos</span>
+                </span>
+                <span
+                  className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border"
+                  style={{
+                    color: TRACKING_MODES_CONFIG[trackingMode].color,
+                    borderColor: `${TRACKING_MODES_CONFIG[trackingMode].color}40`,
+                    backgroundColor: `${TRACKING_MODES_CONFIG[trackingMode].color}15`,
+                  }}
+                >
+                  {TRACKING_MODES_CONFIG[trackingMode].label}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-1.5">
+                {/* 1. Parafernalia */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTrackingMode('parafernalia')}
+                  className={`p-2 rounded-lg border text-left transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                    normalizeTrackingMode(trackingMode) === 'parafernalia'
+                      ? 'bg-cyan-950/80 border-cyan-400 text-white ring-1 ring-cyan-400/40 shadow-sm'
+                      : 'bg-[#121218] hover:bg-[#181822] text-neutral-400 border-white/[0.06]'
+                  }`}
+                  title="Modo divertido: la máscara se mueve al ritmo de la voz, con gestos y zoom dinámico"
+                >
+                  <Sparkles className={`w-4 h-4 ${normalizeTrackingMode(trackingMode) === 'parafernalia' ? 'text-cyan-400' : 'text-neutral-400'}`} />
+                  <span className="text-[11px] font-bold leading-none text-center">Parafernalia</span>
+                  <span className="text-[9px] text-neutral-400 text-center leading-none">Voz & Zoom</span>
+                </button>
+
+                {/* 2. Reconocimiento de Gestos */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTrackingMode('gestures')}
+                  className={`p-2 rounded-lg border text-left transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                    normalizeTrackingMode(trackingMode) === 'gestures'
+                      ? 'bg-emerald-950/80 border-emerald-400 text-white ring-1 ring-emerald-400/40 shadow-sm'
+                      : 'bg-[#121218] hover:bg-[#181822] text-neutral-400 border-white/[0.06]'
+                  }`}
+                  title="Reconoce única y exclusivamente gestos faciales por cámara y los iguala en el avatar"
+                >
+                  <ScanFace className={`w-4 h-4 ${normalizeTrackingMode(trackingMode) === 'gestures' ? 'text-emerald-400' : 'text-neutral-400'}`} />
+                  <span className="text-[11px] font-bold leading-none text-center">Gestos</span>
+                  <span className="text-[9px] text-neutral-400 text-center leading-none">100% Cámara</span>
+                </button>
+
+                {/* 3. Lip Sync */}
+                <button
+                  type="button"
+                  onClick={() => handleSelectTrackingMode('lipsync')}
+                  className={`p-2 rounded-lg border text-left transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
+                    normalizeTrackingMode(trackingMode) === 'lipsync'
+                      ? 'bg-amber-950/80 border-amber-400 text-white ring-1 ring-amber-400/40 shadow-sm'
+                      : 'bg-[#121218] hover:bg-[#181822] text-neutral-400 border-white/[0.06]'
+                  }`}
+                  title="Máscara estática: el audio anima únicamente la sección de los labios y la boca sin requerir video"
+                >
+                  <Radio className={`w-4 h-4 ${normalizeTrackingMode(trackingMode) === 'lipsync' ? 'text-amber-400' : 'text-neutral-400'}`} />
+                  <span className="text-[11px] font-bold leading-none text-center">Lip Sync</span>
+                  <span className="text-[9px] text-neutral-400 text-center leading-none">Solo Boca</span>
+                </button>
+              </div>
+            </div>
 
             {/* Hardware Controls & Device Selector */}
             <div className="mt-4 flex items-center justify-between gap-3">
@@ -834,10 +1012,10 @@ export const Lobby: React.FC<LobbyProps> = ({
                         type="button"
                         onClick={() => setIsFaceStudioOpen(true)}
                         className="text-[11px] text-cyan-300 hover:text-cyan-200 font-black flex items-center gap-1 cursor-pointer bg-gradient-to-r from-cyan-500/20 to-indigo-500/20 hover:from-cyan-500/30 hover:to-indigo-500/30 px-2.5 py-1 rounded-lg border border-cyan-400/40 shadow-sm"
-                        title="Abrir Generador Face to Blendshape 3D"
+                        title="Abrir Generador 3D Masks"
                       >
                         <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                        <span>Face to 3D</span>
+                        <span>3D Masks</span>
                       </button>
 
                       <button
@@ -887,7 +1065,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                     );
                   })}
 
-                  {/* Botón Face to Blendshape 3D Directo para Admin */}
+                  {/* Botón 3D Masks Directo para Admin */}
                   {isAdminUser && (
                     <button
                       type="button"
@@ -1056,12 +1234,12 @@ export const Lobby: React.FC<LobbyProps> = ({
         />
       )}
 
-      {/* Face to Blendshape 3D Admin Studio Modal */}
+      {/* 3D Masks Admin Studio Modal */}
       <FaceBlendshapeStudioModal
         isOpen={isFaceStudioOpen}
         onClose={() => setIsFaceStudioOpen(false)}
         isAdmin={isAdminUser}
-        onSelectAvatar={(avatarId) => {
+        onSelectAvatar={(avatarId: AvatarId) => {
           handleSelectAvatar(avatarId);
           setIsFaceStudioOpen(false);
         }}

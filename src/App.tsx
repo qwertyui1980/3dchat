@@ -13,6 +13,7 @@ import {
   RoomMediaState,
   VideoQueueItem,
   WhiteboardStroke,
+  DynamicTrackingMode,
 } from './types';
 import {
   faceTrackerSingleton,
@@ -25,6 +26,7 @@ import { Lobby } from './components/lobby/Lobby';
 import { RoomView } from './components/room/RoomView';
 import { Login, AuthenticatedUser } from './components/auth/Login';
 import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
+import { applyDynamicMode, normalizeTrackingMode } from './services/face3d/dynamicModeHelper';
 
 interface Toast {
   id: string;
@@ -82,6 +84,49 @@ export default function App() {
   const [landmarks, setLandmarks] = useState<Array<{ x: number; y: number; z: number }> | null>(null);
   const [peerFeaturesMap, setPeerFeaturesMap] = useState<Map<string, FaceFeatures>>(new Map());
 
+  // Dynamic tracking mode & calibration state
+  const [trackingMode, setTrackingMode] = useState<DynamicTrackingMode>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('xstreamx_tracking_mode') as DynamicTrackingMode;
+      if (saved) return normalizeTrackingMode(saved);
+    }
+    return 'parafernalia';
+  });
+  const trackingModeRef = useRef<DynamicTrackingMode>(trackingMode);
+  trackingModeRef.current = trackingMode;
+
+  const [cameraOffsetX, setCameraOffsetX] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('xstreamx_camera_offset_x');
+      if (saved) return parseFloat(saved) || 0;
+    }
+    return 0;
+  });
+  const cameraOffsetXRef = useRef<number>(cameraOffsetX);
+  cameraOffsetXRef.current = cameraOffsetX;
+
+  const [cameraOffsetY, setCameraOffsetY] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('xstreamx_camera_offset_y');
+      if (saved) return parseFloat(saved) || 0;
+    }
+    return 0;
+  });
+  const cameraOffsetYRef = useRef<number>(cameraOffsetY);
+  cameraOffsetYRef.current = cameraOffsetY;
+
+  const [trackingSensitivity, setTrackingSensitivity] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('xstreamx_tracking_sensitivity');
+      if (saved) return parseFloat(saved) || 1.0;
+    }
+    return 1.0;
+  });
+  const trackingSensitivityRef = useRef<number>(trackingSensitivity);
+  trackingSensitivityRef.current = trackingSensitivity;
+
+  const [isTrackingPipVisible, setIsTrackingPipVisible] = useState<boolean>(true);
+
   // Master tracking video element & camera stream
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
@@ -126,9 +171,16 @@ export default function App() {
             ...prev,
             audioVolume: volume,
           };
-          // Broadcast audio-driven lip sync if camera is inactive or no face detected
-          if (!cameraStreamRef.current || !prev.isFaceDetected) {
-            networkServiceSingleton.broadcastFaceData(updated);
+          // Broadcast audio-driven lip sync if camera is inactive, no face detected, or in audio_only mode
+          if (!cameraStreamRef.current || !prev.isFaceDetected || trackingModeRef.current === 'audio_only') {
+            const active = applyDynamicMode(
+              updated,
+              trackingModeRef.current,
+              trackingSensitivityRef.current,
+              cameraOffsetXRef.current,
+              cameraOffsetYRef.current
+            );
+            networkServiceSingleton.broadcastFaceData(active);
           }
           return updated;
         });
@@ -231,8 +283,18 @@ export default function App() {
         faceTrackerSingleton.startTracking(
           videoRef.current,
           (features) => {
-            setLocalFeatures(features);
-            networkServiceSingleton.broadcastFaceData(features);
+            setLocalFeatures((prev) => {
+              const merged = { ...features, audioVolume: prev.audioVolume };
+              const active = applyDynamicMode(
+                merged,
+                trackingModeRef.current,
+                trackingSensitivityRef.current,
+                cameraOffsetXRef.current,
+                cameraOffsetYRef.current
+              );
+              networkServiceSingleton.broadcastFaceData(active);
+              return merged;
+            });
           },
           (lms) => {
             setLandmarks(lms);
@@ -576,19 +638,54 @@ export default function App() {
     addToast('Sesión cerrada correctamente', 'info');
   };
 
-  // Handle joining room from lobby
+  // Change dynamic tracking mode in real time
+  const handleSelectTrackingMode = useCallback((mode: DynamicTrackingMode) => {
+    setTrackingMode(mode);
+    trackingModeRef.current = mode;
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('xstreamx_tracking_mode', mode);
+    }
+    networkServiceSingleton.updateTrackingMode(mode);
+    setLocalFeatures((prev) => {
+      const active = applyDynamicMode(
+        prev,
+        mode,
+        trackingSensitivityRef.current,
+        cameraOffsetXRef.current,
+        cameraOffsetYRef.current
+      );
+      networkServiceSingleton.broadcastFaceData(active);
+      return prev;
+    });
+  }, []);
+
+  // Handle joining room from lobby with all selected options preserved & activated
   const handleJoinRoom = async ({
     userName,
     roomId,
     avatarId,
     createAsAdmin,
+    isMicActive: requestedMicActive = false,
+    isCameraActive: requestedCameraActive = false,
+    trackingMode: requestedTrackingMode = 'hybrid',
+    cameraOffsetX: requestedOffsetX = 0,
+    cameraOffsetY: requestedOffsetY = 0,
+    trackingSensitivity: requestedSensitivity = 1.0,
+    showTrackingPip: requestedTrackingPip = true,
   }: {
     userName: string;
     roomId: string;
     avatarId: AvatarId;
     createAsAdmin: boolean;
+    isMicActive?: boolean;
+    isCameraActive?: boolean;
+    trackingMode?: DynamicTrackingMode;
+    cameraOffsetX?: number;
+    cameraOffsetY?: number;
+    trackingSensitivity?: number;
+    showTrackingPip?: boolean;
   }) => {
-    // If microphone stream is not active or closed, re-acquire it before joining
+    // 1. If microphone stream is not active or closed, re-acquire it before joining
     const activeStream = audioServiceSingleton.getStream();
     const hasLiveTracks =
       activeStream &&
@@ -602,7 +699,41 @@ export default function App() {
       }
     }
 
-    networkServiceSingleton.joinRoom(roomId, userName, avatarId, createAsAdmin);
+    // 2. Apply and respect selected microphone state from lobby
+    setIsMicActive(requestedMicActive);
+    audioServiceSingleton.setMute(!requestedMicActive);
+    if (requestedMicActive) {
+      audioServiceSingleton.ensureResumed();
+    }
+
+    // 3. Apply and respect selected camera state from lobby
+    if (requestedCameraActive && !cameraStreamRef.current) {
+      await startCamera();
+    } else if (!requestedCameraActive && cameraStreamRef.current) {
+      cameraStreamRef.current.getTracks().forEach((track) => track.stop());
+      cameraStreamRef.current = null;
+      setCameraStream(null);
+      setIsCameraActive(false);
+      faceTrackerSingleton.stopTracking();
+    }
+
+    // 4. Save tracking parameters & calibration preferences
+    setTrackingMode(requestedTrackingMode);
+    trackingModeRef.current = requestedTrackingMode;
+    setCameraOffsetX(requestedOffsetX);
+    cameraOffsetXRef.current = requestedOffsetX;
+    setCameraOffsetY(requestedOffsetY);
+    cameraOffsetYRef.current = requestedOffsetY;
+    setTrackingSensitivity(requestedSensitivity);
+    trackingSensitivityRef.current = requestedSensitivity;
+    setIsTrackingPipVisible(requestedTrackingPip);
+
+    // 5. Join network room with exact user options activated
+    networkServiceSingleton.joinRoom(roomId, userName, avatarId, createAsAdmin, {
+      isMuted: !requestedMicActive,
+      isCameraActive: requestedCameraActive,
+      trackingMode: requestedTrackingMode,
+    });
   };
 
   // Toggle Microphone - Only user explicit click can open mic, and blocked if muted by admin
@@ -863,8 +994,20 @@ export default function App() {
         <RoomView
           room={room}
           currentUser={currentUser}
-          localFeatures={localFeatures}
+          localFeatures={applyDynamicMode(
+            localFeatures,
+            trackingMode,
+            trackingSensitivity,
+            cameraOffsetX,
+            cameraOffsetY
+          )}
           peerFeaturesMap={peerFeaturesMap}
+          trackingMode={trackingMode}
+          onSelectTrackingMode={handleSelectTrackingMode}
+          cameraOffsetX={cameraOffsetX}
+          cameraOffsetY={cameraOffsetY}
+          trackingSensitivity={trackingSensitivity}
+          initialTrackingPip={isTrackingPipVisible}
           isMicActive={isMicActive}
           isCameraActive={isCameraActive}
           cameraStream={cameraStream}

@@ -15,14 +15,20 @@ import {
   X,
   Maximize2,
   Minimize2,
+  Layers,
+  Radio,
+  Sparkles,
 } from 'lucide-react';
-import { AvatarId, AvatarDefinition } from '../../types';
+import { AvatarId, AvatarDefinition, DynamicTrackingMode } from '../../types';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
+import { TRACKING_MODES_CONFIG, normalizeTrackingMode, OFFICIAL_TRACKING_MODES } from '../../services/face3d/dynamicModeHelper';
 
 interface CallControlsProps {
   isMicActive: boolean;
   isCameraActive: boolean;
   currentAvatarId: AvatarId;
+  trackingMode?: DynamicTrackingMode;
+  onSelectTrackingMode?: (mode: DynamicTrackingMode) => void;
   unreadChatCount: number;
   isChatOpen: boolean;
   isAdmin?: boolean;
@@ -48,6 +54,8 @@ export const CallControls: React.FC<CallControlsProps> = ({
   isMicActive,
   isCameraActive,
   currentAvatarId,
+  trackingMode = 'hybrid',
+  onSelectTrackingMode,
   unreadChatCount,
   isChatOpen,
   isAdmin = false,
@@ -69,6 +77,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
   onToggleFullscreen,
 }) => {
   const [showAvatarPicker, setShowAvatarPicker] = React.useState(false);
+  const [showModePicker, setShowModePicker] = React.useState(false);
   const [avatars, setAvatars] = useState<AvatarDefinition[]>(() =>
     isAdmin
       ? avatarModelServiceSingleton.getAllAvatars()
@@ -231,6 +240,91 @@ export const CallControls: React.FC<CallControlsProps> = ({
           )}
         </div>
 
+        {/* Dynamic Mode Quick Switcher Popover */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowModePicker(!showModePicker)}
+            className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-sm cursor-pointer flex items-center gap-1.5 ${
+              showModePicker
+                ? 'bg-[#20202c] text-white border-white/[0.22]'
+                : normalizeTrackingMode(trackingMode) === 'gestures'
+                ? 'bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 border-emerald-500/40'
+                : normalizeTrackingMode(trackingMode) === 'lipsync'
+                ? 'bg-amber-950/70 hover:bg-amber-900/80 text-amber-300 border-amber-500/40'
+                : 'bg-cyan-950/70 hover:bg-cyan-900/80 text-cyan-300 border-cyan-500/40'
+            }`}
+            title="Cambiar Modo Dinámico: Parafernalia / Gestos / Lip Sync"
+          >
+            {normalizeTrackingMode(trackingMode) === 'gestures' ? (
+              <ScanFace className="w-5 h-5 text-emerald-400" />
+            ) : normalizeTrackingMode(trackingMode) === 'lipsync' ? (
+              <Radio className="w-5 h-5 text-amber-400" />
+            ) : (
+              <Sparkles className="w-5 h-5 text-cyan-400" />
+            )}
+            <span className="hidden xl:inline text-xs font-semibold">
+              {normalizeTrackingMode(trackingMode) === 'gestures' ? 'Gestos' : normalizeTrackingMode(trackingMode) === 'lipsync' ? 'Lip Sync' : 'Parafernalia'}
+            </span>
+          </button>
+
+          {showModePicker && (
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setShowModePicker(false)} />
+              <div className="absolute -translate-x-1/2 left-1/2 bottom-full mb-3 w-[calc(100vw-32px)] max-w-xs rounded-2xl bg-[#0e0e14] border border-white/[0.1] p-3 shadow-2xl z-30 space-y-2">
+                <div className="text-xs font-bold text-neutral-300 px-1 flex items-center justify-between">
+                  <span>Modos de Animación</span>
+                </div>
+                <div className="space-y-1.5">
+                  {OFFICIAL_TRACKING_MODES.map((mode) => {
+                    const cfg = TRACKING_MODES_CONFIG[mode];
+                    const isSelected = normalizeTrackingMode(trackingMode) === mode;
+                    return (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => {
+                          if (onSelectTrackingMode) onSelectTrackingMode(mode);
+                          setShowModePicker(false);
+                        }}
+                        className={`w-full p-2.5 rounded-xl border text-left transition flex items-center justify-between gap-2.5 cursor-pointer ${
+                          isSelected
+                            ? 'bg-cyan-950/80 border-cyan-400 text-white shadow-md'
+                            : 'bg-[#14141c] border-white/[0.06] hover:border-white/[0.12] text-neutral-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border"
+                            style={{
+                              backgroundColor: `${cfg.color}15`,
+                              borderColor: `${cfg.color}40`,
+                              color: cfg.color,
+                            }}
+                          >
+                            {mode === 'gestures' ? (
+                              <ScanFace className="w-4 h-4" />
+                            ) : mode === 'lipsync' ? (
+                              <Radio className="w-4 h-4" />
+                            ) : (
+                              <Sparkles className="w-4 h-4" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold">{cfg.label}</p>
+                            <p className="text-[10px] text-neutral-400 leading-tight">{cfg.sublabel}</p>
+                          </div>
+                        </div>
+                        {isSelected && <Check className="w-4 h-4 text-cyan-400 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
         {/* Leave Call Button */}
         <button
           type="button"
@@ -258,10 +352,10 @@ export const CallControls: React.FC<CallControlsProps> = ({
                 ? 'bg-[#20202c] text-white border-white/[0.22]'
                 : 'bg-[#121218] hover:bg-[#181822] text-neutral-200 border-white/[0.08]'
             }`}
-            title={isTheaterOpen ? 'Ocultar pantalla de video' : 'Abrir pantalla de video'}
+            title={isTheaterOpen ? 'Ocultar video' : 'Abrir video'}
           >
             <Tv className="w-5 h-5 shrink-0" />
-            <span className="text-xs font-semibold hidden sm:inline">Pantalla</span>
+            <span className="text-xs font-semibold hidden sm:inline">Video</span>
           </button>
         )}
 

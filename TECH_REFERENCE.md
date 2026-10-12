@@ -3,7 +3,7 @@
 > **Documento:** Referencia Técnica y Arquitectura del Sistema (Tech Reference)  
 > **Proyecto:** XStreamX (3D Avatar Telepresence & Collaborative Space)  
 > **Licencia:** Apache License, Version 2.0  
-> **Origen del Proyecto:** XStreamX ([Repositorio Privado](https://github.com/qwertyui1980/presidents.git))  
+> **Origen del Proyecto:** XStreamX ([Repositorio Privado](https://github.com/qwertyui1980/3dchat.git))  
 > **Fecha de Emisión:** Octubre 2026  
 
 ---
@@ -112,7 +112,28 @@ El núcleo de animación biomimética reside en [`src/services/mediapipeService.
 * **Boca (23):** `mouthClose`, `mouthFunnel`, `mouthPucker`, `mouthLeft`, `mouthRight`, `mouthSmileLeft`, `mouthSmileRight`, `mouthFrownLeft`, `mouthFrownRight`, `mouthDimpleLeft`, `mouthDimpleRight`, `mouthStretchLeft`, `mouthStretchRight`, `mouthRollLower`, `mouthRollUpper`, `mouthShrugLower`, `mouthShrugUpper`, `mouthPressLeft`, `mouthPressRight`, `mouthLowerDownLeft`, `mouthLowerDownRight`, `mouthUpperUpLeft`, `mouthUpperUpRight`.
 * **Mejillas (3):** `cheekPuff`, `cheekSquintLeft`, `cheekSquintRight`.
 * **Nariz (2):** `noseSneerLeft`, `noseSneerRight`.
-* **Lengua (1):** `tongueOut`.
+### 4.3. Modos Oficiales de Animación Dinámica (`dynamicModeHelper.ts`)
+El sistema implementa tres modos oficiales de animación de carácter, seleccionables tanto en el Lobby de bienvenida como en vivo durante la llamada:
+
+1. **Modo Parafernalia (`parafernalia` - Voz, Ritmo & Zoom Dinámico):**
+   * Modo dinámico y divertido de animación.
+   * La máscara se mueve al unísono con el ritmo de la voz y los gestos de cámara.
+   * **Zoom Dinámico Reactivo:** En [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/components/avatars/ThreeAvatarCanvas.tsx), el eje focal de la cámara $Z$ ejecuta un zoom de aproximación suave e inmediato sobre los picos de intensidad vocal (`dynamicZoomOffset` hasta $+0.6$ unidades con ataque y decaimiento exponencial) complementado con una micro-cadencia rítmica de cabeceo al hablar.
+2. **Modo Reconocimiento de Gestos (`gestures` - Visión 100% Cámara):**
+   * Reconoce única y exclusivamente los gestos faciales y traslación de cabeza captados por la cámara con MediaPipe/ARKit y los replica fielmente en el avatar.
+   * El audio del micrófono tiene cero influencia sobre la animación facial (`audioVolume: 0` forzado estrictamente), previniendo que sonidos del entorno deformen la boca o la mandíbula.
+3. **Modo Lip Sync (`lipsync` - Solo Labios y Boca por Audio):**
+   * La máscara se mantiene estática en posición neutral ($Yaw = 0, Pitch = 0, Roll = 0$, cejas y ojos neutros).
+   * El flujo de audio del micrófono anima únicamente la sección de los labios y la apertura bucal en tiempo real.
+   * **Cero requerimiento de detección de video:** No procesa ni necesita video de cámara; la animación bucal funciona 100% a partir del micrófono.
+
+### 4.4. Persistencia y Activación de Opciones al Ingresar a la Sala
+* Al pasar del Lobby al espacio de llamada (`RoomView`), se conservan y aplican automáticamente todas las configuraciones elegidas por el usuario:
+  * **Estado de Micrófono:** Si el usuario desmuteó o muteó en el Lobby, ingresa en el mismo estado sin ser forzado a silencio.
+  * **Estado de Cámara:** Respetado fielmente (activada o liberada).
+  * **Modo Dinámico:** Mantiene la selección oficial (`parafernalia`, `gestures` o `lipsync`, con compatibilidad retroactiva hacia `hybrid`, `camera_only`, `audio_only`).
+  * **Calibración y Centrado:** Los offsets en $X$ y $Y$, así como la sensibilidad de expresión, persisten en `localStorage` y se aplican al avatar local y su proyección en sala.
+  * **Visor Anatómico (PIP):** Mantiene la visibilidad deseada del visor de tracking.
 
 ---
 
@@ -127,7 +148,7 @@ Implementado en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/component
    * `lowpoly_human` / `anime_girl`: Mallas humanoides ligeras optimizadas para rendimiento móvil.
 2. **Modelos 3D de Busto y Esculturas (OBJ, STL, GLB):**
    * Soporta carga de modelos históricos y escultóricos (`Bush_standard.stl`, `Jinping.obj`, `Ptin2.obj`, `Thatcher_bust.obj`) con normalización geométrica automática, corrección de normales y re-centrado respecto al origen.
-3. **Avatares Personalizados Face-to-Blendshape:**
+3. **Avatares Personalizados 3D Masks:**
    * Mallas faciales generadas por el Administrador con mapeo de textura fotográfica y 52 morph targets.
 
 ### 5.2. Cinemática Orgánica del Torso y Busto
@@ -135,13 +156,20 @@ Implementado en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/component
   * **Flexión de Cuello:** Distribución gradual de la rotación cefálica (70% en cráneo, 30% en vértebras cervicales).
   * **Balanceo de Hombros:** Reacción con retraso elástico (*spring physics*) al cabeceo lateral (*Roll*).
 ### 5.3. Sincronización Universal de Boca y Mandíbula para Modelos 3D y Personalizados
-* **Separación Topológica Estricta de Labios (`UPPER_LIP_SET` vs `LOWER_LIP_SET`):**
-  * Elimina el arrastre parasitario del labio superior hacia abajo al abrir la boca. El labio superior permanece anclado al maxilar óseo con leve expansión elástica (+0.02 en Y), mientras el labio inferior y la mandíbula descienden con apertura completa (-0.38 en Y, -0.16 en Z hacia la cavidad bucal), ampliando la brecha interlabial de un escaso 0.02 inicial a una apertura real y visible de 0.42 unidades.
+* **Separación Topológica Estricta de Labios (`UPPER_LIP_SET` vs `LOWER_LIP_SET` vs `MOUTH_CORNER_SET`):**
+  * Elimina landmarks mandibulares erróneos del labio superior (43, 83, 106, 182 devueltos a la mandíbula inferior) delimitando con precisión la hendidura interlabial.
+  * **Efecto Habla Auténtico:** La boca se divide estrictamente desde el labio inferior hacia abajo:
+    * El labio superior permanece **100% anclado al cráneo** (cero descenso vertical), actuando como el techo anatómico estable contra el cual el labio inferior se cierra al cesar el habla.
+    * El labio inferior desciende con apertura nítida (-0.38 en Y, -0.12 en Z hacia la cavidad oral) con atenuación lateral armónica hacia las comisuras (61, 78, 291, 308).
+    * La mandíbula y el mentón (landmark 152) articulan de forma continua (-0.24 en Y, -0.07 en Z) siguiendo la rotación mandibular sin saltos ni deformaciones puntiagudas.
+    * Al hablar, no se fuerza elevación artificial de `mouthUpperUp`, preservando la estética natural de articulación bucal.
   * Extiende la segregación topológica a los blendshapes `mouthLowerDownLeft/Right`, `mouthUpperUpLeft/Right`, `mouthRollUpper/Lower` y `mouthClose`, eliminando cancelaciones mutuas en rostros con labios en reposo.
 * **Auto-Reparación y Actualización en Caliente (Runtime Hot-Upgrade) en `ThreeAvatarCanvas.tsx`:**
-  * Al cargar cualquier avatar personalizado previamente guardado (incluyendo modelos en LocalStorage como "busheshe"), el sistema detecta si el morph target `jawOpen` tiene una apertura deficiente o labio superior caído (`drop13 > 0.05` o brecha `< 0.20`) y recalcula en caliente la apertura completa en memoria GPU, sin necesidad de re-generar ni re-subir el avatar.
+  * Al cargar cualquier avatar personalizado previamente guardado (incluyendo modelos en LocalStorage como "busheshe"), el sistema detecta si el morph target `jawOpen` tiene una apertura deficiente o labio superior caído (`delta13 < -0.02` o `delta14 > -0.22`) y recalcula en caliente la apertura completa en memoria GPU respetando el estándar glTF (`morphTargetsRelative: true` con deltas vectoriales `(mx - bx, my - by, mz - bz)`), sin necesidad de re-generar ni re-subir el avatar.
+* **Simulador de Efecto Habla en Estudio 3D Masks:**
+  * Integra control de prueba interactivo (*Probar Habla*) en el modal de administración `FaceBlendshapeStudioModal.tsx` con modulación sinusoidal silábica (3–4 Hz) para previsualizar inmediatamente la separación del labio inferior hacia abajo y el cierre con el labio superior.
 * **Sincronización Rígida de Cuello, Cavidad Oral y Ojos:**
-  * Al mover o rotar la cabeza en avatares Face-to-3D con busto, la cavidad oral anatómica (`oralCavityNode`), las arcadas dentales y los ojos (`eyesGroupNode`) se sincronizan rígidamente con la orientación y posición de `faceMeshNode`, erradicando desalineaciones al girar o inclinar el rostro.
+  * Al mover o rotar la cabeza en avatares 3D Masks con busto, la cavidad oral anatómica (`oralCavityNode`), las arcadas dentales y los ojos (`eyesGroupNode`) se sincronizan rígidamente con la orientación y posición de `faceMeshNode`, erradicando desalineaciones al girar o inclinar el rostro.
   * La arcada dental inferior (`lowerTeeth`) desciende dinámicamente (-0.26 en Y, -0.10 en Z) con la mandíbula, revelando la cámara oral oscura y los dientes al hablar.
 * **Cámara Oral Anatómica con Bloqueo de Transparencia (`generateOralCavityMesh`):**
   * Cavidad cilíndrica cerrada con placa dorsal oscura (`cavityBackPlate` en `#050102`), evitando que el modelo base de cabeza o polígonos traseros se visualicen a través de la boca abierta.
@@ -156,7 +184,7 @@ Implementado en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/component
 
 ---
 
-## 6. Módulo de Administración: Estudio 3D Face-to-Blendshape
+## 6. Módulo de Administración: 3D Masks (Generador Biomimético)
 
 Ubicado en [`src/components/admin/FaceBlendshapeStudioModal.tsx`](file:///d:/Apps/xstreamx/src/components/admin/FaceBlendshapeStudioModal.tsx) y [`src/services/face3d/faceToBlendshapeService.ts`](file:///d:/Apps/xstreamx/src/services/face3d/faceToBlendshapeService.ts):
 
@@ -202,6 +230,7 @@ flowchart LR
   * Utiliza la API IFrame de YouTube con control estricto de tiempo de reproducción.
   * Algoritmo de sincronización con tolerancia de desviación (*drift threshold*) de 1.5 segundos: solo aplica `seekTo` si el desfasaje supera el umbral, previniendo stuttering.
   * Cola colaborativa de videos con soporte para saltar, pausar y reproducción sincronizada multi-usuario gobernada por el administrador.
+  * En la barra de control de llamada ([`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx)), el botón de reapertura de pantalla se titula **Video** (reemplazando la etiqueta anterior *Pantalla*).
 
 ### 7.2. Pizarra Colaborativa (Whiteboard)
 * [`WhiteboardPanel.tsx`](file:///d:/Apps/xstreamx/src/components/whiteboard/WhiteboardPanel.tsx):

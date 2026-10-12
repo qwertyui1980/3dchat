@@ -1,6 +1,6 @@
 # XSTREAMX - 3D Avatar Video Communication
 
-> **Private Repository Source:** [https://github.com/qwertyui1980/presidents.git](https://github.com/qwertyui1980/presidents.git)  
+> **Private Repository Source:** [https://github.com/qwertyui1980/3dchat.git](https://github.com/qwertyui1980/3dchat.git)  
 > **Origin:** Originally created and developed by **XStreamX**.
 
 Private, lightweight real-time 3D avatar telepresence powered by MediaPipe anatomical face tracking, Three.js WebGL graphics, and ultra-low-bandwidth WebRTC data channel mesh communication (zero video frame transmission).

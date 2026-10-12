@@ -199,7 +199,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
         <div className="p-5 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
           {activeTab === 'models' && (
             <div className="space-y-6">
-              {/* 0. Face to Blendshape 3D Studio Banner */}
+              {/* 0. 3D Masks Banner */}
               <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-cyan-950/60 via-indigo-950/60 to-purple-950/60 border border-cyan-500/40 shadow-xl shadow-cyan-950/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-start sm:items-center gap-3.5">
                   <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-cyan-500/30">
@@ -208,7 +208,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                   <div>
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm sm:text-base font-black text-white tracking-wide">
-                        Face to Blendshape 3D Studio
+                        3D Masks
                       </h4>
                       <span className="px-2 py-0.5 rounded-full bg-cyan-400/20 text-cyan-300 border border-cyan-400/40 text-[9px] font-black uppercase">
                         NUEVO

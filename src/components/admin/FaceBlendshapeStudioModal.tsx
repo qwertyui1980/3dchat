@@ -27,6 +27,8 @@ import {
   Shirt,
   Palette,
   Wand2,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import {
   faceToBlendshapeServiceSingleton,
@@ -74,6 +76,11 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   const liveStreamRef = useRef<MediaStream | null>(null);
   const arkitMapperRef = useRef<ARKitBlendshapeMapper>(new ARKitBlendshapeMapper());
   const lastUiUpdateRef = useRef<number>(0);
+
+  // Speech Simulation Preview state (dividing from lower lip down, closing with upper lip)
+  const [isSimulatingSpeech, setIsSimulatingSpeech] = useState(false);
+  const isSimulatingSpeechRef = useRef(false);
+  isSimulatingSpeechRef.current = isSimulatingSpeech;
 
   // 3D Viewport refs
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -204,6 +211,28 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     const animate = () => {
       animationFrameIdRef.current = requestAnimationFrame(animate);
       controls.update();
+
+      if (isSimulatingSpeechRef.current && faceMeshRef.current) {
+        const t = performance.now() * 0.0055;
+        // Natural speech syllabic envelope (cadence between 0 and 0.70)
+        const wave = Math.sin(t * 1.9) * 0.38 + Math.sin(t * 3.7) * 0.22 + Math.sin(t * 0.8) * 0.15;
+        const speechOpen = Math.max(0, Math.min(0.75, wave));
+
+        const mesh = faceMeshRef.current;
+        const jawIdx = mesh.morphTargetDictionary ? mesh.morphTargetDictionary['jawOpen'] : undefined;
+        if (jawIdx !== undefined && mesh.morphTargetInfluences) {
+          mesh.morphTargetInfluences[jawIdx] = speechOpen;
+        }
+
+        if (oralCavityRef.current) {
+          const lowerTeeth = oralCavityRef.current.getObjectByName('lowerTeeth');
+          if (lowerTeeth) {
+            lowerTeeth.position.y = -0.022 - speechOpen * 0.26;
+            lowerTeeth.position.z = -0.038 - speechOpen * 0.10;
+          }
+        }
+      }
+
       renderer.render(scene, camera);
     };
     animate();
@@ -626,7 +655,18 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         lowerTeeth.position.z = -0.038;
       }
     }
+    setIsSimulatingSpeech(false);
+    isSimulatingSpeechRef.current = false;
     setTestBlendshapes(resetValues);
+  };
+
+  const toggleSpeechSimulation = () => {
+    const next = !isSimulatingSpeech;
+    setIsSimulatingSpeech(next);
+    isSimulatingSpeechRef.current = next;
+    if (!next && faceMeshRef.current) {
+      handleBlendshapeChange('jawOpen', 0);
+    }
   };
 
   // Update Transforms & Calibration Parameters
@@ -1001,7 +1041,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-sm sm:text-base font-black text-white tracking-wide">
-                  Face to Blendshape 3D Studio
+                  3D Masks
                 </h2>
                 <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase tracking-wider">
                   ADMIN ONLY
@@ -1447,6 +1487,52 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   >
                     {isLiveTracking ? <VideoOff className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
                     {isLiveTracking ? 'Detener' : 'Activar Webcam'}
+                  </button>
+                </div>
+
+                {/* Speech Animation Preview Card (Divides from lower lip, closes with upper lip) */}
+                <div className="p-3 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-teal-950/30 to-cyan-950/40 border border-emerald-500/30 flex items-center justify-between gap-3 shadow-lg shrink-0">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`w-9 h-9 rounded-xl flex items-center justify-center transition ${
+                        isSimulatingSpeech
+                          ? 'bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/40 animate-pulse'
+                          : 'bg-emerald-500/20 text-emerald-400'
+                      }`}
+                    >
+                      {isSimulatingSpeech ? <Volume2 className="w-5 h-5" /> : <VolumeX className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white">Efecto Habla (Labio Inferior)</span>
+                        {isSimulatingSpeech && (
+                          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9px] font-black uppercase tracking-wider animate-pulse">
+                            HABLANDO
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[10px] text-neutral-400">
+                        {isSimulatingSpeech
+                          ? 'Mouth dividiéndose desde labio inferior y cerrando con el superior'
+                          : 'Simula cadencia de habla para verificar separación y cierre'}
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={toggleSpeechSimulation}
+                    disabled={!hasGeneratedModel || isLiveTracking}
+                    className={`px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition cursor-pointer shadow-md ${
+                      !hasGeneratedModel || isLiveTracking
+                        ? 'opacity-40 cursor-not-allowed bg-neutral-800 text-neutral-500'
+                        : isSimulatingSpeech
+                        ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/30'
+                        : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 shadow-emerald-500/30'
+                    }`}
+                  >
+                    {isSimulatingSpeech ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                    {isSimulatingSpeech ? 'Detener Habla' : 'Probar Habla'}
                   </button>
                 </div>
 

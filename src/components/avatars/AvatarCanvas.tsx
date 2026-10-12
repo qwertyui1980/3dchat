@@ -1,5 +1,5 @@
 import React from 'react';
-import { AvatarId, FaceFeatures } from '../../types';
+import { AvatarId, FaceFeatures, DynamicTrackingMode } from '../../types';
 import { ThreeAvatarCanvas } from './ThreeAvatarCanvas';
 
 interface AvatarCanvasProps {
@@ -10,6 +10,7 @@ interface AvatarCanvasProps {
   className?: string;
   cameraOffsetX?: number;
   cameraOffsetY?: number;
+  trackingMode?: DynamicTrackingMode;
 }
 
 export const AvatarCanvas: React.FC<AvatarCanvasProps> = ({
@@ -20,6 +21,7 @@ export const AvatarCanvas: React.FC<AvatarCanvasProps> = ({
   className = '',
   cameraOffsetX = 0,
   cameraOffsetY = 0,
+  trackingMode,
 }) => {
   return (
     <ThreeAvatarCanvas
@@ -30,6 +32,7 @@ export const AvatarCanvas: React.FC<AvatarCanvasProps> = ({
       className={className}
       cameraOffsetX={cameraOffsetX}
       cameraOffsetY={cameraOffsetY}
+      trackingMode={trackingMode}
     />
   );
 };

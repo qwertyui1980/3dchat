@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { Shield, Mic, MicOff, X, Maximize2, GripHorizontal } from 'lucide-react';
-import { User, FaceFeatures } from '../../types';
+import { User, FaceFeatures, DynamicTrackingMode } from '../../types';
 import { AvatarCanvas } from '../avatars/AvatarCanvas';
 import { AudioWaveform } from '../common/AudioWaveform';
+import { normalizeTrackingMode } from '../../services/face3d/dynamicModeHelper';
 
 interface ParticipantCardProps {
   user: User;
@@ -10,6 +11,9 @@ interface ParticipantCardProps {
   isSelf: boolean;
   isAdmin: boolean;
   isFocusSpeaker?: boolean;
+  cameraOffsetX?: number;
+  cameraOffsetY?: number;
+  trackingMode?: DynamicTrackingMode;
   onFocusClick?: () => void;
   onAdminMute?: (userId: string, state: boolean) => void;
   onAdminKick?: (userId: string) => void;
@@ -21,6 +25,9 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
   isSelf,
   isAdmin,
   isFocusSpeaker = false,
+  cameraOffsetX = 0,
+  cameraOffsetY = 0,
+  trackingMode,
   onFocusClick,
   onAdminMute,
   onAdminKick,
@@ -67,13 +74,14 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
     }
   };
 
-  const isSpeaking = (features.audioVolume > 0.12 || false) && !user.isMuted;
+  const activeMode = normalizeTrackingMode(isSelf ? (trackingMode || 'parafernalia') : (user.trackingMode || 'parafernalia'));
+  const isSpeaking = (features.audioVolume > 0.12 || false) && !user.isMuted && activeMode !== 'gestures';
   const effectiveFeatures = React.useMemo(() => {
-    if (user.isMuted) {
+    if (user.isMuted || activeMode === 'gestures') {
       return { ...features, audioVolume: 0 };
     }
     return features;
-  }, [features, user.isMuted]);
+  }, [features, user.isMuted, activeMode]);
 
   return (
     <div
@@ -99,19 +107,36 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
         features={effectiveFeatures}
         userName=""
         isSpeaking={isSpeaking}
+        cameraOffsetX={isSelf ? cameraOffsetX : 0}
+        cameraOffsetY={isSelf ? cameraOffsetY : 0}
+        trackingMode={activeMode}
         className="w-full h-full"
       />
 
       {/* Top Bar inside Card */}
       <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between z-10 gap-1.5">
-        {/* Left: Voice status badge (when camera is off) */}
+        {/* Left: Mode / Voice status badge */}
         <div className="flex items-center gap-1.5 shrink-0">
-          {!user.isCameraActive && (
+          {activeMode === 'gestures' ? (
             <span
-              className="px-1.5 py-0.5 rounded-md bg-neutral-900/80 text-sky-400 border border-sky-900/40 text-[10px] font-mono"
-              title="Cámara desactivada • Animación de boca por voz (Lip-Sync)"
+              className="px-1.5 py-0.5 rounded-md bg-emerald-950/80 text-emerald-300 border border-emerald-800/40 text-[10px] font-mono"
+              title="Modo Reconocimiento de Gestos • Visión 100% Cámara"
             >
-              Solo Voz
+              Gestos
+            </span>
+          ) : activeMode === 'lipsync' ? (
+            <span
+              className="px-1.5 py-0.5 rounded-md bg-amber-950/80 text-amber-300 border border-amber-800/40 text-[10px] font-mono"
+              title="Modo Lip Sync • Máscara estática y boca por audio"
+            >
+              Lip Sync
+            </span>
+          ) : (
+            <span
+              className="px-1.5 py-0.5 rounded-md bg-cyan-950/80 text-cyan-300 border border-cyan-800/40 text-[10px] font-mono"
+              title="Modo Parafernalia • Ritmo de voz, gestos y zoom dinámico"
+            >
+              Parafernalia
             </span>
           )}
         </div>

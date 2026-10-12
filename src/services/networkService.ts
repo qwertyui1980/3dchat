@@ -2,7 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import mqtt, { MqttClient } from 'mqtt';
 import { Peer, DataConnection, MediaConnection } from 'peerjs';
 import { RealtimeChannel } from '@supabase/supabase-js';
-import { User, RoomInfo, FaceFeatures, ChatMessage, AvatarId, VideoQueueItem, RoomMediaState, WhiteboardStroke } from '../types';
+import { User, RoomInfo, FaceFeatures, ChatMessage, AvatarId, VideoQueueItem, RoomMediaState, WhiteboardStroke, DynamicTrackingMode } from '../types';
 import { getSupabaseClient } from './supabaseClient';
 
 const PUBLIC_MQTT_BROKERS = [
@@ -338,21 +338,32 @@ export class NetworkService {
     }
   }
 
-  joinRoom(roomId: string, userName: string, avatarId: AvatarId, createAsAdmin: boolean) {
+  joinRoom(
+    roomId: string,
+    userName: string,
+    avatarId: AvatarId,
+    createAsAdmin: boolean,
+    initialOptions?: {
+      isMuted?: boolean;
+      isCameraActive?: boolean;
+      trackingMode?: DynamicTrackingMode;
+    }
+  ) {
     this.connect();
 
     const cleanRoomId = roomId.trim().toLowerCase() || 'alpha';
     const cleanUserName = userName.trim() || 'Participante';
 
-    // Create a unique local user identity
+    // Create a unique local user identity with options selected by user
     const localUser: User = {
       id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       name: cleanUserName,
       avatarId: avatarId,
       role: createAsAdmin ? 'admin' : 'participant',
       roomId: cleanRoomId,
-      isMuted: true,
-      isCameraActive: true,
+      isMuted: initialOptions?.isMuted ?? true,
+      isCameraActive: initialOptions?.isCameraActive ?? true,
+      trackingMode: initialOptions?.trackingMode ?? 'hybrid',
     };
 
     const localRoom: RoomInfo = {
@@ -1562,6 +1573,39 @@ export class NetworkService {
     });
 
     this.socket?.emit('toggle_camera', { isCameraActive });
+
+    if (this.currentRoom && this.currentUser) {
+      this.broadcastChannel?.postMessage({
+        type: 'tab_user_updated',
+        roomId: this.currentRoom.id,
+        user: this.currentUser,
+      });
+    }
+  }
+
+  updateTrackingMode(mode: DynamicTrackingMode) {
+    if (this.currentUser) {
+      this.currentUser.trackingMode = mode;
+    }
+    if (this.currentRoom && this.currentUser) {
+      this.currentRoom.participants = this.currentRoom.participants.map((p) =>
+        p.id === this.currentUser?.id ? { ...p, trackingMode: mode } : p
+      );
+    }
+
+    this.publishMeshMessage({
+      type: 'user_updated',
+      roomId: this.currentRoom?.id,
+      user: this.currentUser,
+    });
+
+    this.supabaseChannel?.send({
+      type: 'broadcast',
+      event: 'user_updated',
+      payload: { user: this.currentUser },
+    });
+
+    this.socket?.emit('update_user', { user: this.currentUser });
 
     if (this.currentRoom && this.currentUser) {
       this.broadcastChannel?.postMessage({
