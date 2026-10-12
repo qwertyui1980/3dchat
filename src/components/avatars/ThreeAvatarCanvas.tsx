@@ -816,14 +816,21 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             }
           });
 
-          // Check if this model is a full-body character with a skeleton rig
+          // Check if this model is a full-body character with a skeleton rig or has a jaw bone
           let hasSkeletalBones = false;
           let customHeadBone: THREE.Bone | null = null;
+          let customJawBone: THREE.Bone | null = null;
+          let initialJawRot: THREE.Euler | null = null;
           clonedScene.traverse((child) => {
             if ((child as THREE.Bone).isBone) {
               hasSkeletalBones = true;
-              if (!customHeadBone && child.name && child.name.toLowerCase().includes('head')) {
+              const bName = child.name ? child.name.toLowerCase() : '';
+              if (!customHeadBone && bName.includes('head')) {
                 customHeadBone = child as THREE.Bone;
+              }
+              if (!customJawBone && (bName.includes('jaw') || bName.includes('chin') || bName.includes('mandible'))) {
+                customJawBone = child as THREE.Bone;
+                initialJawRot = (child as THREE.Bone).rotation.clone();
               }
             }
           });
@@ -877,10 +884,13 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             }
           });
 
-          const torsoNode = clonedScene.getObjectByName('torsoGroup');
+          const torsoNode = clonedScene.getObjectByName('torsoGroup') || clonedScene.getObjectByName('torsoBustMesh');
           const neckNode = clonedScene.getObjectByName('neckPivot');
           const faceMeshNode = clonedScene.getObjectByName('faceMesh');
           const headBaseNode = clonedScene.getObjectByName('headBaseMesh');
+          const lowerTeethNode = clonedScene.getObjectByName('lowerTeeth');
+          const eyeLeftNode = clonedScene.getObjectByName('eyeLeft');
+          const eyeRightNode = clonedScene.getObjectByName('eyeRight');
 
           const controller: Character3DController = {
             group: rootGroup,
@@ -917,9 +927,31 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
               // Facial expressions & 52 ARKit blendshapes synchronization
               const bShapes = features.blendshapes;
               const effectiveVol = Math.max(0, features.audioVolume || 0);
-              const speechJaw = effectiveVol > 0.003 ? Math.min(1, (effectiveVol - 0.003) * 5.0) : 0;
+              const speechJaw = effectiveVol > 0.003 ? Math.min(1, (effectiveVol - 0.003) * 5.2) : 0;
               const rawJaw = features.jawOpen || 0;
-              const finalJaw = Math.max(rawJaw, speechJaw);
+              // Responsive, amplified mouth aperture (1.25x scaling for clear speech articulation)
+              const finalJaw = Math.min(1, Math.max(rawJaw * 1.25, speechJaw));
+
+              // Animate Lower Dental Arch in Oral Cavity
+              if (lowerTeethNode) {
+                lowerTeethNode.position.y = -0.038 - finalJaw * 0.08;
+                lowerTeethNode.position.z = -0.065 - finalJaw * 0.04;
+              }
+
+              // Animate Skeletal Jaw Bone if present in rigged characters
+              if (customJawBone && initialJawRot) {
+                customJawBone.rotation.x = initialJawRot.x + finalJaw * 0.42;
+              }
+
+              // Animate 3D Eyeballs with user gaze tracking
+              if (eyeLeftNode && eyeRightNode) {
+                const targetEyeYaw = (features.gazeX || 0) * 0.45;
+                const targetEyePitch = -(features.gazeY || 0) * 0.35;
+                eyeLeftNode.rotation.y = THREE.MathUtils.lerp(eyeLeftNode.rotation.y, targetEyeYaw, 0.35);
+                eyeLeftNode.rotation.x = THREE.MathUtils.lerp(eyeLeftNode.rotation.x, targetEyePitch, 0.35);
+                eyeRightNode.rotation.y = THREE.MathUtils.lerp(eyeRightNode.rotation.y, targetEyeYaw, 0.35);
+                eyeRightNode.rotation.x = THREE.MathUtils.lerp(eyeRightNode.rotation.x, targetEyePitch, 0.35);
+              }
 
               // Build lower-case lookup map for bShapes once per frame if available
               let bsLookup: Record<string, number> | null = null;
@@ -933,51 +965,131 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
               for (let m = 0; m < morphMeshes.length; m++) {
                 const { dict, infl, keys } = morphMeshes[m];
 
-                if (bShapes && bsLookup) {
-                  // Direct 1:1 ARKit 52 Blendshapes tracking from camera
-                  for (let k = 0; k < keys.length; k++) {
-                    const key = keys[k];
-                    const lk = key.toLowerCase();
-                    const idx = dict[key];
+                for (let k = 0; k < keys.length; k++) {
+                  const key = keys[k];
+                  const lk = key.toLowerCase();
+                  // Strip common prefixes (e.g. "Wolf3D_Avatar.jawOpen" -> "jawopen")
+                  const cleanKey = lk.replace(/^.*[.:_/]/, '');
+                  const idx = dict[key];
 
-                    let targetVal: number | undefined = undefined;
-                    if (bShapes[key] !== undefined) {
-                      targetVal = bShapes[key];
-                    } else if (bsLookup[lk] !== undefined) {
+                  let targetVal: number | undefined = undefined;
+
+                  // 1. Direct match from bShapes or lowercase lookup
+                  if (bShapes && bShapes[key] !== undefined) {
+                    targetVal = bShapes[key];
+                  } else if (bsLookup) {
+                    if (bsLookup[lk] !== undefined) {
                       targetVal = bsLookup[lk];
-                    }
-
-                    // Dynamically blend voice speech into jawOpen
-                    if (lk === 'jawopen') {
-                      targetVal = Math.max(targetVal ?? 0, finalJaw);
-                    }
-
-                    if (targetVal !== undefined) {
-                      infl[idx] = THREE.MathUtils.lerp(infl[idx], Math.min(1, Math.max(0, targetVal)), 0.45);
+                    } else if (bsLookup[cleanKey] !== undefined) {
+                      targetVal = bsLookup[cleanKey];
                     }
                   }
-                } else {
-                  // Fallback mode: generic feature mapping when camera blendshapes are not present
-                  for (let k = 0; k < keys.length; k++) {
-                    const key = keys[k];
-                    const lk = key.toLowerCase();
-                    const idx = dict[key];
 
-                    if (lk === 'jawopen' || lk === 'mouthopen' || lk === 'viseme_aa') {
-                      infl[idx] = THREE.MathUtils.lerp(infl[idx], finalJaw, 0.35);
-                    } else if (lk === 'eyeblinkleft' || lk === 'blink_l') {
-                      infl[idx] = THREE.MathUtils.lerp(infl[idx], features.eyeBlinkLeft || 0, 0.4);
-                    } else if (lk === 'eyeblinkright' || lk === 'blink_r') {
-                      infl[idx] = THREE.MathUtils.lerp(infl[idx], features.eyeBlinkRight || 0, 0.4);
-                    } else if (lk === 'mouthsmileleft' || lk === 'mouthsmileright' || lk === 'smile') {
-                      infl[idx] = THREE.MathUtils.lerp(infl[idx], Math.max(0, features.mouthSmile || 0), 0.35);
-                    } else if (lk === 'mouthpucker') {
-                      infl[idx] = THREE.MathUtils.lerp(infl[idx], features.mouthPucker || 0, 0.35);
-                    } else if (lk === 'browinnerup' || lk === 'browup') {
-                      infl[idx] = THREE.MathUtils.lerp(infl[idx], features.browRaise || 0, 0.35);
-                    } else if (lk === 'browdownleft' || lk === 'browdownright') {
-                      infl[idx] = THREE.MathUtils.lerp(infl[idx], features.browFurrow || 0, 0.35);
+                  // 2. Comprehensive Mouth & Jaw Opening Synchronization
+                  // Handles ARKit (jawOpen), VRM (mouthOpen), standard DCCs (mouth_open, jaw, open, visemes)
+                  const isJawOpen = (
+                    cleanKey === 'jawopen' ||
+                    cleanKey === 'mouthopen' ||
+                    cleanKey === 'jaw' ||
+                    cleanKey === 'open' ||
+                    cleanKey === 'mouth_open' ||
+                    cleanKey === 'jaw_open' ||
+                    cleanKey === 'mouth' ||
+                    cleanKey.includes('jawopen') ||
+                    cleanKey.includes('mouthopen') ||
+                    cleanKey.includes('viseme_aa') ||
+                    cleanKey.includes('viseme_a') ||
+                    cleanKey.includes('v_aa') ||
+                    cleanKey.includes('v_a') ||
+                    cleanKey === 'aa' ||
+                    cleanKey === 'ah' ||
+                    cleanKey === 'fcl_mth_o' ||
+                    cleanKey === 'fcl_mth_a'
+                  );
+
+                  if (isJawOpen) {
+                    targetVal = Math.max(targetVal ?? 0, finalJaw);
+                  }
+
+                  // 3. Suppress mouthClose when jaw is open (eliminates lip-pinching conflict)
+                  if (cleanKey.includes('mouthclose') || cleanKey.includes('mouth_close')) {
+                    const closeAttenuation = Math.max(0, 1 - finalJaw * 2.2);
+                    targetVal = (targetVal ?? (bShapes?.['mouthClose'] ?? 0)) * closeAttenuation;
+                  }
+
+                  // 4. Lower Lip drop synchronization
+                  if (cleanKey.includes('mouthlowerdown') || cleanKey.includes('mouth_lower_down')) {
+                    targetVal = Math.max(targetVal ?? 0, finalJaw * 0.45);
+                  }
+
+                  // 5. Upper Lip lift synchronization
+                  if (cleanKey.includes('mouthupperup') || cleanKey.includes('mouth_upper_up')) {
+                    targetVal = Math.max(targetVal ?? 0, finalJaw * 0.15);
+                  }
+
+                  // 6. Smile & Frown synchronization
+                  if (cleanKey.includes('smile') || cleanKey.includes('mouthsmile')) {
+                    const isLeft = cleanKey.includes('left') || cleanKey.includes('_l');
+                    const isRight = cleanKey.includes('right') || cleanKey.includes('_r');
+                    if (isLeft) {
+                      targetVal = targetVal ?? bShapes?.['mouthSmileLeft'] ?? features.mouthSmileLeft ?? Math.max(0, features.mouthSmile || 0);
+                    } else if (isRight) {
+                      targetVal = targetVal ?? bShapes?.['mouthSmileRight'] ?? features.mouthSmileRight ?? Math.max(0, features.mouthSmile || 0);
+                    } else {
+                      targetVal = targetVal ?? Math.max(0, features.mouthSmile || 0);
                     }
+                  } else if (cleanKey.includes('frown') || cleanKey.includes('mouthfrown')) {
+                    const isLeft = cleanKey.includes('left') || cleanKey.includes('_l');
+                    const isRight = cleanKey.includes('right') || cleanKey.includes('_r');
+                    if (isLeft) {
+                      targetVal = targetVal ?? bShapes?.['mouthFrownLeft'] ?? (features.mouthSmile < 0 ? -features.mouthSmile : 0);
+                    } else if (isRight) {
+                      targetVal = targetVal ?? bShapes?.['mouthFrownRight'] ?? (features.mouthSmile < 0 ? -features.mouthSmile : 0);
+                    } else {
+                      targetVal = targetVal ?? (features.mouthSmile < 0 ? -features.mouthSmile : 0);
+                    }
+                  }
+
+                  // 7. Pucker & Funnel
+                  if (cleanKey.includes('pucker') || cleanKey.includes('mouthpucker')) {
+                    targetVal = targetVal ?? bShapes?.['mouthPucker'] ?? features.mouthPucker ?? 0;
+                  }
+                  if (cleanKey.includes('funnel') || cleanKey.includes('mouthfunnel')) {
+                    targetVal = targetVal ?? bShapes?.['mouthFunnel'] ?? 0;
+                  }
+
+                  // 8. Eyes Blinking
+                  if (cleanKey.includes('blink') || cleanKey.includes('eyeblink')) {
+                    const isLeft = cleanKey.includes('left') || cleanKey.includes('_l');
+                    const isRight = cleanKey.includes('right') || cleanKey.includes('_r');
+                    if (isLeft) {
+                      targetVal = targetVal ?? bShapes?.['eyeBlinkLeft'] ?? features.eyeBlinkLeft ?? 0;
+                    } else if (isRight) {
+                      targetVal = targetVal ?? bShapes?.['eyeBlinkRight'] ?? features.eyeBlinkRight ?? 0;
+                    } else {
+                      targetVal = targetVal ?? ((features.eyeBlinkLeft || 0) + (features.eyeBlinkRight || 0)) / 2;
+                    }
+                  }
+
+                  // 9. Eyebrows
+                  if (cleanKey.includes('browinnerup') || cleanKey.includes('browup')) {
+                    targetVal = targetVal ?? bShapes?.['browInnerUp'] ?? features.browRaise ?? 0;
+                  } else if (cleanKey.includes('browdown')) {
+                    const isLeft = cleanKey.includes('left') || cleanKey.includes('_l');
+                    const isRight = cleanKey.includes('right') || cleanKey.includes('_r');
+                    if (isLeft) {
+                      targetVal = targetVal ?? bShapes?.['browDownLeft'] ?? features.browFurrow ?? 0;
+                    } else if (isRight) {
+                      targetVal = targetVal ?? bShapes?.['browDownRight'] ?? features.browFurrow ?? 0;
+                    } else {
+                      targetVal = targetVal ?? features.browFurrow ?? 0;
+                    }
+                  }
+
+                  // 10. Smooth interpolation with fast responsive speech attack
+                  if (targetVal !== undefined) {
+                    const speed = isJawOpen ? (targetVal > (infl[idx] || 0) ? 0.65 : 0.50) : 0.45;
+                    infl[idx] = THREE.MathUtils.lerp(infl[idx] || 0, Math.min(1, Math.max(0, targetVal)), speed);
                   }
                 }
               }

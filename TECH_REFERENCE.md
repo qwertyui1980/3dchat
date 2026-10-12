@@ -134,7 +134,16 @@ Implementado en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/component
 * A diferencia de cabezas flotantes estáticas, el sistema integra **cinemática bi-articular de torso**:
   * **Flexión de Cuello:** Distribución gradual de la rotación cefálica (70% en cráneo, 30% en vértebras cervicales).
   * **Balanceo de Hombros:** Reacción con retraso elástico (*spring physics*) al cabeceo lateral (*Roll*).
-  * **Simulación de Respiración:** Modulación sinusoidal sutil en escala de tórax y caja torácica.
+### 5.3. Sincronización Universal de Boca y Mandíbula para Modelos 3D y Personalizados
+* **Resolución Inteligente de Nombres de Morph Targets:**
+  * Remueve prefijos de malla (e.g. `Wolf3D_Avatar.jawOpen`, `CC_Base_Body:mouthOpen`, `Head.jaw`) y normaliza alias universales (`jawOpen`, `mouthOpen`, `mouth_open`, `jaw_open`, `jaw`, `open`, `viseme_aa`, `v_aa`, `aa`, `fcl_mth_o`).
+* **Supresión Activa de Conflictos (`mouthClose`):**
+  * Atenúa dinámicamente el blendshape `mouthClose` cuando `finalJaw > 0`, erradicando el conflicto biomecánico donde MediaPipe cerraba los labios mientras la mandíbula intentaba abrirse.
+* **Cinemática Dental y Mandibular Esquelética:**
+  * Desplaza automáticamente la arcada dental inferior (`lowerTeeth`) en la cavidad oral anatómica de modelos Face-to-3D.
+  * Detecta y rota huesos esqueléticos de mandíbula (`customJawBone`) en modelos con rig/esqueleto.
+* **Apertura Articulada y Respuesta sin Lag:**
+  * Factor de apertura calibrado (1.25x) con ataque rápido (interpolación a 0.65) para sincronización labial nítida en tiempo real tanto por webcam como por audio lip-sync.
 
 ---
 

@@ -322,6 +322,17 @@ export class MediaPipeFaceTracker {
               const jawLerpFactor = pureLipOpen > currentJaw ? 0.95 : 0.80;
               const jawOpen = lerp(currentJaw, pureLipOpen, jawLerpFactor);
 
+              // Synchronize bsMap ARKit blendshapes with calibrated biomechanical tracking
+              bsMap['jawOpen'] = Math.max(bsMap['jawOpen'] ?? 0, jawOpen);
+              if (jawOpen > 0.04) {
+                // Attenuate mouthClose when jaw opens to prevent lip-pinching conflict
+                bsMap['mouthClose'] = (bsMap['mouthClose'] ?? 0) * Math.max(0, 1 - jawOpen * 2.2);
+                bsMap['mouthLowerDownLeft'] = Math.max(bsMap['mouthLowerDownLeft'] ?? 0, jawOpen * 0.45);
+                bsMap['mouthLowerDownRight'] = Math.max(bsMap['mouthLowerDownRight'] ?? 0, jawOpen * 0.45);
+                bsMap['mouthUpperUpLeft'] = Math.max(bsMap['mouthUpperUpLeft'] ?? 0, jawOpen * 0.15);
+                bsMap['mouthUpperUpRight'] = Math.max(bsMap['mouthUpperUpRight'] ?? 0, jawOpen * 0.15);
+              }
+
               // Mouth Smile: Physical left & right corner elevation + blendshapes
               const lipCenterY = (upperInnerLip.y + lowerInnerLip.y) / 2;
               const leftCornerLift = ((lipCenterY - leftCorner.y) / mouthWidth) * 3.5;
