@@ -595,6 +595,14 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     if (idx !== undefined && mesh.morphTargetInfluences && idx < mesh.morphTargetInfluences.length) {
       mesh.morphTargetInfluences[idx] = value;
     }
+
+    if (name === 'jawOpen' && oralCavityRef.current) {
+      const lowerTeeth = oralCavityRef.current.getObjectByName('lowerTeeth');
+      if (lowerTeeth) {
+        lowerTeeth.position.y = -0.022 - value * 0.26;
+        lowerTeeth.position.z = -0.038 - value * 0.10;
+      }
+    }
   };
 
   // Reset Blendshapes
@@ -611,6 +619,13 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         }
       }
     });
+    if (oralCavityRef.current) {
+      const lowerTeeth = oralCavityRef.current.getObjectByName('lowerTeeth');
+      if (lowerTeeth) {
+        lowerTeeth.position.y = -0.022;
+        lowerTeeth.position.z = -0.038;
+      }
+    }
     setTestBlendshapes(resetValues);
   };
 

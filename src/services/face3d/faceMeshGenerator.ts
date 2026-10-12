@@ -36,6 +36,20 @@ export const OUTER_LIP_INDICES = [
   61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146,
 ];
 
+export const UPPER_LIP_INDICES = [
+  61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291,
+  78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308,
+  164, 167, 165, 92, 186, 57, 43, 106, 182, 83,
+];
+
+export const LOWER_LIP_INDICES = [
+  95, 88, 178, 87, 14, 317, 402, 318, 324,
+  146, 91, 181, 84, 17, 314, 405, 321, 375,
+];
+
+export const UPPER_LIP_SET = new Set(UPPER_LIP_INDICES);
+export const LOWER_LIP_SET = new Set(LOWER_LIP_INDICES);
+
 /**
  * Creates a dark anatomical oral cavity backing mesh with dental arches
  * positioned directly behind the mouth opening. Prevents see-through gaps
@@ -48,12 +62,12 @@ export function generateOralCavityMesh(
   const group = new THREE.Group();
   group.name = 'oralCavity';
 
-  // 1. Dark interior oral chamber (curved cylinder back)
-  const cavityGeo = new THREE.CylinderGeometry(0.26, 0.22, depth, 24, 1, true, -Math.PI / 2, Math.PI);
+  // 1. Dark interior oral chamber (closed curved cylinder with dark back plate)
+  const cavityGeo = new THREE.CylinderGeometry(0.28, 0.24, depth, 24, 1, false, -Math.PI / 2, Math.PI);
   const cavityMat = new THREE.MeshStandardMaterial({
-    color: 0x100406, // Deep dark oral red-black
-    roughness: 0.85,
-    metalness: 0.05,
+    color: 0x080204, // Deep dark oral chamber
+    roughness: 0.90,
+    metalness: 0.02,
     side: THREE.DoubleSide,
   });
   const cavityMesh = new THREE.Mesh(cavityGeo, cavityMat);
@@ -62,26 +76,37 @@ export function generateOralCavityMesh(
   cavityMesh.position.set(pMouthCenter.x, pMouthCenter.y, pMouthCenter.z - depth * 0.52);
   group.add(cavityMesh);
 
+  // Solid dark backing plate to prevent head base model from ever showing through
+  const backPlateGeo = new THREE.PlaneGeometry(0.55, 0.40);
+  const backPlateMat = new THREE.MeshBasicMaterial({
+    color: 0x050102,
+    side: THREE.DoubleSide,
+  });
+  const backPlate = new THREE.Mesh(backPlateGeo, backPlateMat);
+  backPlate.name = 'cavityBackPlate';
+  backPlate.position.set(pMouthCenter.x, pMouthCenter.y, pMouthCenter.z - depth * 0.92);
+  group.add(backPlate);
+
   // 2. Upper Dental Arch (ivory curved band)
   const teethMat = new THREE.MeshStandardMaterial({
-    color: 0xf3f4f6,
-    roughness: 0.28,
+    color: 0xf5f6f8,
+    roughness: 0.25,
     metalness: 0.05,
   });
-  const upperTeethGeo = new THREE.TorusGeometry(0.13, 0.022, 10, 24, Math.PI * 0.85);
+  const upperTeethGeo = new THREE.TorusGeometry(0.14, 0.024, 10, 24, Math.PI * 0.85);
   const upperTeeth = new THREE.Mesh(upperTeethGeo, teethMat);
   upperTeeth.name = 'upperTeeth';
   upperTeeth.rotation.x = Math.PI * 0.45;
   upperTeeth.rotation.z = Math.PI * 0.075;
-  upperTeeth.position.set(pMouthCenter.x, pMouthCenter.y + 0.038, pMouthCenter.z - 0.065);
+  upperTeeth.position.set(pMouthCenter.x, pMouthCenter.y + 0.018, pMouthCenter.z - 0.038);
   group.add(upperTeeth);
 
-  // 3. Lower Dental Arch (can animate downward with jawOpen)
+  // 3. Lower Dental Arch (animates downward with jawOpen)
   const lowerTeeth = new THREE.Mesh(upperTeethGeo.clone(), teethMat);
   lowerTeeth.name = 'lowerTeeth';
   lowerTeeth.rotation.x = -Math.PI * 0.45;
   lowerTeeth.rotation.z = Math.PI * 0.075;
-  lowerTeeth.position.set(pMouthCenter.x, pMouthCenter.y - 0.038, pMouthCenter.z - 0.065);
+  lowerTeeth.position.set(pMouthCenter.x, pMouthCenter.y - 0.022, pMouthCenter.z - 0.038);
   group.add(lowerTeeth);
 
   return group;
@@ -518,26 +543,41 @@ export class FaceMeshGenerator {
         // ==========================================
         case 'jawOpen': {
           const jawScale = this.mouthParams.jawOpenScale ?? 1.0;
-          // Jaw rotates downward around upper lip threshold
-          if (base.y < pUpperLip.y + 0.05) {
-            const jawRange = Math.abs(pUpperLip.y - pChin.y) || 0.6;
-            const t = THREE.MathUtils.clamp((pUpperLip.y + 0.05 - base.y) / jawRange, 0, 1);
-            const w = t * t;
-            y -= 0.28 * jawScale * w;
-            z -= 0.06 * jawScale * w;
+          const isUpper = UPPER_LIP_SET.has(index) || base.y > pMouthCenter.y + 0.02;
+          const isLower = LOWER_LIP_SET.has(index);
 
-            // Downward drop for lower lip margin with inward recession (-Z) to curve over teeth
-            const lipDist = distTo(index, 14);
-            const lipFalloff = smoothRadialFalloff(lipDist, 0.22);
-            y -= 0.14 * jawScale * lipFalloff;
-            z -= 0.09 * jawScale * lipFalloff;
-          }
-          // Upper lip stabilization
-          const upDist = distTo(index, 13);
-          if (upDist < 0.18) {
-            const upFalloff = smoothRadialFalloff(upDist, 0.18);
-            y += 0.02 * upFalloff;
-            z -= 0.04 * upFalloff;
+          if (isUpper) {
+            // Upper lip stays anchored to skull, slight natural upward lift (+Y)
+            const upDist = distTo(index, 13);
+            if (upDist < 0.18) {
+              const upFalloff = smoothRadialFalloff(upDist, 0.18);
+              y += 0.02 * jawScale * upFalloff;
+              z -= 0.01 * jawScale * upFalloff;
+            }
+          } else {
+            // Lower lip & jaw
+            if (isLower) {
+              // Direct, pronounced lower lip downward drop (-Y) and inward oral recession (-Z)
+              const lipDist = distTo(index, 14);
+              const lipFalloff = Math.max(0.65, smoothRadialFalloff(lipDist, 0.28));
+              y -= 0.38 * jawScale * lipFalloff;
+              z -= 0.16 * jawScale * lipFalloff;
+            } else if (base.y < pMouthCenter.y) {
+              // Chin and mandible bone rotation
+              const jawRange = Math.abs(pMouthCenter.y - pChin.y) || 0.6;
+              const t = THREE.MathUtils.clamp((pMouthCenter.y - base.y) / jawRange, 0, 1);
+              const w = t * t;
+              y -= 0.26 * jawScale * w;
+              z -= 0.08 * jawScale * w;
+
+              // Smooth transition near the lower lip
+              const lipDist = distTo(index, 14);
+              if (lipDist < 0.25) {
+                const fall = smoothRadialFalloff(lipDist, 0.25);
+                y -= 0.18 * jawScale * fall;
+                z -= 0.10 * jawScale * fall;
+              }
+            }
           }
           break;
         }
@@ -652,29 +692,37 @@ export class FaceMeshGenerator {
         }
 
         case 'mouthRollUpper': {
-          const w = smoothRadialFalloff(distTo(index, 0), 0.22);
-          z -= 0.12 * w;
-          y -= 0.06 * w;
+          if (!LOWER_LIP_SET.has(index) && base.y >= pMouthCenter.y - 0.01) {
+            const w = smoothRadialFalloff(distTo(index, 0), 0.22);
+            z -= 0.14 * w;
+            y -= 0.06 * w;
+          }
           break;
         }
 
         case 'mouthRollLower': {
-          const w = smoothRadialFalloff(distTo(index, 17), 0.22);
-          z -= 0.12 * w;
-          y += 0.06 * w;
+          if (!UPPER_LIP_SET.has(index) && base.y <= pMouthCenter.y + 0.01) {
+            const w = smoothRadialFalloff(distTo(index, 17), 0.22);
+            z -= 0.14 * w;
+            y += 0.06 * w;
+          }
           break;
         }
 
         case 'mouthShrugUpper': {
-          const w = smoothRadialFalloff(distTo(index, 0), 0.25);
-          y += 0.14 * w;
+          if (!LOWER_LIP_SET.has(index)) {
+            const w = smoothRadialFalloff(distTo(index, 0), 0.25);
+            y += 0.14 * w;
+          }
           break;
         }
 
         case 'mouthShrugLower': {
-          const w = smoothRadialFalloff(distTo(index, 17), 0.25);
-          y += 0.16 * w;
-          z += 0.08 * w;
+          if (!UPPER_LIP_SET.has(index)) {
+            const w = smoothRadialFalloff(distTo(index, 17), 0.25);
+            y += 0.16 * w;
+            z += 0.08 * w;
+          }
           break;
         }
 
@@ -691,34 +739,47 @@ export class FaceMeshGenerator {
         }
 
         case 'mouthLowerDownLeft': {
-          const w = smoothRadialFalloff(distTo(index, 87), 0.25);
-          y -= 0.15 * w;
+          if (!UPPER_LIP_SET.has(index) && base.y <= pMouthCenter.y + 0.01) {
+            const w = smoothRadialFalloff(distTo(index, 87), 0.25);
+            y -= 0.20 * w;
+            z -= 0.06 * w;
+          }
           break;
         }
 
         case 'mouthLowerDownRight': {
-          const w = smoothRadialFalloff(distTo(index, 317), 0.25);
-          y -= 0.15 * w;
+          if (!UPPER_LIP_SET.has(index) && base.y <= pMouthCenter.y + 0.01) {
+            const w = smoothRadialFalloff(distTo(index, 317), 0.25);
+            y -= 0.20 * w;
+            z -= 0.06 * w;
+          }
           break;
         }
 
         case 'mouthUpperUpLeft': {
-          const w = smoothRadialFalloff(distTo(index, 37), 0.25);
-          y += 0.15 * w;
+          if (!LOWER_LIP_SET.has(index) && base.y >= pMouthCenter.y - 0.01) {
+            const w = smoothRadialFalloff(distTo(index, 37), 0.25);
+            y += 0.20 * w;
+          }
           break;
         }
 
         case 'mouthUpperUpRight': {
-          const w = smoothRadialFalloff(distTo(index, 267), 0.25);
-          y += 0.15 * w;
+          if (!LOWER_LIP_SET.has(index) && base.y >= pMouthCenter.y - 0.01) {
+            const w = smoothRadialFalloff(distTo(index, 267), 0.25);
+            y += 0.20 * w;
+          }
           break;
         }
 
         case 'mouthClose': {
-          const wUpper = smoothRadialFalloff(distTo(index, 13), 0.25);
-          const wLower = smoothRadialFalloff(distTo(index, 14), 0.25);
-          y -= 0.07 * wUpper;
-          y += 0.07 * wLower;
+          if (UPPER_LIP_SET.has(index) || base.y > pMouthCenter.y) {
+            const wUpper = smoothRadialFalloff(distTo(index, 13), 0.22);
+            y -= 0.08 * wUpper;
+          } else if (LOWER_LIP_SET.has(index) || base.y < pMouthCenter.y) {
+            const wLower = smoothRadialFalloff(distTo(index, 14), 0.22);
+            y += 0.08 * wLower;
+          }
           break;
         }
 

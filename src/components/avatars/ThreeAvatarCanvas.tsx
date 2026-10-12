@@ -25,6 +25,7 @@ import {
   buildMipipiCharacter,
 } from './threeCharacterBuilder';
 import { getAssetUrl } from '../../utils/assetUrl';
+import { UPPER_LIP_SET, LOWER_LIP_SET } from '../../services/face3d/faceMeshGenerator';
 
 const ROBOT_GLB_URL =
   'https://cdn.jsdelivr.net/gh/mrdoob/three.js@dev/examples/models/gltf/RobotExpressive/RobotExpressive.glb';
@@ -884,6 +885,102 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             }
           });
 
+          // Automatically detect and upgrade jawOpen morph target if loaded model has old/shallow mouth aperture
+          const faceMeshObj = clonedScene.getObjectByName('faceMesh') as THREE.Mesh | undefined;
+          if (faceMeshObj && faceMeshObj.isMesh && faceMeshObj.geometry) {
+            const fGeo = faceMeshObj.geometry;
+            const jawIdx = faceMeshObj.morphTargetDictionary ? faceMeshObj.morphTargetDictionary['jawOpen'] : undefined;
+            if (jawIdx !== undefined && fGeo.morphAttributes && fGeo.morphAttributes.position && fGeo.morphAttributes.position[jawIdx]) {
+              const morphAttr = fGeo.morphAttributes.position[jawIdx];
+              const posAttr = fGeo.getAttribute('position');
+              if (posAttr && posAttr.count >= 468) {
+                const y13_base = posAttr.getY(13);
+                const y13_morph = morphAttr.getY(13);
+                const y14_base = posAttr.getY(14);
+                const y14_morph = morphAttr.getY(14);
+                const drop13 = y13_base - y13_morph;
+                const drop14 = y14_base - y14_morph;
+
+                // If upper lip dropped along with lower lip, or opening gap is < 0.20 units
+                if (drop13 > 0.05 || (drop14 - drop13) < 0.20) {
+                  const pMouthCenter = {
+                    x: (posAttr.getX(13) + posAttr.getX(14)) / 2,
+                    y: (posAttr.getY(13) + posAttr.getY(14)) / 2,
+                    z: (posAttr.getZ(13) + posAttr.getZ(14)) / 2,
+                  };
+                  const pChin = {
+                    x: posAttr.getX(152),
+                    y: posAttr.getY(152),
+                    z: posAttr.getZ(152),
+                  };
+                  const pLowerLip = {
+                    x: posAttr.getX(14),
+                    y: posAttr.getY(14),
+                    z: posAttr.getZ(14),
+                  };
+                  const pUpperLip = {
+                    x: posAttr.getX(13),
+                    y: posAttr.getY(13),
+                    z: posAttr.getZ(13),
+                  };
+
+                  const jawRange = Math.abs(pMouthCenter.y - pChin.y) || 0.6;
+
+                  for (let i = 0; i < posAttr.count; i++) {
+                    const bx = posAttr.getX(i);
+                    const by = posAttr.getY(i);
+                    const bz = posAttr.getZ(i);
+
+                    const isUpper = UPPER_LIP_SET.has(i) || by > pMouthCenter.y + 0.02;
+                    const isLower = LOWER_LIP_SET.has(i);
+
+                    let my = by;
+                    let mz = bz;
+
+                    if (isUpper) {
+                      const d13 = Math.hypot(bx - pUpperLip.x, by - pUpperLip.y, bz - pUpperLip.z);
+                      if (d13 < 0.18) {
+                        const t = 1 - (d13 / 0.18) * (d13 / 0.18);
+                        const upW = t * t;
+                        my += 0.02 * upW;
+                        mz -= 0.01 * upW;
+                      }
+                    } else {
+                      if (isLower) {
+                        const d14 = Math.hypot(bx - pLowerLip.x, by - pLowerLip.y, bz - pLowerLip.z);
+                        let lipW = 1.0;
+                        if (d14 < 0.28) {
+                          const t = 1 - (d14 / 0.28) * (d14 / 0.28);
+                          lipW = Math.max(0.65, t * t);
+                        } else {
+                          lipW = 0.65;
+                        }
+                        my -= 0.38 * lipW;
+                        mz -= 0.16 * lipW;
+                      } else if (by < pMouthCenter.y) {
+                        const t = Math.min(1, Math.max(0, (pMouthCenter.y - by) / jawRange));
+                        const w = t * t;
+                        my -= 0.26 * w;
+                        mz -= 0.08 * w;
+
+                        const d14 = Math.hypot(bx - pLowerLip.x, by - pLowerLip.y, bz - pLowerLip.z);
+                        if (d14 < 0.25) {
+                          const tf = 1 - (d14 / 0.25) * (d14 / 0.25);
+                          const fall = tf * tf;
+                          my -= 0.18 * fall;
+                          mz -= 0.10 * fall;
+                        }
+                      }
+                    }
+
+                    morphAttr.setXYZ(i, bx, my, mz);
+                  }
+                  morphAttr.needsUpdate = true;
+                }
+              }
+            }
+          }
+
           const torsoNode = clonedScene.getObjectByName('torsoGroup') || clonedScene.getObjectByName('torsoBustMesh');
           const neckNode = clonedScene.getObjectByName('neckPivot');
           const faceMeshNode = clonedScene.getObjectByName('faceMesh');
@@ -891,6 +988,8 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           const lowerTeethNode = clonedScene.getObjectByName('lowerTeeth');
           const eyeLeftNode = clonedScene.getObjectByName('eyeLeft');
           const eyeRightNode = clonedScene.getObjectByName('eyeRight');
+          const oralCavityNode = clonedScene.getObjectByName('oralCavity');
+          const eyesGroupNode = clonedScene.getObjectByName('eyesGroup');
 
           const controller: Character3DController = {
             group: rootGroup,
@@ -910,9 +1009,13 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                 faceMeshNode.rotation.x = THREE.MathUtils.lerp(faceMeshNode.rotation.x, features.pitch * 0.75, 0.3);
                 faceMeshNode.rotation.z = THREE.MathUtils.lerp(faceMeshNode.rotation.z, features.roll * 0.75, 0.3);
                 if (headBaseNode) {
-                  headBaseNode.rotation.y = faceMeshNode.rotation.y;
-                  headBaseNode.rotation.x = faceMeshNode.rotation.x;
-                  headBaseNode.rotation.z = faceMeshNode.rotation.z;
+                  headBaseNode.rotation.copy(faceMeshNode.rotation);
+                }
+                if (oralCavityNode) {
+                  oralCavityNode.rotation.copy(faceMeshNode.rotation);
+                }
+                if (eyesGroupNode) {
+                  eyesGroupNode.rotation.copy(faceMeshNode.rotation);
                 }
               } else if (isFullBodyRig && customHeadBone) {
                 customHeadBone.rotation.x = features.pitch;
@@ -934,8 +1037,8 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
 
               // Animate Lower Dental Arch in Oral Cavity
               if (lowerTeethNode) {
-                lowerTeethNode.position.y = -0.038 - finalJaw * 0.08;
-                lowerTeethNode.position.z = -0.065 - finalJaw * 0.04;
+                lowerTeethNode.position.y = -0.022 - finalJaw * 0.26;
+                lowerTeethNode.position.z = -0.038 - finalJaw * 0.10;
               }
 
               // Animate Skeletal Jaw Bone if present in rigged characters
@@ -951,6 +1054,43 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                 eyeLeftNode.rotation.x = THREE.MathUtils.lerp(eyeLeftNode.rotation.x, targetEyePitch, 0.35);
                 eyeRightNode.rotation.y = THREE.MathUtils.lerp(eyeRightNode.rotation.y, targetEyeYaw, 0.35);
                 eyeRightNode.rotation.x = THREE.MathUtils.lerp(eyeRightNode.rotation.x, targetEyePitch, 0.35);
+              }
+
+              // Procedural lower jaw animation fallback for static models without morph targets
+              if (morphMeshes.length === 0 && !customJawBone) {
+                clonedScene.traverse((child) => {
+                  const mesh = child as THREE.Mesh;
+                  if (mesh.isMesh && mesh.geometry) {
+                    const geo = mesh.geometry;
+                    const posAttr = geo.getAttribute('position') as THREE.BufferAttribute;
+                    if (posAttr && posAttr.count > 0) {
+                      if (!mesh.userData.origPositions) {
+                        mesh.userData.origPositions = new Float32Array(posAttr.array);
+                      }
+                      const orig = mesh.userData.origPositions as Float32Array;
+                      if (!geo.boundingBox) geo.computeBoundingBox();
+                      const box = geo.boundingBox!;
+                      const jawThreshold = box.min.y + (box.max.y - box.min.y) * 0.42;
+
+                      let modified = false;
+                      for (let i = 0; i < posAttr.count; i++) {
+                        const by = orig[i * 3 + 1];
+                        if (by < jawThreshold) {
+                          const t = (jawThreshold - by) / Math.max(0.001, jawThreshold - box.min.y);
+                          const drop = finalJaw * 0.24 * (t * t);
+                          posAttr.setY(i, by - drop);
+                          posAttr.setZ(i, orig[i * 3 + 2] - drop * 0.35);
+                          modified = true;
+                        } else if (posAttr.getY(i) !== by) {
+                          posAttr.setY(i, by);
+                          posAttr.setZ(i, orig[i * 3 + 2]);
+                          modified = true;
+                        }
+                      }
+                      if (modified) posAttr.needsUpdate = true;
+                    }
+                  }
+                });
               }
 
               // Build lower-case lookup map for bShapes once per frame if available
@@ -1088,7 +1228,7 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
 
                   // 10. Smooth interpolation with fast responsive speech attack
                   if (targetVal !== undefined) {
-                    const speed = isJawOpen ? (targetVal > (infl[idx] || 0) ? 0.65 : 0.50) : 0.45;
+                    const speed = isJawOpen ? (targetVal > (infl[idx] || 0) ? 0.90 : 0.75) : 0.45;
                     infl[idx] = THREE.MathUtils.lerp(infl[idx] || 0, Math.min(1, Math.max(0, targetVal)), speed);
                   }
                 }

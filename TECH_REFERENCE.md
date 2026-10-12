@@ -135,15 +135,24 @@ Implementado en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/component
   * **Flexión de Cuello:** Distribución gradual de la rotación cefálica (70% en cráneo, 30% en vértebras cervicales).
   * **Balanceo de Hombros:** Reacción con retraso elástico (*spring physics*) al cabeceo lateral (*Roll*).
 ### 5.3. Sincronización Universal de Boca y Mandíbula para Modelos 3D y Personalizados
+* **Separación Topológica Estricta de Labios (`UPPER_LIP_SET` vs `LOWER_LIP_SET`):**
+  * Elimina el arrastre parasitario del labio superior hacia abajo al abrir la boca. El labio superior permanece anclado al maxilar óseo con leve expansión elástica (+0.02 en Y), mientras el labio inferior y la mandíbula descienden con apertura completa (-0.38 en Y, -0.16 en Z hacia la cavidad bucal), ampliando la brecha interlabial de un escaso 0.02 inicial a una apertura real y visible de 0.42 unidades.
+  * Extiende la segregación topológica a los blendshapes `mouthLowerDownLeft/Right`, `mouthUpperUpLeft/Right`, `mouthRollUpper/Lower` y `mouthClose`, eliminando cancelaciones mutuas en rostros con labios en reposo.
+* **Auto-Reparación y Actualización en Caliente (Runtime Hot-Upgrade) en `ThreeAvatarCanvas.tsx`:**
+  * Al cargar cualquier avatar personalizado previamente guardado (incluyendo modelos en LocalStorage como "busheshe"), el sistema detecta si el morph target `jawOpen` tiene una apertura deficiente o labio superior caído (`drop13 > 0.05` o brecha `< 0.20`) y recalcula en caliente la apertura completa en memoria GPU, sin necesidad de re-generar ni re-subir el avatar.
+* **Sincronización Rígida de Cuello, Cavidad Oral y Ojos:**
+  * Al mover o rotar la cabeza en avatares Face-to-3D con busto, la cavidad oral anatómica (`oralCavityNode`), las arcadas dentales y los ojos (`eyesGroupNode`) se sincronizan rígidamente con la orientación y posición de `faceMeshNode`, erradicando desalineaciones al girar o inclinar el rostro.
+  * La arcada dental inferior (`lowerTeeth`) desciende dinámicamente (-0.26 en Y, -0.10 en Z) con la mandíbula, revelando la cámara oral oscura y los dientes al hablar.
+* **Cámara Oral Anatómica con Bloqueo de Transparencia (`generateOralCavityMesh`):**
+  * Cavidad cilíndrica cerrada con placa dorsal oscura (`cavityBackPlate` en `#050102`), evitando que el modelo base de cabeza o polígonos traseros se visualicen a través de la boca abierta.
+* **Fallback Procedural para Modelos 3D Estáticos (Sin Morph Targets ni Bones):**
+  * Si un modelo importado carece de blendshapes y de huesos esqueléticos en la mandíbula, un algoritmo de deformación geométrica procedural desplaza los vértices inferiores del tercio mandibular en base a `finalJaw`, garantizando que ningún avatar parezca una imagen estática al hablar.
 * **Resolución Inteligente de Nombres de Morph Targets:**
   * Remueve prefijos de malla (e.g. `Wolf3D_Avatar.jawOpen`, `CC_Base_Body:mouthOpen`, `Head.jaw`) y normaliza alias universales (`jawOpen`, `mouthOpen`, `mouth_open`, `jaw_open`, `jaw`, `open`, `viseme_aa`, `v_aa`, `aa`, `fcl_mth_o`).
 * **Supresión Activa de Conflictos (`mouthClose`):**
   * Atenúa dinámicamente el blendshape `mouthClose` cuando `finalJaw > 0`, erradicando el conflicto biomecánico donde MediaPipe cerraba los labios mientras la mandíbula intentaba abrirse.
-* **Cinemática Dental y Mandibular Esquelética:**
-  * Desplaza automáticamente la arcada dental inferior (`lowerTeeth`) en la cavidad oral anatómica de modelos Face-to-3D.
-  * Detecta y rota huesos esqueléticos de mandíbula (`customJawBone`) en modelos con rig/esqueleto.
 * **Apertura Articulada y Respuesta sin Lag:**
-  * Factor de apertura calibrado (1.25x) con ataque rápido (interpolación a 0.65) para sincronización labial nítida en tiempo real tanto por webcam como por audio lip-sync.
+  * Factor de apertura calibrado (1.25x) con ataque directo e interpolación reactiva a 0.90 para sincronización labial nítida en tiempo real tanto por webcam como por audio lip-sync.
 
 ---
 
