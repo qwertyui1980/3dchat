@@ -4,13 +4,27 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 import { ARKitBlendshapeMapper } from './arkitMapper';
 import { TextureMapper } from './textureMapper';
-import { FaceMeshGenerator } from './faceMeshGenerator';
+import {
+  FaceMeshGenerator,
+  MouthCustomizationParams,
+  DEFAULT_MOUTH_PARAMS,
+  generateOralCavityMesh,
+} from './faceMeshGenerator';
 import { BustGenerator, BustOptions, ClothingStyle } from './bustGenerator';
+import {
+  EyeGenerator,
+  EyePairResult,
+  EyeCustomizationOptions,
+  DEFAULT_EYE_OPTIONS,
+} from './eyeGenerator';
 
 export interface Face3DGenerationResult {
   faceMesh: THREE.Mesh;
   headModel: THREE.Group | null;
   bustModel: THREE.Group | null;
+  eyesGroup: THREE.Group | null;
+  eyePairResult: EyePairResult | null;
+  oralCavity: THREE.Group | null;
   blendshapes: Record<string, number>;
   textureCanvas: HTMLCanvasElement;
   landmarks: Array<{ x: number; y: number; z: number }>;
@@ -42,6 +56,8 @@ export interface TransformDebugParams {
     rotationY: number;
     rotationZ: number;
   };
+  mouth: MouthCustomizationParams;
+  eyes: EyeCustomizationOptions;
 }
 
 export const DEFAULT_DEBUG_PARAMS: TransformDebugParams = {
@@ -69,6 +85,8 @@ export const DEFAULT_DEBUG_PARAMS: TransformDebugParams = {
     rotationY: 0,
     rotationZ: 0,
   },
+  mouth: { ...DEFAULT_MOUTH_PARAMS },
+  eyes: { ...DEFAULT_EYE_OPTIONS },
 };
 
 export class FaceToBlendshapeService {
@@ -165,7 +183,11 @@ export class FaceToBlendshapeService {
 
   async processFaceImage(
     imageElement: HTMLImageElement | HTMLCanvasElement | HTMLVideoElement,
-    bustOptions?: Partial<BustOptions>
+    options?: {
+      bustOptions?: Partial<BustOptions>;
+      mouthParams?: Partial<MouthCustomizationParams>;
+      eyeOptions?: Partial<EyeCustomizationOptions>;
+    }
   ): Promise<Face3DGenerationResult> {
     const landmarker = await this.initLandmarker();
     const results = landmarker.detect(imageElement);
@@ -187,15 +209,29 @@ export class FaceToBlendshapeService {
     const textureMapper = new TextureMapper(1024);
     const textureCanvas = textureMapper.createFaceTexture(imageElement, landmarks);
 
-    // Face mesh generation
+    // Face mesh generation with mouth parameters
     const meshGenerator = new FaceMeshGenerator();
     const faceMesh = meshGenerator.generateWithMorphTargets(
       landmarks,
       blendshapes,
       transformMatrix,
-      textureCanvas
+      textureCanvas,
+      options?.mouthParams
     );
     faceMesh.name = 'faceMesh';
+
+    // 3D Eyeballs generation (sclera + procedural iris + pupil + cornea + gaze tracking)
+    let eyesGroup: THREE.Group | null = null;
+    let eyePairResult: EyePairResult | null = null;
+    const canonicalPoints = faceMesh.userData.canonicalPoints;
+    if (canonicalPoints && Array.isArray(canonicalPoints)) {
+      eyePairResult = EyeGenerator.generateEyePair(canonicalPoints, options?.eyeOptions);
+      eyesGroup = eyePairResult.group;
+    }
+
+    // Oral cavity generation (inner chamber + dental arches)
+    const mouthCenter = faceMesh.userData.mouthCenter || { x: 0, y: -0.32, z: -0.15 };
+    const oralCavity = generateOralCavityMesh(mouthCenter, 0.28);
 
     // Load head base model
     const headModel = await this.loadHeadBaseModel();
@@ -224,10 +260,10 @@ export class FaceToBlendshapeService {
     const bustGenerator = new BustGenerator();
     const skinColor = faceMesh.userData.skinColor || { r: 0.85, g: 0.75, b: 0.65 };
     const bustModel = bustGenerator.generateBust({
-      style: bustOptions?.style || 'suit',
-      suitColor: bustOptions?.suitColor || '#172554',
-      shirtColor: bustOptions?.shirtColor || '#f8fafc',
-      tieColor: bustOptions?.tieColor || '#991b1b',
+      style: options?.bustOptions?.style || 'suit',
+      suitColor: options?.bustOptions?.suitColor || '#172554',
+      shirtColor: options?.bustOptions?.shirtColor || '#f8fafc',
+      tieColor: options?.bustOptions?.tieColor || '#991b1b',
       skinColor,
     });
     bustModel.name = 'bustModel';
@@ -236,6 +272,9 @@ export class FaceToBlendshapeService {
       faceMesh,
       headModel,
       bustModel,
+      eyesGroup,
+      eyePairResult,
+      oralCavity,
       blendshapes,
       textureCanvas,
       landmarks,
@@ -247,7 +286,10 @@ export class FaceToBlendshapeService {
     faceMesh: THREE.Mesh,
     headModel: THREE.Group | null,
     bustModel: THREE.Group | null = null,
-    params: TransformDebugParams = DEFAULT_DEBUG_PARAMS
+    params: TransformDebugParams = DEFAULT_DEBUG_PARAMS,
+    eyesGroup: THREE.Group | null = null,
+    oralCavity: THREE.Group | null = null,
+    eyePairResult: EyePairResult | null = null
   ): void {
     if (!faceMesh) return;
 
@@ -278,7 +320,26 @@ export class FaceToBlendshapeService {
       params.face.posOffsetZ || 0
     );
 
-    // 3. Align Head Base Model independently based on stable base face dimensions
+    // 3. Align 3D Eyeballs group directly locked to faceMesh coordinate space
+    if (eyePairResult && params.eyes) {
+      eyePairResult.updateOptions(params.eyes);
+    }
+    if (eyesGroup) {
+      eyesGroup.scale.copy(faceMesh.scale);
+      eyesGroup.rotation.copy(faceMesh.rotation);
+      eyesGroup.position.copy(faceMesh.position);
+      eyesGroup.visible = params.eyes?.enabled ?? true;
+    }
+
+    // 4. Align Oral Cavity backing mesh directly locked to faceMesh coordinate space
+    if (oralCavity) {
+      oralCavity.scale.copy(faceMesh.scale);
+      oralCavity.rotation.copy(faceMesh.rotation);
+      oralCavity.position.copy(faceMesh.position);
+      oralCavity.visible = params.mouth?.oralCavityEnabled ?? true;
+    }
+
+    // 5. Align Head Base Model independently based on stable base face dimensions
     if (headModel) {
       headModel.scale.set(1, 1, 1);
       headModel.rotation.set(0, 0, 0);
@@ -319,7 +380,7 @@ export class FaceToBlendshapeService {
       headModel.position.set(offsetX, offsetY, offsetZ);
     }
 
-    // 4. Align Torso & Bust Model seamlessly below the neck
+    // 6. Align Torso & Bust Model seamlessly below the neck
     if (bustModel) {
       const headBaseY = headModel ? headModel.position.y : baseFaceCenter.y;
       const bustY = headBaseY - baseFaceHeight * 0.48;
@@ -336,8 +397,12 @@ export class FaceToBlendshapeService {
     faceMesh: THREE.Mesh,
     headModel: THREE.Group | null,
     bustModel: THREE.Group | null = null,
+    eyesGroup: THREE.Group | null = null,
+    oralCavity: THREE.Group | null = null,
     includeHead: boolean = true,
-    includeBust: boolean = true
+    includeBust: boolean = true,
+    includeEyes: boolean = true,
+    includeOralCavity: boolean = true
   ): Promise<ArrayBuffer> {
     return new Promise((resolve, reject) => {
       const exporter = new GLTFExporter();
@@ -353,6 +418,20 @@ export class FaceToBlendshapeService {
         clonedFace.morphTargetDictionary = { ...faceMesh.morphTargetDictionary };
       }
       exportGroup.add(clonedFace);
+
+      // Include 3D Eyeballs with left and right eye objects
+      if (eyesGroup && includeEyes) {
+        const clonedEyes = eyesGroup.clone(true);
+        clonedEyes.name = 'eyesGroup';
+        exportGroup.add(clonedEyes);
+      }
+
+      // Include Oral Cavity backing mesh
+      if (oralCavity && includeOralCavity) {
+        const clonedCavity = oralCavity.clone(true);
+        clonedCavity.name = 'oralCavity';
+        exportGroup.add(clonedCavity);
+      }
 
       if (headModel && includeHead) {
         const clonedHead = headModel.clone();

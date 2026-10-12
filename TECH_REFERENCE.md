@@ -155,11 +155,19 @@ flowchart LR
 ```
 
 ### Características Técnicas del Estudio:
-* **Generación a partir de Foto Única:** Genera una malla de 478 vértices y ~900 triángulos texturizada por coordenadas UV calculadas sobre el rostro.
-* **Alineación 100% Desacoplada:** El cráneo base se ancla a las dimensiones intrínsecas canónicas (`geometry.boundingBox`), permitiendo modificar de forma exclusiva la posición (X, Y, Z), escala (uniforme, ancho X, alto Y, profundidad Z) y rotación de la malla sin desfasar la cabeza.
-* **Generador de Busto Procedural:** Permite equipar hombros ejecutivos con traje formal, corbata personalizable en color, camisa de vestir o cuello redondo.
-* **Espejo Webcam en Vivo (Live Mirror):** Prueba interactiva en tiempo real donde el rostro del usuario anima los 52 blendshapes del avatar antes de guardarlo.
-* **Exportación Estándar GLB:** Genera archivos `.glb` con texturas empaquetadas, materiales físicos PBR y los 52 morph targets listos para su uso en Unity, Unreal Engine, Blender o la propia plataforma.
+* **Generación a partir de Foto Única:** Genera una malla de 478 vértices y ~900 triángulos texturizada por coordenadas UV calculadas sobre el rostro con normalización ortonormal frontal canónica.
+* **Sistema de Ojos 3D Biomiméticos con Seguimiento por Webcam (`EyeGenerator`):**
+  * Genera esferas oculares tridimensionales con esclera PBR cálida, estroma de iris procedural multiradial de 512x512 (anillo limbal, fibras estromales, collarette y pupila) y córnea con refracción física vítrea (IOR 1.376 y clearcoat).
+  * **Seguimiento Ocular en Tiempo Real:** Las esferas rotan dinámicamente en Yaw (±26°) y Pitch (±20°) acopladas a la mirada del usuario capturada por la webcam mediante los puntos de iris MediaPipe (468 y 473) y blendshapes ARKit (`eyeLook*`), tanto en el visor de administración como en todas las salas de videoconferencia a través de [`threeCharacterBuilder.ts`](file:///d:/Apps/xstreamx/src/components/avatars/threeCharacterBuilder.ts).
+  * Paleta de 8 presets de iris (Cyber Cyan, Azul Océano, Verde Esmeralda, Miel/Avellana, Marrón Café, Gris Platino, Violeta Neón, Rojo Carmesí) y selector RGB hex libre.
+* **Calibración Anatómica de Boca y Cavidad Oral (`FaceMeshGenerator`):**
+  * Elimina el estiramiento plano de texturas al hablar mediante curvatura tridimensional en Z y recesión anatómica sobre dientes.
+  * **Parámetros Paramétricos de Boca:** Hundimiento oral hacia el interior (`mouthDepthPush`), volumen y grosor de labios (`lipThickness`), alineación vertical de altura (`mouthOffsetY`), elevación de comisuras para evitar gesto caído (`smileOffset`) y amplitud máxima de mandíbula (`jawOpenScale`).
+  * **Cavidad Oral Interna y Dientes 3D (`generateOralCavityMesh`):** Cámara oscura anatómica con arcadas dentales superior e inferior acopladas detrás de los labios; la arcada dental inferior (`lowerTeeth`) desciende dinámicamente con `jawOpen` al hablar o cantar.
+* **Alineación 100% Desacoplada en 4 Vías:** Panel de calibración con selectores dedicados para *Malla Facial*, *Boca y Labios*, *Ojos 3D* y *Base de Cabeza*.
+* **Generador de Busto Procedural:** Permite equipar hombros ejecutivos con traje formal, corbata personalizable en color, camisa de vestir o cuello redondo con cinemática reactiva a 60 FPS.
+* **Espejo Webcam en Vivo (Live Mirror):** Prueba interactiva en tiempo real donde la cara, ojos y cuello del usuario animan el avatar antes de guardarlo.
+* **Exportación Estándar GLB:** Genera archivos `.glb` con texturas empaquetadas, materiales físicos PBR, ojos 3D, cavidad oral y los 52 morph targets listos para su uso en Unity, Unreal Engine, Blender o la propia plataforma.
 
 ---
 
@@ -214,7 +222,8 @@ xstreamx/
 │   ├── types/                    # Definiciones de tipos TypeScript globales
 │   ├── components/
 │   │   ├── admin/                # FaceBlendshapeStudioModal (Estudio 3D de avatares)
-│   │   ├── auth/                 # Login (Pantalla de acceso, Apache 2.0 y privacidad)
+│   │   ├── auth/                 # Login (Controlador de acceso, modal de credenciales y privacidad)
+│   │   ├── home/                 # PresidentesNeonHome (Landing con figuras neón y glitch aleatorio)
 │   │   ├── avatars/              # ThreeAvatarCanvas, threeCharacterBuilder, configs
 │   │   ├── common/               # Header, LegalDisclaimerModal, StarfieldBackground
 │   │   ├── lobby/                # Lobby interactivo de entrada y selección de avatar

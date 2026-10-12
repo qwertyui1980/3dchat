@@ -502,7 +502,7 @@ export const Lobby: React.FC<LobbyProps> = ({
               <div className="flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
                 <span className="text-xs font-bold uppercase tracking-wider text-neutral-300">
-                  Espejo de Avatar en Vivo
+                  Elige tu avatar
                 </span>
               </div>
               <div className="flex items-center gap-1.5">
@@ -561,10 +561,10 @@ export const Lobby: React.FC<LobbyProps> = ({
               <div className="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur-sm px-2.5 py-1 rounded-md text-xs font-mono text-cyan-300 flex items-center gap-1.5 border border-slate-800 z-20">
                 <span
                   className={`w-2 h-2 rounded-full ${localFeatures.isFaceDetected
-                      ? 'bg-emerald-400 animate-pulse'
-                      : !isCameraActive
-                        ? 'bg-cyan-400'
-                        : 'bg-amber-400'
+                    ? 'bg-emerald-400 animate-pulse'
+                    : !isCameraActive
+                      ? 'bg-cyan-400'
+                      : 'bg-amber-400'
                     }`}
                 />
                 <span className="text-[11px]">
@@ -660,8 +660,8 @@ export const Lobby: React.FC<LobbyProps> = ({
                   type="button"
                   onClick={onToggleMic}
                   className={`p-2.5 rounded-xl border flex items-center justify-center transition cursor-pointer ${isMicActive
-                      ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-cyan-400 shadow-sm'
-                      : 'bg-rose-950/60 hover:bg-rose-900 border-rose-800 text-rose-300'
+                    ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-cyan-400 shadow-sm'
+                    : 'bg-rose-950/60 hover:bg-rose-900 border-rose-800 text-rose-300'
                     }`}
                   title={isMicActive ? 'Silenciar Micrófono' : 'Activar Micrófono'}
                 >
@@ -672,8 +672,8 @@ export const Lobby: React.FC<LobbyProps> = ({
                   type="button"
                   onClick={onToggleCamera}
                   className={`p-2.5 rounded-xl border flex items-center justify-center transition cursor-pointer ${isCameraActive
-                      ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-cyan-400 shadow-sm'
-                      : 'bg-rose-950/60 hover:bg-rose-900 border-rose-800 text-rose-300'
+                    ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-cyan-400 shadow-sm'
+                    : 'bg-rose-950/60 hover:bg-rose-900 border-rose-800 text-rose-300'
                     }`}
                   title={isCameraActive ? 'Pausar Cámara' : 'Reanudar Cámara'}
                 >
@@ -684,8 +684,8 @@ export const Lobby: React.FC<LobbyProps> = ({
                   type="button"
                   onClick={() => setShowCameraPip(!showCameraPip)}
                   className={`p-2.5 rounded-xl border flex items-center justify-center transition cursor-pointer ${showCameraPip
-                      ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/20'
-                      : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
+                    ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/20'
+                    : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
                     }`}
                   title="Mesh Anatómico. Sin vídeo"
                 >
@@ -860,11 +860,10 @@ export const Lobby: React.FC<LobbyProps> = ({
                       <div
                         key={avatar.id}
                         onClick={() => handleSelectAvatar(avatar.id)}
-                        className={`group relative p-2 rounded-xl border text-left flex flex-col items-center gap-1 transition cursor-pointer ${
-                          isSelected
+                        className={`group relative p-2 rounded-xl border text-left flex flex-col items-center gap-1 transition cursor-pointer ${isSelected
                             ? 'bg-cyan-950/80 border-cyan-400 ring-2 ring-cyan-400/40 shadow-md shadow-cyan-500/20 scale-[1.02]'
                             : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
-                        }`}
+                          }`}
                       >
                         <div
                           className="w-10 h-10 rounded-lg border flex items-center justify-center text-xl shadow-inner shrink-0"
@@ -1067,10 +1066,10 @@ export const Lobby: React.FC<LobbyProps> = ({
           }}
           isOpen={isAdminPanelOpen}
           onClose={() => setIsAdminPanelOpen(false)}
-          onAdminMute={() => {}}
-          onAdminKick={() => {}}
-          onToggleLock={() => {}}
-          onMuteAll={() => {}}
+          onAdminMute={() => { }}
+          onAdminKick={() => { }}
+          onToggleLock={() => { }}
+          onMuteAll={() => { }}
           onSelectAvatar={(id) => handleSelectAvatar(id)}
           onOpenFaceStudio={() => {
             setIsAdminPanelOpen(false);

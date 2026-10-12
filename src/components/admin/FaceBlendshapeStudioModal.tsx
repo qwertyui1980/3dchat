@@ -26,6 +26,7 @@ import {
   VideoOff,
   Shirt,
   Palette,
+  Wand2,
 } from 'lucide-react';
 import {
   faceToBlendshapeServiceSingleton,
@@ -33,6 +34,7 @@ import {
   TransformDebugParams,
   DEFAULT_DEBUG_PARAMS,
 } from '../../services/face3d/faceToBlendshapeService';
+import { EyePairResult, IRIS_COLOR_PRESETS } from '../../services/face3d/eyeGenerator';
 import { ARKIT_BLENDSHAPE_NAMES, ARKitBlendshapeName, ARKitBlendshapeMapper } from '../../services/face3d/arkitMapper';
 import { faceTrackerSingleton } from '../../services/mediapipeService';
 import { BustGenerator, ClothingStyle } from '../../services/face3d/bustGenerator';
@@ -85,6 +87,9 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   const faceMeshRef = useRef<THREE.Mesh | null>(null);
   const headModelRef = useRef<THREE.Group | null>(null);
   const bustModelRef = useRef<THREE.Group | null>(null);
+  const eyesGroupRef = useRef<THREE.Group | null>(null);
+  const oralCavityRef = useRef<THREE.Group | null>(null);
+  const eyePairResultRef = useRef<EyePairResult | null>(null);
   const currentResultRef = useRef<Face3DGenerationResult | null>(null);
 
   // Display toggles
@@ -92,7 +97,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   const [showWireframe, setShowWireframe] = useState(false);
   const [showHeadBase, setShowHeadBase] = useState(true);
   const [showShoulders, setShowShoulders] = useState(true);
-  const [tuningTarget, setTuningTarget] = useState<'face' | 'head'>('face');
+  const [tuningTarget, setTuningTarget] = useState<'face' | 'mouth' | 'eyes' | 'head'>('face');
   const [isCopied, setIsCopied] = useState(false);
 
   // Clothing & Bust Customization
@@ -242,6 +247,19 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         neck.rotation.set(0, 0, 0);
       }
     }
+    if (eyePairResultRef.current) {
+      eyePairResultRef.current.updateGaze(
+        debugParams.eyes?.manualGazeX || 0,
+        debugParams.eyes?.manualGazeY || 0
+      );
+    }
+    if (oralCavityRef.current) {
+      const lowerTeeth = oralCavityRef.current.getObjectByName('lowerTeeth');
+      if (lowerTeeth) {
+        lowerTeeth.position.y = -0.038;
+        lowerTeeth.position.z = -0.065;
+      }
+    }
   }, [debugParams]);
 
   useEffect(() => {
@@ -386,6 +404,15 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                 neck.rotation.z = THREE.MathUtils.lerp(neck.rotation.z, features.roll * 0.45, 0.25);
               }
             }
+
+            // Real-time 3D Eyeball Gaze Tracking from Webcam
+            if (
+              eyePairResultRef.current &&
+              debugParams.eyes?.enabled &&
+              (debugParams.eyes?.gazeTracking ?? true)
+            ) {
+              eyePairResultRef.current.updateGaze(features.gazeX || 0, features.gazeY || 0);
+            }
           },
           undefined,
           (categories, landmarks) => {
@@ -400,6 +427,17 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                 mesh.morphTargetInfluences[idx] = val;
               }
             });
+
+            // Live Oral Cavity Lower Dental Arch Kinematics
+            if (oralCavityRef.current && debugParams.mouth?.oralCavityEnabled) {
+              const lowerTeeth = oralCavityRef.current.getObjectByName('lowerTeeth');
+              if (lowerTeeth) {
+                const jawOpenVal = mapped['jawOpen'] || 0;
+                const jawIntensity = debugParams.mouth?.jawOpenScale ?? 1.0;
+                lowerTeeth.position.y = -0.038 - jawOpenVal * 0.08 * jawIntensity;
+                lowerTeeth.position.z = -0.065 - jawOpenVal * 0.04 * jawIntensity;
+              }
+            }
 
             // Throttle UI slider updates to every 60ms for silky 60 FPS ThreeJS + smooth React
             const now = performance.now();
@@ -456,10 +494,14 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       const result = await faceToBlendshapeServiceSingleton.processFaceImage(
         selectedImageElement,
         {
-          style: clothingStyle,
-          suitColor,
-          shirtColor,
-          tieColor,
+          bustOptions: {
+            style: clothingStyle,
+            suitColor,
+            shirtColor,
+            tieColor,
+          },
+          mouthParams: debugParams.mouth,
+          eyeOptions: debugParams.eyes,
         }
       );
       currentResultRef.current = result;
@@ -474,12 +516,27 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       if (oldHead) scene.remove(oldHead);
       const oldBust = scene.getObjectByName('bustModel');
       if (oldBust) scene.remove(oldBust);
+      const oldEyes = scene.getObjectByName('eyesGroup');
+      if (oldEyes) scene.remove(oldEyes);
+      const oldCavity = scene.getObjectByName('oralCavity');
+      if (oldCavity) scene.remove(oldCavity);
 
       faceMeshRef.current = result.faceMesh;
       headModelRef.current = result.headModel;
       bustModelRef.current = result.bustModel;
+      eyesGroupRef.current = result.eyesGroup;
+      oralCavityRef.current = result.oralCavity;
+      eyePairResultRef.current = result.eyePairResult;
 
       scene.add(result.faceMesh);
+      if (result.eyesGroup) {
+        result.eyesGroup.visible = debugParams.eyes?.enabled ?? true;
+        scene.add(result.eyesGroup);
+      }
+      if (result.oralCavity) {
+        result.oralCavity.visible = debugParams.mouth?.oralCavityEnabled ?? true;
+        scene.add(result.oralCavity);
+      }
       if (result.headModel) {
         result.headModel.visible = showHeadBase;
         scene.add(result.headModel);
@@ -494,7 +551,10 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         result.faceMesh,
         result.headModel,
         result.bustModel,
-        debugParams
+        debugParams,
+        result.eyesGroup,
+        result.oralCavity,
+        result.eyePairResult
       );
 
       // Initialize blendshapes map to 0 (neutral rest pose)
@@ -554,38 +614,81 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     setTestBlendshapes(resetValues);
   };
 
-  // Update Transforms
-  const handleDebugParamChange = (category: 'head' | 'face', key: string, value: number) => {
+  // Update Transforms & Calibration Parameters
+  const handleDebugParamChange = (
+    category: 'head' | 'face' | 'mouth' | 'eyes',
+    key: string,
+    value: any
+  ) => {
     setDebugParams((prev) => {
-      const updated = {
+      const updated: TransformDebugParams = {
         ...prev,
         [category]: {
-          ...prev[category],
+          ...(prev as any)[category],
           [key]: value,
         },
       };
+
+      // Real-time Eyeball Appearance / Manual Gaze Update
+      if (category === 'eyes' && eyePairResultRef.current) {
+        if (key === 'irisColor') {
+          eyePairResultRef.current.setIrisColor(value);
+        } else if (key === 'manualGazeX' || key === 'manualGazeY') {
+          const gx = key === 'manualGazeX' ? value : updated.eyes.manualGazeX;
+          const gy = key === 'manualGazeY' ? value : updated.eyes.manualGazeY;
+          eyePairResultRef.current.updateGaze(gx, gy);
+        }
+      }
 
       if (faceMeshRef.current) {
         faceToBlendshapeServiceSingleton.applyTransforms(
           faceMeshRef.current,
           headModelRef.current,
           bustModelRef.current,
-          updated
+          updated,
+          eyesGroupRef.current,
+          oralCavityRef.current,
+          eyePairResultRef.current
         );
       }
       return updated;
     });
   };
 
+  // Re-generate Face Mesh with new mouth parameters
+  const handleRebakeMouthMesh = async () => {
+    if (!selectedImageElement) {
+      setStatus('Sube o captura una foto primero.', 'error');
+      return;
+    }
+    setIsProcessing(true);
+    setStatus('Re-generando geometría facial con nueva calibración de boca...', 'info');
+    try {
+      await processImage();
+      setStatus('¡Geometría de boca y labios actualizada con éxito!', 'success');
+    } catch (err: any) {
+      setStatus(err?.message || 'Error al actualizar malla.', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   // Reset All Transforms
   const handleResetTransforms = () => {
     setDebugParams(DEFAULT_DEBUG_PARAMS);
+    if (eyePairResultRef.current) {
+      eyePairResultRef.current.setIrisColor(DEFAULT_DEBUG_PARAMS.eyes.irisColor);
+      eyePairResultRef.current.updateGaze(0, 0);
+    }
     if (faceMeshRef.current) {
       faceToBlendshapeServiceSingleton.applyTransforms(
         faceMeshRef.current,
         headModelRef.current,
         bustModelRef.current,
-        DEFAULT_DEBUG_PARAMS
+        DEFAULT_DEBUG_PARAMS,
+        eyesGroupRef.current,
+        oralCavityRef.current,
+        eyePairResultRef.current
       );
     }
   };
@@ -602,7 +705,58 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
           faceMeshRef.current,
           headModelRef.current,
           bustModelRef.current,
-          updated
+          updated,
+          eyesGroupRef.current,
+          oralCavityRef.current,
+          eyePairResultRef.current
+        );
+      }
+      return updated;
+    });
+  };
+
+  // Reset Mouth Parameters Exclusively
+  const handleResetMouthParams = () => {
+    setDebugParams((prev) => {
+      const updated: TransformDebugParams = {
+        ...prev,
+        mouth: { ...DEFAULT_DEBUG_PARAMS.mouth },
+      };
+      if (faceMeshRef.current) {
+        faceToBlendshapeServiceSingleton.applyTransforms(
+          faceMeshRef.current,
+          headModelRef.current,
+          bustModelRef.current,
+          updated,
+          eyesGroupRef.current,
+          oralCavityRef.current,
+          eyePairResultRef.current
+        );
+      }
+      return updated;
+    });
+  };
+
+  // Reset Eyeball Parameters Exclusively
+  const handleResetEyeParams = () => {
+    setDebugParams((prev) => {
+      const updated: TransformDebugParams = {
+        ...prev,
+        eyes: { ...DEFAULT_DEBUG_PARAMS.eyes },
+      };
+      if (eyePairResultRef.current) {
+        eyePairResultRef.current.setIrisColor(DEFAULT_DEBUG_PARAMS.eyes.irisColor);
+        eyePairResultRef.current.updateGaze(0, 0);
+      }
+      if (faceMeshRef.current) {
+        faceToBlendshapeServiceSingleton.applyTransforms(
+          faceMeshRef.current,
+          headModelRef.current,
+          bustModelRef.current,
+          updated,
+          eyesGroupRef.current,
+          oralCavityRef.current,
+          eyePairResultRef.current
         );
       }
       return updated;
@@ -621,7 +775,10 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
           faceMeshRef.current,
           headModelRef.current,
           bustModelRef.current,
-          updated
+          updated,
+          eyesGroupRef.current,
+          oralCavityRef.current,
+          eyePairResultRef.current
         );
       }
       return updated;
@@ -699,7 +856,10 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       faceMeshRef.current,
       headModelRef.current,
       newBust,
-      debugParams
+      debugParams,
+      eyesGroupRef.current,
+      oralCavityRef.current,
+      eyePairResultRef.current
     );
   };
 
@@ -728,15 +888,19 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     }
 
     setIsExporting(true);
-    setStatus('Exportando archivo GLB con 52 Morph Targets y textura embebida...', 'info');
+    setStatus('Exportando archivo GLB con 52 Morph Targets, Ojos 3D y cavidad oral...', 'info');
 
     try {
       const buffer = await faceToBlendshapeServiceSingleton.exportGLB(
         faceMeshRef.current,
         headModelRef.current,
         bustModelRef.current,
+        eyesGroupRef.current,
+        oralCavityRef.current,
         showHeadBase,
-        showShoulders
+        showShoulders,
+        debugParams.eyes?.enabled ?? true,
+        debugParams.mouth?.oralCavityEnabled ?? true
       );
 
       const blob = new Blob([buffer], { type: 'model/gltf-binary' });
@@ -774,8 +938,12 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         faceMeshRef.current,
         headModelRef.current,
         bustModelRef.current,
+        eyesGroupRef.current,
+        oralCavityRef.current,
         showHeadBase,
-        showShoulders
+        showShoulders,
+        debugParams.eyes?.enabled ?? true,
+        debugParams.mouth?.oralCavityEnabled ?? true
       );
 
       const file = new File([buffer], `${avatarName.toLowerCase().replace(/\s+/g, '_')}.glb`, {
@@ -1057,6 +1225,34 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                 >
                   <Shirt className="w-3.5 h-3.5" />
                   Hombros
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !debugParams.eyes?.enabled;
+                    handleDebugParamChange('eyes', 'enabled', next);
+                  }}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                    debugParams.eyes?.enabled ? 'bg-cyan-400 text-slate-950 font-black' : 'text-neutral-400 hover:bg-white/10'
+                  }`}
+                  title="Mostrar/Ocultar Ojos 3D"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                  Ojos 3D
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !debugParams.mouth?.oralCavityEnabled;
+                    handleDebugParamChange('mouth', 'oralCavityEnabled', next);
+                  }}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                    debugParams.mouth?.oralCavityEnabled ? 'bg-rose-500 text-white font-black' : 'text-neutral-400 hover:bg-white/10'
+                  }`}
+                  title="Mostrar/Ocultar Cavidad Oral y Dientes 3D"
+                >
+                  <Sliders className="w-3.5 h-3.5" />
+                  Boca
                 </button>
               </div>
 
@@ -1439,31 +1635,55 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   </div>
                 </div>
 
-                {/* Sub-selector: Malla Facial vs Base de Cabeza */}
-                <div className="grid grid-cols-2 gap-1.5 p-1 bg-black/40 rounded-xl border border-white/[0.08]">
+                {/* Sub-selector: Malla Facial, Boca y Labios, Ojos 3D, Base de Cabeza */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-black/40 rounded-xl border border-white/[0.08]">
                   <button
                     type="button"
                     onClick={() => setTuningTarget('face')}
-                    className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    className={`py-2 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                       tuningTarget === 'face'
                         ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
                         : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.04]'
                     }`}
                   >
-                    <Smile className="w-3.5 h-3.5" />
-                    Malla Facial (Exclusivo)
+                    <Smile className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">Malla Facial</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTuningTarget('mouth')}
+                    className={`py-2 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      tuningTarget === 'mouth'
+                        ? 'bg-rose-500 text-white shadow-md font-black'
+                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <Sliders className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">Boca y Labios</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTuningTarget('eyes')}
+                    className={`py-2 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      tuningTarget === 'eyes'
+                        ? 'bg-emerald-500 text-slate-950 shadow-md font-black'
+                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <Eye className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">Ojos 3D</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setTuningTarget('head')}
-                    className={`py-2 px-3 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    className={`py-2 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                       tuningTarget === 'head'
                         ? 'bg-indigo-500 text-white shadow-md font-black'
                         : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.04]'
                     }`}
                   >
-                    <Layers className="w-3.5 h-3.5" />
-                    Base de Cabeza
+                    <Layers className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">Base Cabeza</span>
                   </button>
                 </div>
 
@@ -1690,7 +1910,391 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   </div>
                 )}
 
-                {/* --- 2. Base de Cabeza --- */}
+                {/* --- 2. Boca y Labios (Calibración Anatómica) --- */}
+                {tuningTarget === 'mouth' && (
+                  <div className="space-y-3">
+                    <div className="p-2.5 rounded-xl bg-rose-950/20 border border-rose-500/20 text-[11px] text-rose-300 flex items-center justify-between">
+                      <span>Calibración anatómica de <strong>profundidad oral y labios</strong>.</span>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={handleRebakeMouthMesh}
+                          className="text-[10px] text-rose-300 font-bold bg-rose-500/20 hover:bg-rose-500/30 px-2 py-0.5 rounded-lg flex items-center gap-1 cursor-pointer transition"
+                          title="Re-calcular geometría facial con estos parámetros de boca"
+                        >
+                          <Wand2 className="w-3 h-3" />
+                          Re-aplicar a Malla
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleResetMouthParams}
+                          className="text-[10px] text-rose-400 underline hover:text-rose-200 cursor-pointer"
+                        >
+                          Reset Boca
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Controles de Forma Bucal y Labios */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <span className="text-[11px] font-black text-rose-400 uppercase tracking-wider block">
+                        Forma Bucal y Profundidad
+                      </span>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Profundidad Oral (Hundimiento)</span>
+                            <span className="text-[9px] text-neutral-500">Hunde los labios en Z para crear cavidad</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0"
+                              max="0.35"
+                              step="0.005"
+                              value={debugParams.mouth?.mouthDepthPush ?? 0.12}
+                              onChange={(e) => handleDebugParamChange('mouth', 'mouthDepthPush', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-rose-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-rose-300 font-bold">
+                              {(debugParams.mouth?.mouthDepthPush ?? 0.12).toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Grosor de Labios</span>
+                            <span className="text-[9px] text-neutral-500">Escala el volumen tridimensional</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.0"
+                              step="0.02"
+                              value={debugParams.mouth?.lipThickness ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('mouth', 'lipThickness', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-rose-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-rose-300 font-bold">
+                              {(debugParams.mouth?.lipThickness ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Posición Vertical (Y)</span>
+                            <span className="text-[9px] text-neutral-500">Alineación de altura de los labios</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-0.2"
+                              max="0.2"
+                              step="0.005"
+                              value={debugParams.mouth?.mouthOffsetY ?? 0.0}
+                              onChange={(e) => handleDebugParamChange('mouth', 'mouthOffsetY', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-rose-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-rose-300 font-bold">
+                              {(debugParams.mouth?.mouthOffsetY ?? 0.0).toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Curvatura de Comisuras</span>
+                            <span className="text-[9px] text-neutral-500">Eleva las comisuras para evitar gesto caído</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-0.1"
+                              max="0.15"
+                              step="0.005"
+                              value={debugParams.mouth?.smileOffset ?? 0.02}
+                              onChange={(e) => handleDebugParamChange('mouth', 'smileOffset', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-rose-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-rose-300 font-bold">
+                              {(debugParams.mouth?.smileOffset ?? 0.02).toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Controles Dinámicos y Cavidad Oral */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <span className="text-[11px] font-black text-rose-400 uppercase tracking-wider block">
+                        Apertura y Cavidad Oral 3D
+                      </span>
+
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Amplitud de Mandíbula</span>
+                            <span className="text-[9px] text-neutral-500">Multiplicador de apertura al hablar</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="1.8"
+                              step="0.05"
+                              value={debugParams.mouth?.jawOpenScale ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('mouth', 'jawOpenScale', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-rose-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-rose-300 font-bold">
+                              {(debugParams.mouth?.jawOpenScale ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between p-2.5 rounded-lg bg-white/[0.03] border border-white/[0.06]">
+                          <div>
+                            <span className="text-xs font-bold text-neutral-200 block">Cavidad Oral y Dientes 3D</span>
+                            <span className="text-[10px] text-neutral-400">
+                              Cámara oscura anatómica con arcadas dentales detrás de los labios
+                            </span>
+                          </div>
+                          <input
+                            type="checkbox"
+                            checked={debugParams.mouth?.oralCavityEnabled ?? true}
+                            onChange={(e) => handleDebugParamChange('mouth', 'oralCavityEnabled', e.target.checked)}
+                            className="w-4 h-4 accent-rose-400 rounded cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* --- 3. Ojos 3D y Tracking de Mirada --- */}
+                {tuningTarget === 'eyes' && (
+                  <div className="space-y-3">
+                    <div className="p-2.5 rounded-xl bg-emerald-950/20 border border-emerald-500/20 text-[11px] text-emerald-300 flex items-center justify-between">
+                      <span>Ojos 3D biomiméticos con <strong>seguimiento ocular por webcam</strong>.</span>
+                      <button
+                        type="button"
+                        onClick={handleResetEyeParams}
+                        className="text-[10px] text-emerald-400 underline hover:text-emerald-200 cursor-pointer"
+                      >
+                        Reset Ojos
+                      </button>
+                    </div>
+
+                    {/* Activación & Tracking */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-xs font-bold text-neutral-200 block">Activar Ojos 3D</span>
+                          <span className="text-[10px] text-neutral-400">Esclera realista, iris procedural y córnea reflectiva</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={debugParams.eyes?.enabled ?? true}
+                          onChange={(e) => handleDebugParamChange('eyes', 'enabled', e.target.checked)}
+                          className="w-4 h-4 accent-emerald-400 rounded cursor-pointer"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2.5 border-t border-white/[0.04]">
+                        <div>
+                          <span className="text-xs font-bold text-neutral-200 flex items-center gap-1.5">
+                            Seguimiento con Cámara Web
+                            {isLiveTracking && (
+                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block" />
+                            )}
+                          </span>
+                          <span className="text-[10px] text-neutral-400">Los ojos 3D giran en tiempo real siguiendo tus pupilas</span>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={debugParams.eyes?.gazeTracking ?? true}
+                          onChange={(e) => handleDebugParamChange('eyes', 'gazeTracking', e.target.checked)}
+                          className="w-4 h-4 accent-emerald-400 rounded cursor-pointer"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Tamaño y Ubicación en Cuencas */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <span className="text-[11px] font-black text-emerald-400 uppercase tracking-wider block">
+                        Tamaño y Ubicación en Cuencas
+                      </span>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Tamaño / Escala</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.6"
+                              max="1.6"
+                              step="0.02"
+                              value={debugParams.eyes?.scale ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('eyes', 'scale', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-emerald-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-emerald-300 font-bold">
+                              {(debugParams.eyes?.scale ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Separación Interpupilar (X)</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-0.1"
+                              max="0.1"
+                              step="0.005"
+                              value={debugParams.eyes?.spacingX ?? 0.0}
+                              onChange={(e) => handleDebugParamChange('eyes', 'spacingX', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-emerald-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-emerald-300 font-bold">
+                              {(debugParams.eyes?.spacingX ?? 0.0).toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Altura en Cuenca (Y)</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-0.1"
+                              max="0.1"
+                              step="0.005"
+                              value={debugParams.eyes?.offsetY ?? 0.0}
+                              onChange={(e) => handleDebugParamChange('eyes', 'offsetY', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-emerald-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-emerald-300 font-bold">
+                              {(debugParams.eyes?.offsetY ?? 0.0).toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Profundidad en Cuenca (Z)</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-0.15"
+                              max="0.15"
+                              step="0.005"
+                              value={debugParams.eyes?.offsetZ ?? 0.0}
+                              onChange={(e) => handleDebugParamChange('eyes', 'offsetZ', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-emerald-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-emerald-300 font-bold">
+                              {(debugParams.eyes?.offsetZ ?? 0.0).toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Color del Iris y Presets */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-black text-emerald-400 uppercase tracking-wider block">
+                          Color del Iris
+                        </span>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={debugParams.eyes?.irisColor ?? '#00e5ff'}
+                            onChange={(e) => handleDebugParamChange('eyes', 'irisColor', e.target.value)}
+                            className="w-6 h-6 rounded-md border-0 cursor-pointer bg-transparent"
+                          />
+                          <span className="font-mono text-[10px] text-emerald-300 uppercase">
+                            {debugParams.eyes?.irisColor ?? '#00e5ff'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Presets de Color */}
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {IRIS_COLOR_PRESETS.map((preset) => (
+                          <button
+                            key={preset.color}
+                            type="button"
+                            onClick={() => handleDebugParamChange('eyes', 'irisColor', preset.color)}
+                            className={`p-1.5 rounded-lg border text-left transition flex items-center gap-1.5 cursor-pointer ${
+                              (debugParams.eyes?.irisColor ?? '#00e5ff').toLowerCase() === preset.color.toLowerCase()
+                                ? 'border-emerald-400 bg-emerald-950/40 text-emerald-300'
+                                : 'border-white/[0.06] bg-black/30 text-neutral-400 hover:border-white/20'
+                            }`}
+                          >
+                            <span
+                              className="w-3.5 h-3.5 rounded-full shrink-0 border border-white/20"
+                              style={{ backgroundColor: preset.color }}
+                            />
+                            <span className="text-[9px] font-bold truncate">{preset.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Prueba Manual de Mirada */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-black text-emerald-400 uppercase tracking-wider block">
+                          Prueba Manual de Mirada
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            handleDebugParamChange('eyes', 'manualGazeX', 0);
+                            handleDebugParamChange('eyes', 'manualGazeY', 0);
+                          }}
+                          className="text-[10px] text-emerald-400 underline hover:text-emerald-200 cursor-pointer"
+                        >
+                          Centrar Mirada
+                        </button>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-400">Horizontal X (Izq / Der)</span>
+                          <input
+                            type="range"
+                            min="-1"
+                            max="1"
+                            step="0.05"
+                            value={debugParams.eyes?.manualGazeX ?? 0}
+                            onChange={(e) => handleDebugParamChange('eyes', 'manualGazeX', parseFloat(e.target.value))}
+                            className="w-24 sm:w-32 accent-emerald-400 cursor-pointer"
+                          />
+                        </div>
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-400">Vertical Y (Arriba / Abajo)</span>
+                          <input
+                            type="range"
+                            min="-1"
+                            max="1"
+                            step="0.05"
+                            value={debugParams.eyes?.manualGazeY ?? 0}
+                            onChange={(e) => handleDebugParamChange('eyes', 'manualGazeY', parseFloat(e.target.value))}
+                            className="w-24 sm:w-32 accent-emerald-400 cursor-pointer"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* --- 4. Base de Cabeza --- */}
                 {tuningTarget === 'head' && (
                   <div className="space-y-3">
                     <div className="p-2.5 rounded-xl bg-indigo-950/20 border border-indigo-500/20 text-[11px] text-indigo-300 flex items-center justify-between">

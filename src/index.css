@@ -29,3 +29,118 @@ html, body, #root {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(34, 211, 238, 0.5);
 }
+
+/* Neon Presidentes Muertos Theme & Glitch Animations */
+.neon-glow-cyan {
+  filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 6px #22d3ee) drop-shadow(0 0 16px rgba(34, 211, 238, 0.75)) drop-shadow(0 0 35px rgba(34, 211, 238, 0.35));
+}
+
+.neon-glow-blue {
+  filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 7px #3b82f6) drop-shadow(0 0 18px rgba(59, 130, 246, 0.85)) drop-shadow(0 0 35px rgba(59, 130, 246, 0.4));
+}
+
+.neon-text-title {
+  font-family: 'Playfair Display', Georgia, serif;
+  color: #5b95ff;
+  text-shadow:
+    0 0 4px #ffffff,
+    0 0 14px #3b82f6,
+    0 0 28px rgba(59, 130, 246, 0.9),
+    0 0 55px rgba(59, 130, 246, 0.55),
+    0 0 80px rgba(59, 130, 246, 0.3);
+}
+
+.neon-text-club {
+  font-family: 'Playfair Display', Georgia, serif;
+  color: #fef08a;
+  text-shadow: 0 0 8px rgba(254, 240, 138, 0.6), 0 0 20px rgba(254, 240, 138, 0.25);
+}
+
+@keyframes neon-hum-subtle {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.96;
+  }
+}
+
+.animate-neon-hum {
+  animation: neon-hum-subtle 4s ease-in-out infinite;
+}
+
+@keyframes neon-malfunction-burst {
+  0% {
+    opacity: 1;
+    filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 6px #22d3ee) drop-shadow(0 0 16px rgba(34, 211, 238, 0.75));
+  }
+  8% {
+    opacity: 0.08;
+    filter: none;
+  }
+  15% {
+    opacity: 0.95;
+    filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 5px #22d3ee);
+  }
+  24% {
+    opacity: 0.04;
+    filter: none;
+  }
+  32% {
+    opacity: 0.85;
+    filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 6px #22d3ee);
+  }
+  42% {
+    opacity: 0.12;
+    filter: none;
+  }
+  50% {
+    opacity: 0.9;
+    filter: drop-shadow(0 0 1px #fff) drop-shadow(0 0 4px #22d3ee);
+  }
+  60% {
+    opacity: 0.2;
+    filter: none;
+  }
+  75% {
+    opacity: 1;
+    filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 6px #22d3ee) drop-shadow(0 0 16px rgba(34, 211, 238, 0.75));
+  }
+  88% {
+    opacity: 0.35;
+    filter: drop-shadow(0 0 1px rgba(34, 211, 238, 0.3));
+  }
+  100% {
+    opacity: 1;
+    filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 6px #22d3ee) drop-shadow(0 0 16px rgba(34, 211, 238, 0.75));
+  }
+}
+
+.neon-flickering {
+  animation: neon-malfunction-burst 0.35s steps(3, start) infinite;
+}
+
+.neon-dead {
+  opacity: 0.12 !important;
+  filter: drop-shadow(0 0 0.5px rgba(34, 211, 238, 0.15)) !important;
+}
+
+/* Word-by-word staggered reveal animation */
+@keyframes word-fade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(5px);
+    filter: blur(3px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.animate-word-reveal {
+  opacity: 0;
+  animation: word-fade-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+

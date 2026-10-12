@@ -10,6 +10,83 @@ export interface Point3D {
   z: number;
 }
 
+export interface MouthCustomizationParams {
+  mouthDepthPush: number;     // pushes inner lips into cavity in -Z (0 to 0.35, default 0.12)
+  lipThickness: number;       // scales lip volume in Z and Y (0.5 to 2.0, default 1.0)
+  mouthOffsetY: number;       // vertical shift of mouth (-0.2 to 0.2, default 0.0)
+  smileOffset: number;        // corner elevation offset (-0.15 to 0.2, default 0.02)
+  jawOpenScale: number;       // multiplies jawOpen morph target (0.5 to 1.8, default 1.0)
+  oralCavityEnabled: boolean; // whether to attach an oral cavity backing mesh (default true)
+}
+
+export const DEFAULT_MOUTH_PARAMS: MouthCustomizationParams = {
+  mouthDepthPush: 0.12,
+  lipThickness: 1.0,
+  mouthOffsetY: 0.0,
+  smileOffset: 0.02,
+  jawOpenScale: 1.0,
+  oralCavityEnabled: true,
+};
+
+export const INNER_LIP_INDICES = [
+  78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95,
+];
+
+export const OUTER_LIP_INDICES = [
+  61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291, 375, 321, 405, 314, 17, 84, 181, 91, 146,
+];
+
+/**
+ * Creates a dark anatomical oral cavity backing mesh with dental arches
+ * positioned directly behind the mouth opening. Prevents see-through gaps
+ * and flat stretching when the avatar speaks or opens their jaw.
+ */
+export function generateOralCavityMesh(
+  pMouthCenter: Point3D,
+  depth: number = 0.28
+): THREE.Group {
+  const group = new THREE.Group();
+  group.name = 'oralCavity';
+
+  // 1. Dark interior oral chamber (curved cylinder back)
+  const cavityGeo = new THREE.CylinderGeometry(0.26, 0.22, depth, 24, 1, true, -Math.PI / 2, Math.PI);
+  const cavityMat = new THREE.MeshStandardMaterial({
+    color: 0x100406, // Deep dark oral red-black
+    roughness: 0.85,
+    metalness: 0.05,
+    side: THREE.DoubleSide,
+  });
+  const cavityMesh = new THREE.Mesh(cavityGeo, cavityMat);
+  cavityMesh.name = 'cavityChamber';
+  cavityMesh.rotation.x = Math.PI / 2;
+  cavityMesh.position.set(pMouthCenter.x, pMouthCenter.y, pMouthCenter.z - depth * 0.52);
+  group.add(cavityMesh);
+
+  // 2. Upper Dental Arch (ivory curved band)
+  const teethMat = new THREE.MeshStandardMaterial({
+    color: 0xf3f4f6,
+    roughness: 0.28,
+    metalness: 0.05,
+  });
+  const upperTeethGeo = new THREE.TorusGeometry(0.13, 0.022, 10, 24, Math.PI * 0.85);
+  const upperTeeth = new THREE.Mesh(upperTeethGeo, teethMat);
+  upperTeeth.name = 'upperTeeth';
+  upperTeeth.rotation.x = Math.PI * 0.45;
+  upperTeeth.rotation.z = Math.PI * 0.075;
+  upperTeeth.position.set(pMouthCenter.x, pMouthCenter.y + 0.038, pMouthCenter.z - 0.065);
+  group.add(upperTeeth);
+
+  // 3. Lower Dental Arch (can animate downward with jawOpen)
+  const lowerTeeth = new THREE.Mesh(upperTeethGeo.clone(), teethMat);
+  lowerTeeth.name = 'lowerTeeth';
+  lowerTeeth.rotation.x = -Math.PI * 0.45;
+  lowerTeeth.rotation.z = Math.PI * 0.075;
+  lowerTeeth.position.set(pMouthCenter.x, pMouthCenter.y - 0.038, pMouthCenter.z - 0.065);
+  group.add(lowerTeeth);
+
+  return group;
+}
+
 /**
  * Smooth Hermite / radial falloff function:
  * Returns 1 at dist = 0, decaying smoothly to 0 at dist = radius with 0 tangent at the boundary.
@@ -26,6 +103,7 @@ export class FaceMeshGenerator {
   public material: THREE.MeshStandardMaterial | null = null;
   public mesh: THREE.Mesh | null = null;
   public skinColor: { r: number; g: number; b: number } = { r: 0.85, g: 0.75, b: 0.65 };
+  public mouthParams: MouthCustomizationParams = { ...DEFAULT_MOUTH_PARAMS };
 
   /**
    * Aligns 3D landmarks into a canonical frontal facial frame.
@@ -125,8 +203,12 @@ export class FaceMeshGenerator {
     landmarks: Array<{ x: number; y: number; z: number }>,
     _blendshapes: Record<string, number>,
     _transformMatrix: any,
-    textureCanvas: HTMLCanvasElement
+    textureCanvas: HTMLCanvasElement,
+    mouthParams?: Partial<MouthCustomizationParams>
   ): THREE.Mesh {
+    if (mouthParams) {
+      this.mouthParams = { ...DEFAULT_MOUTH_PARAMS, ...mouthParams };
+    }
     this.geometry = new THREE.BufferGeometry();
 
     // Sample skin color for head base model
@@ -161,6 +243,15 @@ export class FaceMeshGenerator {
     const scaleY = faceHeight * 0.5;
     const scaleZ = faceHeight * 0.55;
 
+    // Mouth Center in normalized coordinates
+    const rawUpperLip = canonicalPoints[13] || { x: 0, y: -0.3, z: 0 };
+    const rawLowerLip = canonicalPoints[14] || { x: 0, y: -0.35, z: 0 };
+    const normMouthCenter: Point3D = {
+      x: ((rawUpperLip.x + rawLowerLip.x) / 2 - centerX) / scaleX,
+      y: ((rawUpperLip.y + rawLowerLip.y) / 2 - centerY) / scaleY,
+      z: ((rawUpperLip.z + rawLowerLip.z) / 2 - centerZ) / scaleZ,
+    };
+
     // 3. Compute 2D texture bounds for UV mapping from original photo coordinates
     let minX2D = Infinity, maxX2D = -Infinity;
     let minY2D = Infinity, maxY2D = -Infinity;
@@ -187,9 +278,47 @@ export class FaceMeshGenerator {
     const basePoints: Point3D[] = [];
 
     canonicalPoints.forEach((p, index) => {
-      const x = (p.x - centerX) / scaleX;
-      const y = (p.y - centerY) / scaleY;
-      const z = (p.z - centerZ) / scaleZ;
+      let x = (p.x - centerX) / scaleX;
+      let y = (p.y - centerY) / scaleY;
+      let z = (p.z - centerZ) / scaleZ;
+
+      // Apply mouth calibration parameters
+      const distToMouth = Math.hypot(x - normMouthCenter.x, y - normMouthCenter.y);
+
+      // A. Mouth Depth Push: curve inner lips inward in -Z into oral cavity
+      if (distToMouth < 0.28) {
+        const depthW = smoothRadialFalloff(distToMouth, 0.28);
+        const isInner = INNER_LIP_INDICES.includes(index);
+        const pushAmt = isInner ? this.mouthParams.mouthDepthPush : this.mouthParams.mouthDepthPush * 0.45;
+        z -= pushAmt * depthW;
+      }
+
+      // B. Lip Thickness: volume scaling for outer/inner lip rim
+      if (distToMouth < 0.32 && this.mouthParams.lipThickness !== 1.0) {
+        const thickW = smoothRadialFalloff(distToMouth, 0.32);
+        z += (this.mouthParams.lipThickness - 1.0) * 0.08 * thickW;
+        y += (this.mouthParams.lipThickness - 1.0) * (y - normMouthCenter.y) * 0.25 * thickW;
+      }
+
+      // C. Mouth Offset Y: vertical placement tuning
+      if (distToMouth < 0.35 && this.mouthParams.mouthOffsetY !== 0) {
+        const yW = smoothRadialFalloff(distToMouth, 0.35);
+        y += this.mouthParams.mouthOffsetY * yW;
+      }
+
+      // D. Smile Offset: uplift mouth corners
+      if (this.mouthParams.smileOffset !== 0) {
+        const distCorner = Math.min(
+          Math.hypot(x - (-0.28), y - normMouthCenter.y),
+          Math.hypot(x - 0.28, y - normMouthCenter.y)
+        );
+        if (distCorner < 0.22) {
+          const cornerW = smoothRadialFalloff(distCorner, 0.22);
+          y += this.mouthParams.smileOffset * cornerW;
+          z += this.mouthParams.smileOffset * 0.12 * cornerW;
+        }
+      }
+
       vertices.push(x, y, z);
       basePoints.push({ x, y, z });
 
@@ -255,6 +384,8 @@ export class FaceMeshGenerator {
     this.mesh.userData.faceHeight = 2.0;
     this.mesh.userData.aspectRatio = faceWidth / faceHeight;
     this.mesh.userData.skinColor = this.skinColor;
+    this.mesh.userData.canonicalPoints = basePoints;
+    this.mesh.userData.mouthCenter = normMouthCenter;
 
     // 8. REST POSE: Initialize ALL morph target influences to 0
     if (this.mesh.morphTargetDictionary && this.mesh.morphTargetInfluences) {
@@ -386,18 +517,27 @@ export class FaceMeshGenerator {
         // 1. JAW BLENDSHAPES
         // ==========================================
         case 'jawOpen': {
+          const jawScale = this.mouthParams.jawOpenScale ?? 1.0;
           // Jaw rotates downward around upper lip threshold
           if (base.y < pUpperLip.y + 0.05) {
             const jawRange = Math.abs(pUpperLip.y - pChin.y) || 0.6;
             const t = THREE.MathUtils.clamp((pUpperLip.y + 0.05 - base.y) / jawRange, 0, 1);
             const w = t * t;
-            y -= 0.28 * w;
-            z -= 0.05 * w;
+            y -= 0.28 * jawScale * w;
+            z -= 0.06 * jawScale * w;
 
-            // Extra downward drop specifically for lower lip margin to open mouth cavity
+            // Downward drop for lower lip margin with inward recession (-Z) to curve over teeth
             const lipDist = distTo(index, 14);
             const lipFalloff = smoothRadialFalloff(lipDist, 0.22);
-            y -= 0.12 * lipFalloff;
+            y -= 0.14 * jawScale * lipFalloff;
+            z -= 0.09 * jawScale * lipFalloff;
+          }
+          // Upper lip stabilization
+          const upDist = distTo(index, 13);
+          if (upDist < 0.18) {
+            const upFalloff = smoothRadialFalloff(upDist, 0.18);
+            y += 0.02 * upFalloff;
+            z -= 0.04 * upFalloff;
           }
           break;
         }

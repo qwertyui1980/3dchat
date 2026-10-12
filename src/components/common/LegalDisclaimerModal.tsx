@@ -41,7 +41,7 @@ export const LegalDisclaimerModal: React.FC<LegalDisclaimerModalProps> = ({
 
         {/* Scrollable Content */}
         <div className="p-5 space-y-4 overflow-y-auto text-xs leading-relaxed text-neutral-300 font-sans">
-          
+
           {/* Privacy-by-Design Technical & Legal Clause */}
           <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-cyan-950/30 to-indigo-950/30 border border-emerald-500/30 text-emerald-100 space-y-2">
             <div className="font-bold flex items-center gap-2 text-emerald-300 text-xs">
@@ -112,7 +112,7 @@ export const LegalDisclaimerModal: React.FC<LegalDisclaimerModalProps> = ({
               3. Exención Total de Garantías y "AS IS" (Sección 7)
             </h4>
             <p className="text-neutral-300">
-              El Software se distribuye <strong className="text-white">"TAL CUAL" ("AS IS")</strong> y <strong className="text-white">"SEGÚN DISPONIBILIDAD"</strong>, sin garantías ni condiciones de ningún tipo, ya sean expresas o implícitas, incluidas, entre otras, garantías de comerciabilidad, idoneidad para un fin determinado o ausencia de errores. El usuario asume todos los riesgos inherentes a su uso o redistribución.
+              El Software se distribuye sin garantías ni condiciones de ningún tipo, ya sean expresas o implícitas, incluidas, entre otras, garantías de comerciabilidad, idoneidad para un fin determinado o ausencia de errores. El usuario asume todos los riesgos inherentes a su uso o redistribución.
             </p>
           </div>
 
