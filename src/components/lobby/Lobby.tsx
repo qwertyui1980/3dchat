@@ -20,7 +20,6 @@ import {
   AlertCircle,
   AlertTriangle,
   Play,
-  X,
   Plus,
 } from 'lucide-react';
 import { AvatarId, FaceFeatures, AvatarDefinition } from '../../types';
@@ -884,23 +883,6 @@ export const Lobby: React.FC<LobbyProps> = ({
                             <Check className="w-2.5 h-2.5 text-slate-950" />
                           </div>
                         )}
-
-                        {/* Admin 1-Click Delete Button ('X') */}
-                        {isAdminUser && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (confirm(`¿Eliminar el modelo "${avatar.name}" de la plataforma?`)) {
-                                avatarModelServiceSingleton.deleteModel(avatar.id);
-                              }
-                            }}
-                            className="absolute top-1 right-1 p-1 rounded-md bg-rose-950/95 hover:bg-rose-900 border border-rose-500/60 text-rose-300 z-10 transition active:scale-90 shadow-md cursor-pointer"
-                            title="Eliminar este modelo de la plataforma con 1 clic"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        )}
                       </div>
                     );
                   })}
@@ -925,29 +907,25 @@ export const Lobby: React.FC<LobbyProps> = ({
                     </button>
                   )}
 
-                  {/* Subir Modelo / Abrir Panel */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (isAdminUser) {
-                        setIsAdminPanelOpen(true);
-                      } else {
-                        alert('Solo el Administrador puede subir y agregar nuevos modelos 3D a la plataforma.');
-                      }
-                    }}
-                    title={isAdminUser ? 'Subir nuevo archivo de modelo 3D (.glb, .gltf, .vrm)' : 'Función disponible para administradores'}
-                    className="relative p-2 rounded-xl border border-dashed border-cyan-500/40 hover:border-cyan-400 bg-cyan-950/20 hover:bg-cyan-950/40 text-left flex flex-col items-center justify-center gap-1 cursor-pointer transition active:scale-95"
-                  >
-                    <div className="w-10 h-10 rounded-lg border border-dashed border-cyan-500/40 flex items-center justify-center text-cyan-400 shrink-0">
-                      <Plus className="w-4 h-4" />
-                    </div>
-                    <span className="text-[9px] font-bold text-cyan-300 text-center leading-tight">
-                      {isAdminUser ? 'Subir 3D' : 'Nuevos 3D'}
-                    </span>
-                    <span className="text-[8px] font-mono text-cyan-400 px-1 py-0.2 bg-cyan-950/80 rounded border border-cyan-900">
-                      {isAdminUser ? 'Admin' : 'Admin Only'}
-                    </span>
-                  </button>
+                  {/* Subir Modelo / Abrir Panel (Solo Admin) */}
+                  {isAdminUser && (
+                    <button
+                      type="button"
+                      onClick={() => setIsAdminPanelOpen(true)}
+                      title="Subir nuevo archivo de modelo 3D (.glb, .gltf, .vrm)"
+                      className="relative p-2 rounded-xl border border-dashed border-cyan-500/40 hover:border-cyan-400 bg-cyan-950/20 hover:bg-cyan-950/40 text-left flex flex-col items-center justify-center gap-1 cursor-pointer transition active:scale-95"
+                    >
+                      <div className="w-10 h-10 rounded-lg border border-dashed border-cyan-500/40 flex items-center justify-center text-cyan-400 shrink-0">
+                        <Plus className="w-4 h-4" />
+                      </div>
+                      <span className="text-[9px] font-bold text-cyan-300 text-center leading-tight">
+                        Subir 3D
+                      </span>
+                      <span className="text-[8px] font-mono text-cyan-400 px-1 py-0.2 bg-cyan-950/80 rounded border border-cyan-900">
+                        Admin
+                      </span>
+                    </button>
+                  )}
                 </div>
               </div>
 
