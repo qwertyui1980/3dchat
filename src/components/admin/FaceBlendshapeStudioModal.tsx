@@ -24,7 +24,6 @@ import {
   Image as ImageIcon,
   Video,
   VideoOff,
-  Shirt,
   Palette,
   Wand2,
   Volume2,
@@ -39,10 +38,9 @@ import {
   createTrackingPointsMesh,
   DEFAULT_GESTURE_PARAMS,
 } from '../../services/face3d/faceToBlendshapeService';
-import { EyePairResult, IRIS_COLOR_PRESETS } from '../../services/face3d/eyeGenerator';
+import { EyePairResult, IRIS_COLOR_PRESETS, PUPIL_COLOR_PRESETS } from '../../services/face3d/eyeGenerator';
 import { ARKIT_BLENDSHAPE_NAMES, ARKitBlendshapeName, ARKitBlendshapeMapper } from '../../services/face3d/arkitMapper';
 import { faceTrackerSingleton } from '../../services/mediapipeService';
-import { BustGenerator, ClothingStyle } from '../../services/face3d/bustGenerator';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
 
 interface FaceBlendshapeStudioModalProps {
@@ -59,7 +57,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   onSelectAvatar,
 }) => {
   // Tabs
-  const [activeTab, setActiveTab] = useState<'morphs' | 'clothing' | 'tuning' | 'export'>('morphs');
+  const [activeTab, setActiveTab] = useState<'morphs' | 'tuning' | 'export'>('morphs');
 
   // Image & Processing state
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -108,18 +106,15 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   const [showFaceMesh, setShowFaceMesh] = useState(true);
   const [showWireframe, setShowWireframe] = useState(false);
   const [showHeadBase, setShowHeadBase] = useState(true);
-  const [showShoulders, setShowShoulders] = useState(true);
   const [showTrackingPoints, setShowTrackingPoints] = useState(false);
   const [showPhotoPlane, setShowPhotoPlane] = useState(false);
   const [photoPlaneOpacity, setPhotoPlaneOpacity] = useState(0.7);
-  const [tuningTarget, setTuningTarget] = useState<'face' | 'mouth' | 'eyes' | 'head' | 'bust' | 'gestures'>('face');
+  const showPhotoPlaneRef = useRef(showPhotoPlane);
+  showPhotoPlaneRef.current = showPhotoPlane;
+  const photoPlaneOpacityRef = useRef(photoPlaneOpacity);
+  photoPlaneOpacityRef.current = photoPlaneOpacity;
+  const [tuningTarget, setTuningTarget] = useState<'face' | 'mouth' | 'eyes' | 'head' | 'gestures'>('face');
   const [isCopied, setIsCopied] = useState(false);
-
-  // Clothing & Bust Customization
-  const [clothingStyle, setClothingStyle] = useState<ClothingStyle>('suit');
-  const [suitColor, setSuitColor] = useState('#172554');
-  const [shirtColor, setShirtColor] = useState('#f8fafc');
-  const [tieColor, setTieColor] = useState('#991b1b');
 
   // Transform params
   const [debugParams, setDebugParams] = useState<TransformDebugParams>(DEFAULT_DEBUG_PARAMS);
@@ -161,6 +156,10 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0a0c16);
     sceneRef.current = scene;
+
+    if (photoPlaneRef.current) {
+      scene.add(photoPlaneRef.current);
+    }
 
     const width = container.clientWidth || 500;
     const height = container.clientHeight || 400;
@@ -237,8 +236,10 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         if (oralCavityRef.current) {
           const lowerTeeth = oralCavityRef.current.getObjectByName('lowerTeeth');
           if (lowerTeeth) {
-            lowerTeeth.position.y = -0.022 - speechOpen * 0.26;
-            lowerTeeth.position.z = -0.038 - speechOpen * 0.10;
+            if (!lowerTeeth.userData.basePos) lowerTeeth.userData.basePos = lowerTeeth.position.clone();
+            const base = lowerTeeth.userData.basePos as THREE.Vector3;
+            lowerTeeth.position.y = base.y - speechOpen * 0.18;
+            lowerTeeth.position.z = base.z - speechOpen * 0.08;
           }
         }
       }
@@ -304,17 +305,6 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         THREE.MathUtils.degToRad(currentParams.head.rotationZ)
       );
     }
-    if (bustModelRef.current) {
-      const torso = bustModelRef.current.getObjectByName('torsoGroup');
-      if (torso) {
-        torso.rotation.set(0, 0, 0);
-        torso.position.x = 0;
-      }
-      const neck = bustModelRef.current.getObjectByName('neckPivot');
-      if (neck) {
-        neck.rotation.set(0, 0, 0);
-      }
-    }
     if (eyePairResultRef.current) {
       eyePairResultRef.current.updateGaze(
         currentParams.eyes?.manualGazeX || 0,
@@ -347,7 +337,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     };
   }, [isOpen, isAdmin, initThreeScene, stopLiveWebcamTracking]);
 
-  // Handle Resize
+  // Handle Responsive Resize
   useEffect(() => {
     const handleResize = () => {
       if (!canvasRef.current || !rendererRef.current || !cameraRef.current) return;
@@ -355,14 +345,30 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       if (!container) return;
       const w = container.clientWidth;
       const h = container.clientHeight;
+      if (w === 0 || h === 0) return;
       cameraRef.current.aspect = w / h;
       cameraRef.current.updateProjectionMatrix();
-      rendererRef.current.setSize(w, h);
+      rendererRef.current.setSize(w, h, false);
     };
 
+    // Initial resize trigger
+    handleResize();
+
+    const container = canvasRef.current?.parentElement;
+    let observer: ResizeObserver | null = null;
+    if (container && typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => {
+        handleResize();
+      });
+      observer.observe(container);
+    }
+
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
+    return () => {
+      if (observer) observer.disconnect();
+      window.removeEventListener('resize', handleResize);
+    };
+  }, [isOpen]);
 
   // Stop Webcam
   const stopWebcam = () => {
@@ -409,6 +415,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     img.onload = () => {
       setSelectedImageElement(img);
       setPreviewUrl(dataUrl);
+      setShowPhotoPlane(true);
       stopWebcam();
       setStatus('Foto capturada con éxito. Haz clic en "Generar Modelo 3D".', 'info');
     };
@@ -459,22 +466,6 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
               headModelRef.current.rotation.z = THREE.MathUtils.lerp(headModelRef.current.rotation.z, baseZ + features.roll * 0.75, 0.3);
             }
 
-            // Natural Bust & Shoulder Kinematics (cuello y hombros reactivos a 60 FPS)
-            if (bustModelRef.current) {
-              const torso = bustModelRef.current.getObjectByName('torsoGroup');
-              if (torso) {
-                torso.rotation.y = THREE.MathUtils.lerp(torso.rotation.y, features.yaw * 0.12, 0.2);
-                torso.rotation.z = THREE.MathUtils.lerp(torso.rotation.z, -features.roll * 0.06, 0.2);
-                torso.position.x = THREE.MathUtils.lerp(torso.position.x, features.yaw * 0.08, 0.18);
-              }
-              const neck = bustModelRef.current.getObjectByName('neckPivot');
-              if (neck) {
-                neck.rotation.y = THREE.MathUtils.lerp(neck.rotation.y, features.yaw * 0.35, 0.25);
-                neck.rotation.x = THREE.MathUtils.lerp(neck.rotation.x, features.pitch * 0.30, 0.25);
-                neck.rotation.z = THREE.MathUtils.lerp(neck.rotation.z, features.roll * 0.45, 0.25);
-              }
-            }
-
             // Real-time 3D Eyeball Gaze Tracking from Webcam
             if (
               eyePairResultRef.current &&
@@ -502,10 +493,12 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
             if (oralCavityRef.current && debugParams.mouth?.oralCavityEnabled) {
               const lowerTeeth = oralCavityRef.current.getObjectByName('lowerTeeth');
               if (lowerTeeth) {
+                if (!lowerTeeth.userData.basePos) lowerTeeth.userData.basePos = lowerTeeth.position.clone();
+                const base = lowerTeeth.userData.basePos as THREE.Vector3;
                 const jawOpenVal = mapped['jawOpen'] || 0;
                 const jawIntensity = debugParams.mouth?.jawOpenScale ?? 1.0;
-                lowerTeeth.position.y = -0.038 - jawOpenVal * 0.08 * jawIntensity;
-                lowerTeeth.position.z = -0.065 - jawOpenVal * 0.04 * jawIntensity;
+                lowerTeeth.position.y = base.y - jawOpenVal * 0.18 * jawIntensity;
+                lowerTeeth.position.z = base.z - jawOpenVal * 0.08 * jawIntensity;
               }
             }
 
@@ -541,6 +534,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       img.onload = () => {
         setSelectedImageElement(img);
         setPreviewUrl(dataUrl);
+        setShowPhotoPlane(true);
         const nameClean = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
         setExportAvatarName(nameClean.charAt(0).toUpperCase() + nameClean.slice(1));
         setStatus('Imagen cargada. Lista para procesar.', 'info');
@@ -572,17 +566,18 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       const naturalHeight = 'naturalHeight' in img ? (img.naturalHeight || img.height) : img.height;
       const aspect = naturalWidth / (naturalHeight || 1);
 
-      const texture = new THREE.Texture(img);
-      texture.needsUpdate = true;
-      texture.colorSpace = THREE.SRGBColorSpace;
-
       if (photoPlaneRef.current) {
         scene.remove(photoPlaneRef.current);
         photoPlaneRef.current.geometry.dispose();
         if (photoPlaneRef.current.material instanceof THREE.Material) {
           photoPlaneRef.current.material.dispose();
         }
+        photoPlaneRef.current = null;
       }
+
+      const texture = new THREE.Texture(img);
+      texture.needsUpdate = true;
+      texture.colorSpace = THREE.SRGBColorSpace;
 
       const planeHeight = 2.4;
       const planeWidth = planeHeight * aspect;
@@ -590,19 +585,19 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       const mat = new THREE.MeshBasicMaterial({
         map: texture,
         transparent: true,
-        opacity: photoPlaneOpacity,
+        opacity: photoPlaneOpacityRef.current,
         depthWrite: false,
         side: THREE.DoubleSide,
       });
       const mesh = new THREE.Mesh(geo, mat);
       mesh.name = 'referencePhotoPlane';
-      mesh.position.set(0, 0, -1.15);
-      mesh.visible = showPhotoPlane;
-      mesh.renderOrder = 0;
+      mesh.position.set(0, 0, -1.60);
+      mesh.visible = showPhotoPlaneRef.current;
+      mesh.renderOrder = -1;
       scene.add(mesh);
       photoPlaneRef.current = mesh;
     },
-    [photoPlaneOpacity, showPhotoPlane]
+    []
   );
 
   useEffect(() => {
@@ -634,12 +629,6 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       const result = await faceToBlendshapeServiceSingleton.processFaceImage(
         selectedImageElement,
         {
-          bustOptions: {
-            style: clothingStyle,
-            suitColor,
-            shirtColor,
-            tieColor,
-          },
           mouthParams: debugParams.mouth,
           eyeOptions: debugParams.eyes,
         }
@@ -665,7 +654,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
 
       faceMeshRef.current = result.faceMesh;
       headModelRef.current = result.headModel;
-      bustModelRef.current = result.bustModel;
+      bustModelRef.current = null;
       eyesGroupRef.current = result.eyesGroup;
       oralCavityRef.current = result.oralCavity;
       eyePairResultRef.current = result.eyePairResult;
@@ -683,10 +672,6 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         result.headModel.visible = showHeadBase;
         scene.add(result.headModel);
       }
-      if (result.bustModel) {
-        result.bustModel.visible = showShoulders;
-        scene.add(result.bustModel);
-      }
 
       // Create 478 MediaPipe landmark tracking points cloud
       if (result.faceMesh.userData.canonicalPoints) {
@@ -700,7 +685,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       faceToBlendshapeServiceSingleton.applyTransforms(
         result.faceMesh,
         result.headModel,
-        result.bustModel,
+        null,
         debugParams,
         result.eyesGroup,
         result.oralCavity,
@@ -750,9 +735,22 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     if (name === 'jawOpen' && oralCavityRef.current) {
       const lowerTeeth = oralCavityRef.current.getObjectByName('lowerTeeth');
       if (lowerTeeth) {
-        lowerTeeth.position.y = -0.022 - value * 0.26;
-        lowerTeeth.position.z = -0.038 - value * 0.10;
+        if (!lowerTeeth.userData.basePos) lowerTeeth.userData.basePos = lowerTeeth.position.clone();
+        const base = lowerTeeth.userData.basePos as THREE.Vector3;
+        lowerTeeth.position.y = base.y - value * 0.18;
+        lowerTeeth.position.z = base.z - value * 0.08;
       }
+    }
+
+    // Connect eyeLook blendshape sliders to 3D eyeball gaze tracking
+    if (name.startsWith('eyeLook') && eyePairResultRef.current) {
+      let gx = 0;
+      let gy = 0;
+      if (name === 'eyeLookInLeft' || name === 'eyeLookOutRight') gx = value;
+      else if (name === 'eyeLookOutLeft' || name === 'eyeLookInRight') gx = -value;
+      else if (name === 'eyeLookUpLeft' || name === 'eyeLookUpRight') gy = value;
+      else if (name === 'eyeLookDownLeft' || name === 'eyeLookDownRight') gy = -value;
+      eyePairResultRef.current.updateGaze(gx, gy);
     }
   };
 
@@ -772,10 +770,12 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     });
     if (oralCavityRef.current) {
       const lowerTeeth = oralCavityRef.current.getObjectByName('lowerTeeth');
-      if (lowerTeeth) {
-        lowerTeeth.position.y = -0.022;
-        lowerTeeth.position.z = -0.038;
+      if (lowerTeeth && lowerTeeth.userData.basePos) {
+        lowerTeeth.position.copy(lowerTeeth.userData.basePos);
       }
+    }
+    if (eyePairResultRef.current) {
+      eyePairResultRef.current.updateGaze(0, 0);
     }
     setIsSimulatingSpeech(false);
     isSimulatingSpeechRef.current = false;
@@ -806,10 +806,12 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         },
       };
 
-      // Real-time Eyeball Appearance / Manual Gaze / Pupil Size Update
+      // Real-time Eyeball Appearance / Manual Gaze / Pupil Size & Color Update
       if (category === 'eyes' && eyePairResultRef.current) {
         if (key === 'irisColor') {
           eyePairResultRef.current.setIrisColor(value);
+        } else if (key === 'pupilColor') {
+          eyePairResultRef.current.setPupilColor(value);
         } else if (key === 'pupilSize') {
           eyePairResultRef.current.setPupilSize(value);
         } else if (key === 'manualGazeX' || key === 'manualGazeY') {
@@ -1079,28 +1081,6 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     });
   };
 
-  // Reset Torso & Bust Transforms Exclusively
-  const handleResetBustTransforms = () => {
-    setDebugParams((prev) => {
-      const updated: TransformDebugParams = {
-        ...prev,
-        bust: { ...DEFAULT_DEBUG_PARAMS.bust },
-      };
-      if (faceMeshRef.current) {
-        faceToBlendshapeServiceSingleton.applyTransforms(
-          faceMeshRef.current,
-          headModelRef.current,
-          bustModelRef.current,
-          updated,
-          eyesGroupRef.current,
-          oralCavityRef.current,
-          eyePairResultRef.current
-        );
-      }
-      return updated;
-    });
-  };
-
   // Toggle Face Mesh Visibility
   const handleToggleFaceMesh = () => {
     const next = !showFaceMesh;
@@ -1126,57 +1106,6 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     if (headModelRef.current) {
       headModelRef.current.visible = next;
     }
-  };
-
-  // Toggle Shoulders / Bust Model
-  const handleToggleShoulders = () => {
-    const next = !showShoulders;
-    setShowShoulders(next);
-    if (bustModelRef.current) {
-      bustModelRef.current.visible = next;
-    }
-  };
-
-  // Re-generate or update bust style live
-  const handleUpdateBustStyle = (
-    style: ClothingStyle,
-    sColor = suitColor,
-    shColor = shirtColor,
-    tColor = tieColor
-  ) => {
-    setClothingStyle(style);
-    setSuitColor(sColor);
-    setShirtColor(shColor);
-    setTieColor(tColor);
-
-    const scene = sceneRef.current;
-    if (!scene || !faceMeshRef.current) return;
-
-    const oldBust = scene.getObjectByName('bustModel');
-    if (oldBust) scene.remove(oldBust);
-
-    const bustGen = new BustGenerator();
-    const newBust = bustGen.generateBust({
-      style,
-      suitColor: sColor,
-      shirtColor: shColor,
-      tieColor: tColor,
-      skinColor: faceMeshRef.current.userData.skinColor || { r: 0.85, g: 0.75, b: 0.65 },
-    });
-    newBust.name = 'bustModel';
-    newBust.visible = showShoulders;
-    bustModelRef.current = newBust;
-    scene.add(newBust);
-
-    faceToBlendshapeServiceSingleton.applyTransforms(
-      faceMeshRef.current,
-      headModelRef.current,
-      newBust,
-      debugParams,
-      eyesGroupRef.current,
-      oralCavityRef.current,
-      eyePairResultRef.current
-    );
   };
 
   // Reset Camera View
@@ -1210,11 +1139,11 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       const buffer = await faceToBlendshapeServiceSingleton.exportGLB(
         faceMeshRef.current,
         headModelRef.current,
-        bustModelRef.current,
+        null,
         eyesGroupRef.current,
         oralCavityRef.current,
         showHeadBase,
-        showShoulders,
+        false,
         debugParams.eyes?.enabled ?? true,
         debugParams.mouth?.oralCavityEnabled ?? true
       );
@@ -1253,11 +1182,11 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       const buffer = await faceToBlendshapeServiceSingleton.exportGLB(
         faceMeshRef.current,
         headModelRef.current,
-        bustModelRef.current,
+        null,
         eyesGroupRef.current,
         oralCavityRef.current,
         showHeadBase,
-        showShoulders,
+        false,
         debugParams.eyes?.enabled ?? true,
         debugParams.mouth?.oralCavityEnabled ?? true
       );
@@ -1291,8 +1220,8 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   if (!isOpen || !isAdmin) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-md animate-fade-in select-none">
-      <div className="w-full max-w-6xl h-[94vh] rounded-3xl bg-[#090b14] border border-cyan-500/40 shadow-2xl shadow-cyan-950/60 overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-1 sm:p-2 md:p-3 bg-black/90 backdrop-blur-md animate-fade-in select-none">
+      <div className="w-full h-full max-w-[99vw] xl:max-w-[98vw] 2xl:max-w-[2400px] max-h-[99vh] sm:max-h-[96vh] rounded-2xl sm:rounded-3xl bg-[#090b14] border border-cyan-500/40 shadow-2xl shadow-cyan-950/60 overflow-hidden flex flex-col">
         {/* Header Bar */}
         <div className="px-4 py-3 sm:px-6 sm:py-3.5 bg-[#0e1220] border-b border-white/[0.08] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -1324,10 +1253,10 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
           </button>
         </div>
 
-        {/* Main Workspace Body: 3 Columns (Left: Input/Capture | Center: 3D Canvas | Right: Controls & Export) */}
-        <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-3 p-3 sm:p-4 overflow-hidden">
-          {/* Left Panel: Upload & Image Source (Col 3) */}
-          <div className="lg:col-span-3 flex flex-col gap-3 h-full overflow-y-auto pr-1">
+        {/* Main Workspace Body: Fully Responsive Layout across any browser width */}
+        <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-2.5 sm:gap-3 p-2.5 sm:p-3.5 overflow-hidden">
+          {/* Left Panel: Upload & Image Source */}
+          <div className="w-full lg:w-[260px] xl:w-[280px] 2xl:w-[320px] shrink-0 flex flex-col gap-3 h-auto max-h-[280px] lg:max-h-none lg:h-full overflow-y-auto pr-1">
             <div className="p-3.5 rounded-2xl bg-[#0e1220]/90 border border-white/[0.08] flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-neutral-200 flex items-center gap-1.5">
@@ -1493,15 +1422,15 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
             )}
           </div>
 
-          {/* Center Column: 3D Viewport (Col 5/6) */}
-          <div className="lg:col-span-5 flex flex-col h-full rounded-2xl bg-[#05060b] border border-cyan-500/20 overflow-hidden relative">
+          {/* Center Column: 3D Viewport (Expands dynamically to fill available width) */}
+          <div className="flex-1 min-w-0 min-h-[350px] lg:min-h-0 h-full flex flex-col rounded-2xl bg-[#05060b] border border-cyan-500/20 overflow-hidden relative shadow-inner">
             {/* Viewport Top Toolbar */}
-            <div className="absolute top-3 left-3 right-3 z-10 flex items-center justify-between pointer-events-none">
-              <div className="flex items-center gap-1.5 bg-[#0e1220]/80 backdrop-blur-md p-1 rounded-xl border border-white/[0.08] pointer-events-auto shadow-lg">
+            <div className="absolute top-2.5 sm:top-3 left-2.5 sm:left-3 right-2.5 sm:right-3 z-10 flex items-center justify-between pointer-events-none gap-2">
+              <div className="flex items-center gap-1 sm:gap-1.5 bg-[#0e1220]/85 backdrop-blur-md p-1 rounded-xl border border-white/[0.08] pointer-events-auto shadow-lg overflow-x-auto max-w-[calc(100%-48px)] no-scrollbar">
                 <button
                   type="button"
                   onClick={handleToggleFaceMesh}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                  className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
                     showFaceMesh ? 'bg-cyan-500 text-slate-950' : 'text-neutral-300 hover:bg-white/10'
                   }`}
                   title="Mostrar/Ocultar Malla Facial"
@@ -1512,7 +1441,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                 <button
                   type="button"
                   onClick={handleToggleWireframe}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                  className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
                     showWireframe ? 'bg-cyan-400 text-slate-950' : 'text-neutral-300 hover:bg-white/10'
                   }`}
                   title="Activar/Desactivar Malla Wireframe"
@@ -1523,7 +1452,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                 <button
                   type="button"
                   onClick={handleToggleHeadBase}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                  className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
                     showHeadBase ? 'bg-indigo-500 text-white' : 'text-neutral-300 hover:bg-white/10'
                   }`}
                   title="Mostrar/Ocultar Base de Cabeza 3D"
@@ -1533,22 +1462,11 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                 </button>
                 <button
                   type="button"
-                  onClick={handleToggleShoulders}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                    showShoulders ? 'bg-indigo-500 text-white' : 'text-neutral-300 hover:bg-white/10'
-                  }`}
-                  title="Mostrar/Ocultar Hombros y Vestimenta"
-                >
-                  <Shirt className="w-3.5 h-3.5" />
-                  Hombros
-                </button>
-                <button
-                  type="button"
                   onClick={() => {
                     const next = !debugParams.eyes?.enabled;
                     handleDebugParamChange('eyes', 'enabled', next);
                   }}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                  className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
                     debugParams.eyes?.enabled ? 'bg-cyan-400 text-slate-950 font-black' : 'text-neutral-400 hover:bg-white/10'
                   }`}
                   title="Mostrar/Ocultar Ojos 3D"
@@ -1562,7 +1480,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                     const next = !debugParams.mouth?.oralCavityEnabled;
                     handleDebugParamChange('mouth', 'oralCavityEnabled', next);
                   }}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                  className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
                     debugParams.mouth?.oralCavityEnabled ? 'bg-rose-500 text-white font-black' : 'text-neutral-400 hover:bg-white/10'
                   }`}
                   title="Mostrar/Ocultar Cavidad Oral y Dientes 3D"
@@ -1573,7 +1491,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                 <button
                   type="button"
                   onClick={() => setShowTrackingPoints(!showTrackingPoints)}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                  className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
                     showTrackingPoints ? 'bg-amber-400 text-slate-950 font-black shadow-md shadow-amber-400/30' : 'text-neutral-400 hover:bg-white/10'
                   }`}
                   title="Mostrar/Ocultar Nube 3D de 478 Puntos Faciales MediaPipe"
@@ -1584,7 +1502,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                 <button
                   type="button"
                   onClick={() => setShowPhotoPlane(!showPhotoPlane)}
-                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                  className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
                     showPhotoPlane ? 'bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/30' : 'text-neutral-400 hover:bg-white/10'
                   }`}
                   title="Mostrar/Ocultar Foto Original en el Plano de Fondo 3D"
@@ -1597,7 +1515,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
               <button
                 type="button"
                 onClick={handleResetCamera}
-                className="p-1.5 rounded-xl bg-[#0e1220]/80 backdrop-blur-md border border-white/[0.08] text-neutral-300 hover:text-cyan-300 hover:bg-white/10 pointer-events-auto transition cursor-pointer shadow-lg"
+                className="shrink-0 p-1.5 rounded-xl bg-[#0e1220]/80 backdrop-blur-md border border-white/[0.08] text-neutral-300 hover:text-cyan-300 hover:bg-white/10 pointer-events-auto transition cursor-pointer shadow-lg"
                 title="Centrar cámara"
               >
                 <RefreshCw className="w-4 h-4" />
@@ -1648,10 +1566,10 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
             </div>
           </div>
 
-          {/* Right Column: Controls, Blendshapes & Export (Col 4) */}
-          <div className="lg:col-span-4 flex flex-col h-full rounded-2xl bg-[#0e1220]/90 border border-white/[0.08] overflow-hidden">
+          {/* Right Column: Controls, Blendshapes & Export */}
+          <div className="w-full lg:w-[360px] xl:w-[420px] 2xl:w-[480px] shrink-0 flex flex-col h-auto max-h-[460px] lg:max-h-none lg:h-full rounded-2xl bg-[#0e1220]/90 border border-white/[0.08] overflow-hidden">
             {/* Tab Navigation */}
-            <div className="grid grid-cols-4 p-1.5 bg-[#090b14] border-b border-white/[0.06] gap-1 shrink-0">
+            <div className="grid grid-cols-3 p-1.5 bg-[#090b14] border-b border-white/[0.06] gap-1 shrink-0">
               <button
                 type="button"
                 onClick={() => setActiveTab('morphs')}
@@ -1664,20 +1582,6 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
               >
                 <Smile className="w-3.5 h-3.5" />
                 <span>Expresiones</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setActiveTab('clothing')}
-                className={`py-2 px-1 rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
-                  activeTab === 'clothing'
-                    ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
-                    : 'text-neutral-400 hover:text-white hover:bg-white/[0.04]'
-                }`}
-                title="Hombros, traje ejecutivo, camisa o cuello redondo"
-              >
-                <Shirt className="w-3.5 h-3.5" />
-                <span>Hombros</span>
               </button>
 
               <button
@@ -1918,148 +1822,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
               </div>
             )}
 
-            {/* Tab 2: Hombros y Vestimenta */}
-            {activeTab === 'clothing' && (
-              <div className="flex-1 flex flex-col p-3 sm:p-4 overflow-y-auto gap-4">
-                <div className="flex items-center justify-between pb-1 border-b border-white/[0.06]">
-                  <div>
-                    <span className="text-xs font-bold text-neutral-200">Hombros y Vestimenta</span>
-                    <p className="text-[10px] text-neutral-400">Personaliza el busto, vestimenta y corbata del avatar</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={handleToggleShoulders}
-                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition flex items-center gap-1.5 cursor-pointer ${
-                      showShoulders ? 'bg-indigo-500 text-white shadow-md' : 'bg-neutral-800 text-neutral-400'
-                    }`}
-                  >
-                    <Shirt className="w-3.5 h-3.5" />
-                    {showShoulders ? 'Hombros Visibles' : 'Ocultos'}
-                  </button>
-                </div>
-
-                {/* Estilos de Ropa */}
-                <div className="space-y-2">
-                  <span className="text-[11px] font-black text-cyan-300 uppercase tracking-wider block">
-                    Estilo de Vestimenta
-                  </span>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateBustStyle('suit')}
-                      className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center gap-1.5 cursor-pointer ${
-                        clothingStyle === 'suit'
-                          ? 'border-cyan-400 bg-cyan-950/40 text-cyan-300 shadow-md'
-                          : 'border-white/[0.08] bg-black/30 text-neutral-400 hover:border-white/20'
-                      }`}
-                    >
-                      <span className="text-lg">👔</span>
-                      <span className="text-[11px] font-bold">Traje Ejecutivo</span>
-                      <span className="text-[9px] text-neutral-500">Con corbata (Reagan)</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateBustStyle('shirt')}
-                      className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center gap-1.5 cursor-pointer ${
-                        clothingStyle === 'shirt'
-                          ? 'border-cyan-400 bg-cyan-950/40 text-cyan-300 shadow-md'
-                          : 'border-white/[0.08] bg-black/30 text-neutral-400 hover:border-white/20'
-                      }`}
-                    >
-                      <span className="text-lg">👕</span>
-                      <span className="text-[11px] font-bold">Camisa Casual</span>
-                      <span className="text-[9px] text-neutral-500">Botones formales</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => handleUpdateBustStyle('crew')}
-                      className={`p-2.5 rounded-xl border text-center transition flex flex-col items-center gap-1.5 cursor-pointer ${
-                        clothingStyle === 'crew'
-                          ? 'border-cyan-400 bg-cyan-950/40 text-cyan-300 shadow-md'
-                          : 'border-white/[0.08] bg-black/30 text-neutral-400 hover:border-white/20'
-                      }`}
-                    >
-                      <span className="text-lg">⚪</span>
-                      <span className="text-[11px] font-bold">Cuello Redondo</span>
-                      <span className="text-[9px] text-neutral-500">Playera / Suéter</span>
-                    </button>
-                  </div>
-                </div>
-
-                {/* Colores */}
-                <div className="p-3.5 rounded-2xl bg-black/40 border border-white/[0.06] space-y-3">
-                  <span className="text-[11px] font-black text-indigo-300 uppercase tracking-wider block">
-                    Colores de la Vestimenta
-                  </span>
-
-                  {/* Color del Traje */}
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-neutral-300 font-medium">Color de Saco / Prenda</span>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        value={suitColor}
-                        onChange={(e) => {
-                          setSuitColor(e.target.value);
-                          handleUpdateBustStyle(clothingStyle, e.target.value, shirtColor, tieColor);
-                        }}
-                        className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
-                      />
-                      <span className="font-mono text-[11px] text-neutral-400 uppercase">{suitColor}</span>
-                    </div>
-                  </div>
-
-                  {/* Color de la Corbata (si es traje) */}
-                  {clothingStyle === 'suit' && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-neutral-300 font-medium">Color de Corbata</span>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="color"
-                          value={tieColor}
-                          onChange={(e) => {
-                            setTieColor(e.target.value);
-                            handleUpdateBustStyle(clothingStyle, suitColor, shirtColor, e.target.value);
-                          }}
-                          className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
-                        />
-                        <span className="font-mono text-[11px] text-neutral-400 uppercase">{tieColor}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Color de la Camisa */}
-                  {clothingStyle !== 'crew' && (
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="text-neutral-300 font-medium">Color de Camisa</span>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="color"
-                          value={shirtColor}
-                          onChange={(e) => {
-                            setShirtColor(e.target.value);
-                            handleUpdateBustStyle(clothingStyle, suitColor, e.target.value, tieColor);
-                          }}
-                          className="w-7 h-7 rounded-lg border-0 cursor-pointer bg-transparent"
-                        />
-                        <span className="font-mono text-[11px] text-neutral-400 uppercase">{shirtColor}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div className="p-3 rounded-xl bg-cyan-950/20 border border-cyan-500/20 text-[11px] text-cyan-300 flex items-start gap-2">
-                  <Sparkles className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>
-                    El busto cuenta con cinemática bi-articular: al activar el <strong>Espejo Webcam</strong>, el cuello se flexiona y los hombros reaccionan con balanceo orgánico al movimiento de tu cuerpo en cámara a 60 FPS.
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Tab 3: Fine Tuning (Transforms & Alignment) */}
+            {/* Tab 2: Fine Tuning (Transforms & Alignment) */}
             {activeTab === 'tuning' && (
               <div className="flex-1 flex flex-col p-3 sm:p-4 overflow-y-auto gap-3.5">
                 <div className="flex items-center justify-between pb-1 border-b border-white/[0.06]">
@@ -2087,8 +1850,8 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   </div>
                 </div>
 
-                {/* Sub-selector: Malla Facial, Boca y Labios, Ojos 3D, Base de Cabeza, Hombros y Busto, Gestos y Tracking */}
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 p-1 bg-black/40 rounded-xl border border-white/[0.08]">
+                {/* Sub-selector: Malla Facial, Boca y Labios, Ojos 3D, Base de Cabeza, Gestos y Tracking */}
+                <div className="grid grid-cols-5 gap-1 p-1 bg-black/40 rounded-xl border border-white/[0.08] shrink-0">
                   <button
                     type="button"
                     onClick={() => setTuningTarget('face')}
@@ -2136,18 +1899,6 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   >
                     <Layers className="w-3.5 h-3.5 shrink-0" />
                     <span className="truncate">Cabeza</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTuningTarget('bust')}
-                    className={`py-2 px-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
-                      tuningTarget === 'bust'
-                        ? 'bg-purple-500 text-white shadow-md font-black'
-                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.04]'
-                    }`}
-                  >
-                    <Shirt className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">Hombros</span>
                   </button>
                   <button
                     type="button"
@@ -2743,6 +2494,51 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                       </div>
                     </div>
 
+                    {/* Color de la Pupila y Presets */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <span className="text-[11px] font-black text-emerald-400 uppercase tracking-wider block">
+                            Color de la Pupila
+                          </span>
+                          <span className="text-[9px] text-neutral-500">Tono del centro pupilar 3D</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={debugParams.eyes?.pupilColor ?? '#000000'}
+                            onChange={(e) => handleDebugParamChange('eyes', 'pupilColor', e.target.value)}
+                            className="w-6 h-6 rounded-md border-0 cursor-pointer bg-transparent"
+                          />
+                          <span className="font-mono text-[10px] text-emerald-300 uppercase">
+                            {debugParams.eyes?.pupilColor ?? '#000000'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Presets de Color de Pupila */}
+                      <div className="grid grid-cols-4 gap-1.5">
+                        {PUPIL_COLOR_PRESETS.map((preset) => (
+                          <button
+                            key={preset.color}
+                            type="button"
+                            onClick={() => handleDebugParamChange('eyes', 'pupilColor', preset.color)}
+                            className={`p-1.5 rounded-lg border text-left transition flex items-center gap-1.5 cursor-pointer ${
+                              (debugParams.eyes?.pupilColor ?? '#000000').toLowerCase() === preset.color.toLowerCase()
+                                ? 'border-emerald-400 bg-emerald-950/40 text-emerald-300'
+                                : 'border-white/[0.06] bg-black/30 text-neutral-400 hover:border-white/20'
+                            }`}
+                          >
+                            <span
+                              className="w-3.5 h-3.5 rounded-full shrink-0 border border-white/20"
+                              style={{ backgroundColor: preset.color }}
+                            />
+                            <span className="text-[9px] font-bold truncate">{preset.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
                     {/* Prueba Manual de Mirada */}
                     <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2">
                       <div className="flex items-center justify-between">
@@ -3014,129 +2810,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   </div>
                 )}
 
-                {/* --- 5. Hombros y Torso (Calibración Anatómica de Busto) --- */}
-                {tuningTarget === 'bust' && (
-                  <div className="space-y-3">
-                    <div className="p-2.5 rounded-xl bg-purple-950/20 border border-purple-500/20 text-[11px] text-purple-300 flex items-center justify-between">
-                      <span>Calibración anatómica de <strong>hombros, cuello y torso</strong>.</span>
-                      <button
-                        type="button"
-                        onClick={handleResetBustTransforms}
-                        className="text-[10px] text-purple-400 underline hover:text-purple-200 cursor-pointer"
-                      >
-                        Reset Busto
-                      </button>
-                    </div>
-
-                    {/* Proporción y Dimensiones */}
-                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
-                      <span className="text-[11px] font-black text-purple-300 uppercase tracking-wider block">
-                        Proporción de Hombros y Torso
-                      </span>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-neutral-300">Escala General</span>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="range"
-                              min="0.6"
-                              max="1.6"
-                              step="0.02"
-                              value={debugParams.bust?.scale ?? 1.0}
-                              onChange={(e) => handleDebugParamChange('bust', 'scale', parseFloat(e.target.value))}
-                              className="w-28 sm:w-36 accent-purple-400 cursor-pointer"
-                            />
-                            <span className="w-10 text-right font-mono text-[10px] text-purple-300 font-bold">
-                              {(debugParams.bust?.scale ?? 1.0).toFixed(2)}x
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-neutral-300">Ancho de Hombros</span>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="range"
-                              min="0.6"
-                              max="1.6"
-                              step="0.02"
-                              value={debugParams.bust?.widthMultiplier ?? 1.0}
-                              onChange={(e) => handleDebugParamChange('bust', 'widthMultiplier', parseFloat(e.target.value))}
-                              className="w-28 sm:w-36 accent-purple-400 cursor-pointer"
-                            />
-                            <span className="w-10 text-right font-mono text-[10px] text-purple-300 font-bold">
-                              {(debugParams.bust?.widthMultiplier ?? 1.0).toFixed(2)}x
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-neutral-300">Altura de Pecho</span>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="range"
-                              min="0.6"
-                              max="1.6"
-                              step="0.02"
-                              value={debugParams.bust?.heightMultiplier ?? 1.0}
-                              onChange={(e) => handleDebugParamChange('bust', 'heightMultiplier', parseFloat(e.target.value))}
-                              className="w-28 sm:w-36 accent-purple-400 cursor-pointer"
-                            />
-                            <span className="w-10 text-right font-mono text-[10px] text-purple-300 font-bold">
-                              {(debugParams.bust?.heightMultiplier ?? 1.0).toFixed(2)}x
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Acople de Cuello y Profundidad */}
-                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
-                      <span className="text-[11px] font-black text-purple-300 uppercase tracking-wider block">
-                        Acople de Cuello y Profundidad
-                      </span>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-neutral-300">Alineación Vertical Y</span>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="range"
-                              min="-0.4"
-                              max="0.4"
-                              step="0.005"
-                              value={debugParams.bust?.posOffsetY ?? 0.0}
-                              onChange={(e) => handleDebugParamChange('bust', 'posOffsetY', parseFloat(e.target.value))}
-                              className="w-28 sm:w-36 accent-purple-400 cursor-pointer"
-                            />
-                            <span className="w-10 text-right font-mono text-[10px] text-purple-300 font-bold">
-                              {(debugParams.bust?.posOffsetY ?? 0.0).toFixed(3)}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between text-[11px]">
-                          <span className="text-neutral-300">Profundidad Z</span>
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="range"
-                              min="-0.4"
-                              max="0.4"
-                              step="0.005"
-                              value={debugParams.bust?.posOffsetZ ?? 0.0}
-                              onChange={(e) => handleDebugParamChange('bust', 'posOffsetZ', parseFloat(e.target.value))}
-                              className="w-28 sm:w-36 accent-purple-400 cursor-pointer"
-                            />
-                            <span className="w-10 text-right font-mono text-[10px] text-purple-300 font-bold">
-                              {(debugParams.bust?.posOffsetZ ?? 0.0).toFixed(3)}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* --- 6. Calibración de Gestos y Tracking Multi-Punto --- */}
+                {/* --- 5. Calibración de Gestos y Tracking Multi-Punto --- */}
                 {tuningTarget === 'gestures' && (
                   <div className="space-y-3">
                     <div className="p-2.5 rounded-xl bg-amber-950/30 border border-amber-500/30 text-[11px] text-amber-200 flex items-center justify-between">

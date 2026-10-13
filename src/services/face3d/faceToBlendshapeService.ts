@@ -285,17 +285,9 @@ export class FaceToBlendshapeService {
       });
     }
 
-    // Generate Torso & Shoulders Bust
-    const bustGenerator = new BustGenerator();
+    // Torso / Bust is eliminated per user request (head base + face mask only)
+    const bustModel: THREE.Group | null = null;
     const skinColor = faceMesh.userData.skinColor || { r: 0.85, g: 0.75, b: 0.65 };
-    const bustModel = bustGenerator.generateBust({
-      style: options?.bustOptions?.style || 'suit',
-      suitColor: options?.bustOptions?.suitColor || '#172554',
-      shirtColor: options?.bustOptions?.shirtColor || '#f8fafc',
-      tieColor: options?.bustOptions?.tieColor || '#991b1b',
-      skinColor,
-    });
-    bustModel.name = 'bustModel';
 
     return {
       faceMesh,
@@ -492,7 +484,7 @@ export class FaceToBlendshapeService {
     eyesGroup: THREE.Group | null = null,
     oralCavity: THREE.Group | null = null,
     includeHead: boolean = true,
-    includeBust: boolean = true,
+    includeBust: boolean = false,
     includeEyes: boolean = true,
     includeOralCavity: boolean = true,
     calibrationMeta?: {
@@ -508,6 +500,13 @@ export class FaceToBlendshapeService {
 
       const clonedFace = faceMesh.clone();
       clonedFace.name = 'faceMesh';
+      if (faceMesh.material) {
+        if (Array.isArray(faceMesh.material)) {
+          clonedFace.material = faceMesh.material.map((m) => m.clone());
+        } else {
+          clonedFace.material = faceMesh.material.clone();
+        }
+      }
       if (clonedFace.morphTargetInfluences) {
         clonedFace.morphTargetInfluences = new Array(clonedFace.morphTargetInfluences.length).fill(0);
       }

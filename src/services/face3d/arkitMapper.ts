@@ -148,11 +148,27 @@ export class ARKitBlendshapeMapper {
       arkitBlendshapes[name] = 0;
     });
 
-    // Map MediaPipe blendshapes
+    // Map MediaPipe blendshapes with non-linear gain & sensitivity curve
     mediaPipeBlendshapes.forEach((blendshape) => {
       const arkitName = this.mediaPipeToARKitMap[blendshape.categoryName];
       if (arkitName) {
-        arkitBlendshapes[arkitName] = blendshape.score;
+        let val = blendshape.score;
+
+        // Dynamic non-linear sensitivity calibration:
+        // Raw MediaPipe webcam scores for eyebrows/smiles are naturally low (0.05-0.25).
+        // This organic gamma curve maps human movements into rich 60-100% avatar expressions.
+        if (arkitName.startsWith('brow')) {
+          val = Math.min(1.0, Math.pow(val, 0.65) * 2.1);
+        } else if (arkitName.startsWith('eyeBlink')) {
+          // Snappy eyelid closure curve
+          val = val > 0.10 ? Math.min(1.0, (val - 0.06) * 2.2) : 0;
+        } else if (arkitName.includes('Smile') || arkitName.includes('smile')) {
+          val = Math.min(1.0, Math.pow(val, 0.70) * 1.85);
+        } else if (arkitName.includes('Pucker') || arkitName.includes('pucker')) {
+          val = Math.min(1.0, Math.pow(val, 0.75) * 1.7);
+        }
+
+        arkitBlendshapes[arkitName] = val;
       }
     });
 
@@ -168,53 +184,61 @@ export class ARKitBlendshapeMapper {
     blendshapes: Record<string, number>,
     landmarks: Array<{ x: number; y: number; z: number }>
   ): Record<string, number> {
-    // Calculate jaw open from mouth landmarks
+    // 1. Calculate jaw open from mouth landmarks
     const upperLip = landmarks[13]; // Upper lip center
     const lowerLip = landmarks[14]; // Lower lip center
+    const leftCorner = landmarks[61];
+    const rightCorner = landmarks[291];
+    const mouthWidth = (leftCorner && rightCorner)
+      ? Math.hypot(leftCorner.x - rightCorner.x, leftCorner.y - rightCorner.y)
+      : 0.15;
+
     if (upperLip && lowerLip) {
       const mouthOpenDistance = Math.abs(upperLip.y - lowerLip.y);
-      if (blendshapes.jawOpen === 0) {
-        blendshapes.jawOpen = Math.min(mouthOpenDistance * 5, 1);
+      const ratio = mouthOpenDistance / Math.max(0.01, mouthWidth);
+      if (ratio > 0.12) {
+        const geometricJaw = Math.min(1, Math.max(0, (ratio - 0.10) / 0.32));
+        blendshapes.jawOpen = Math.max(blendshapes.jawOpen || 0, geometricJaw);
       }
     }
 
-    // Calculate smile from mouth corners
-    const leftMouthCorner = landmarks[61];
-    const rightMouthCorner = landmarks[291];
-    const mouthCenter = landmarks[13];
+    // 2. Calculate smile from mouth corners
+    if (leftCorner && rightCorner && upperLip) {
+      const lipCenterY = (upperLip.y + (lowerLip?.y ?? upperLip.y)) / 2;
+      const leftSmileIntensity = ((lipCenterY - leftCorner.y) / mouthWidth) * 4.0;
+      const rightSmileIntensity = ((lipCenterY - rightCorner.y) / mouthWidth) * 4.0;
 
-    if (leftMouthCorner && rightMouthCorner && mouthCenter) {
-      const leftSmileIntensity = (leftMouthCorner.y - mouthCenter.y) * -10;
-      const rightSmileIntensity = (rightMouthCorner.y - mouthCenter.y) * -10;
-
-      if (leftSmileIntensity > 0) {
+      if (leftSmileIntensity > 0.05) {
         blendshapes.mouthSmileLeft = Math.max(
           blendshapes.mouthSmileLeft || 0,
-          Math.min(leftSmileIntensity, 1)
+          Math.min(1.0, leftSmileIntensity)
         );
       }
-      if (rightSmileIntensity > 0) {
+      if (rightSmileIntensity > 0.05) {
         blendshapes.mouthSmileRight = Math.max(
           blendshapes.mouthSmileRight || 0,
-          Math.min(rightSmileIntensity, 1)
+          Math.min(1.0, rightSmileIntensity)
         );
       }
     }
 
-    // Calculate brow movements
-    const leftBrowInner = landmarks[107];
-    const rightBrowInner = landmarks[336];
-    const noseBridge = landmarks[6];
+    // 3. Calculate eye blinks from geometric eyelid distance
+    const leftUpperLid = landmarks[159];
+    const leftLowerLid = landmarks[145];
+    const rightUpperLid = landmarks[386];
+    const rightLowerLid = landmarks[374];
 
-    if (leftBrowInner && rightBrowInner && noseBridge) {
-      const leftBrowHeight = (noseBridge.y - leftBrowInner.y) * 8;
-      const rightBrowHeight = (noseBridge.y - rightBrowInner.y) * 8;
-
-      if (leftBrowHeight < 0) {
-        blendshapes.browDownLeft = Math.min(Math.abs(leftBrowHeight), 1);
+    if (leftUpperLid && leftLowerLid) {
+      const eyeLidDistL = Math.hypot(leftUpperLid.x - leftLowerLid.x, leftUpperLid.y - leftLowerLid.y);
+      if (eyeLidDistL < 0.014) {
+        // Almost closed lids
+        blendshapes.eyeBlinkLeft = Math.max(blendshapes.eyeBlinkLeft || 0, 0.85);
       }
-      if (rightBrowHeight < 0) {
-        blendshapes.browDownRight = Math.min(Math.abs(rightBrowHeight), 1);
+    }
+    if (rightUpperLid && rightLowerLid) {
+      const eyeLidDistR = Math.hypot(rightUpperLid.x - rightLowerLid.x, rightUpperLid.y - rightLowerLid.y);
+      if (eyeLidDistR < 0.014) {
+        blendshapes.eyeBlinkRight = Math.max(blendshapes.eyeBlinkRight || 0, 0.85);
       }
     }
 

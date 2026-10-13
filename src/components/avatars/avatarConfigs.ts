@@ -73,6 +73,16 @@ const BASE_AVATAR_LIST: Omit<AvatarDefinition, 'trackingProfile'>[] = [
     emoji: '🌐',
   },
   {
+    id: 'neon_holo',
+    name: 'Neon Cyber 3D',
+    tagline: 'Avatar holográfico de líneas de neón reactivo a todos los puntos de tracking facial',
+    category: 'Sci-Fi',
+    themeColor: '#00f0ff',
+    accentColor: '#3b82f6',
+    badge: 'NEON HOLO',
+    emoji: '💠',
+  },
+  {
     id: 'cyber_nova',
     name: 'Cyber Nova 3D',
     tagline: 'Androide cibernético con visor holográfico y circuitos reactivos',

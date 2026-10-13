@@ -27,6 +27,11 @@ export function buildCatCharacter(): Character3DController {
   const root = new THREE.Group();
   root.position.set(0, 0, 0);
 
+  // Vertical recentering container: elevates cat so facial center aligns with camera target (y=3.8)
+  const content = new THREE.Group();
+  content.position.set(0, 0.58, 0);
+  root.add(content);
+
   // 1. Torso / Collar
   const torsoMat = createPBRMaterial(0xffedd5, 0.6, 0.05); // Cream fur
   const hoodieMat = createPBRMaterial(0xf472b6, 0.5, 0.1); // Pink hoodie
@@ -44,32 +49,32 @@ export function buildCatCharacter(): Character3DController {
   const bodyMesh = new THREE.Mesh(bodyGeo, hoodieMat);
   bodyMesh.position.set(0, 1.9, 0);
   bodyMesh.castShadow = true;
-  root.add(bodyMesh);
+  content.add(bodyMesh);
 
   // Neck
   const neckGeo = new THREE.CylinderGeometry(0.5, 0.6, 0.6, 20);
   const neckMesh = new THREE.Mesh(neckGeo, torsoMat);
   neckMesh.position.set(0, 2.9, 0);
-  root.add(neckMesh);
+  content.add(neckMesh);
 
   // Collar with bell
   const collarGeo = new THREE.TorusGeometry(0.52, 0.08, 12, 32);
   const collarMesh = new THREE.Mesh(collarGeo, createPBRMaterial(0xbe185d, 0.4, 0.2));
   collarMesh.rotation.x = Math.PI / 2;
   collarMesh.position.set(0, 2.85, 0);
-  root.add(collarMesh);
+  content.add(collarMesh);
 
   const bellPivot = new THREE.Group();
   bellPivot.position.set(0, 2.75, 0.55);
   const bellMesh = new THREE.Mesh(new THREE.SphereGeometry(0.14, 16, 16), bellMat);
   bellMesh.castShadow = true;
   bellPivot.add(bellMesh);
-  root.add(bellPivot);
+  content.add(bellPivot);
 
   // 2. Head Pivot Group (rotates around neck at y=3.2)
   const headPivot = new THREE.Group();
   headPivot.position.set(0, 3.2, 0);
-  root.add(headPivot);
+  content.add(headPivot);
 
   // Head Skull (chibi squashed sphere)
   const headGeo = new THREE.SphereGeometry(1.0, 32, 28);
@@ -253,6 +258,12 @@ export function buildCatCharacter(): Character3DController {
  */
 export function buildDogCharacter(): Character3DController {
   const root = new THREE.Group();
+  root.position.set(0, 0, 0);
+
+  // Vertical recentering container: elevates dog so facial center aligns with camera target (y=3.8)
+  const content = new THREE.Group();
+  content.position.set(0, 0.58, 0);
+  root.add(content);
 
   const dogFurMat = createPBRMaterial(0xd97706, 0.6, 0.05); // Golden-brown dog fur
   const snoutFurMat = createPBRMaterial(0xfef3c7, 0.65, 0.05); // Cream muzzle
@@ -268,7 +279,7 @@ export function buildDogCharacter(): Character3DController {
   const bodyMesh = new THREE.Mesh(bodyGeo, dogFurMat);
   bodyMesh.position.set(0, 1.9, 0);
   bodyMesh.castShadow = true;
-  root.add(bodyMesh);
+  content.add(bodyMesh);
 
   // Blue collar with bone tag
   const collarMesh = new THREE.Mesh(
@@ -277,18 +288,18 @@ export function buildDogCharacter(): Character3DController {
   );
   collarMesh.rotation.x = Math.PI / 2;
   collarMesh.position.set(0, 2.85, 0);
-  root.add(collarMesh);
+  content.add(collarMesh);
 
   const bonePivot = new THREE.Group();
   bonePivot.position.set(0, 2.75, 0.58);
   const boneMesh = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.1, 0.06), boneTagMat);
   bonePivot.add(boneMesh);
-  root.add(bonePivot);
+  content.add(bonePivot);
 
   // Head Pivot Group (at y=3.2)
   const headPivot = new THREE.Group();
   headPivot.position.set(0, 3.2, 0);
-  root.add(headPivot);
+  content.add(headPivot);
 
   // Head Skull
   const headGeo = new THREE.SphereGeometry(1.02, 32, 28);
@@ -443,6 +454,12 @@ export function buildDogCharacter(): Character3DController {
  */
 export function buildFemaleCharacter(): Character3DController {
   const root = new THREE.Group();
+  root.position.set(0, 0, 0);
+
+  // Vertical recentering container: elevates anime character so facial center aligns with camera target (y=3.8)
+  const content = new THREE.Group();
+  content.position.set(0, 0.55, 0);
+  root.add(content);
 
   const skinMat = createPBRMaterial(0xffedd5, 0.55, 0.05); // Smooth anime skin
   const hairMat = createPBRMaterial(0x831843, 0.45, 0.15); // Rich magenta/plum anime hair
@@ -461,27 +478,27 @@ export function buildFemaleCharacter(): Character3DController {
   const bodyMesh = new THREE.Mesh(bodyGeo, dressMat);
   bodyMesh.position.set(0, 1.9, 0);
   bodyMesh.castShadow = true;
-  root.add(bodyMesh);
+  content.add(bodyMesh);
 
   // Neck
   const neckMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.38, 0.7, 20), skinMat);
   neckMesh.position.set(0, 2.9, 0);
-  root.add(neckMesh);
+  content.add(neckMesh);
 
   // Choker with Star
   const chokerMesh = new THREE.Mesh(new THREE.TorusGeometry(0.36, 0.04, 12, 32), chokerMat);
   chokerMesh.rotation.x = Math.PI / 2;
   chokerMesh.position.set(0, 2.85, 0);
-  root.add(chokerMesh);
+  content.add(chokerMesh);
 
   const starMesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.08, 0), starMat);
   starMesh.position.set(0, 2.82, 0.4);
-  root.add(starMesh);
+  content.add(starMesh);
 
   // Head Pivot Group
   const headPivot = new THREE.Group();
   headPivot.position.set(0, 3.25, 0);
-  root.add(headPivot);
+  content.add(headPivot);
 
   // Anime Face Skull (delicate chin)
   const headGeo = new THREE.SphereGeometry(0.92, 32, 28);
@@ -654,6 +671,12 @@ export function buildFemaleCharacter(): Character3DController {
  */
 export function buildHorseCharacter(): Character3DController {
   const root = new THREE.Group();
+  root.position.set(0, 0, 0);
+
+  // Vertical recentering container: elevates horse so facial center and muzzle align with camera target (y=3.8)
+  const content = new THREE.Group();
+  content.position.set(0, 0.65, 0);
+  root.add(content);
 
   const coatMat = createPBRMaterial(0x7c2d12, 0.5, 0.1); // Rich chestnut horse coat
   const muzzleMat = createPBRMaterial(0x451a03, 0.6, 0.05); // Dark muzzle tip
@@ -670,18 +693,18 @@ export function buildHorseCharacter(): Character3DController {
   neckMesh.position.set(0, 1.8, -0.2);
   neckMesh.rotation.x = 0.25;
   neckMesh.castShadow = true;
-  root.add(neckMesh);
+  content.add(neckMesh);
 
   // Flowing Mane on Neck
   const maneSpine = new THREE.Mesh(new THREE.BoxGeometry(0.18, 1.8, 0.5), maneMat);
   maneSpine.position.set(0, 2.0, -0.75);
   maneSpine.rotation.x = 0.25;
-  root.add(maneSpine);
+  content.add(maneSpine);
 
   // Head Pivot Group (at y=3.2)
   const headPivot = new THREE.Group();
   headPivot.position.set(0, 3.2, 0);
-  root.add(headPivot);
+  content.add(headPivot);
 
   // Sculpted Horse Skull & Elongated Equine Muzzle
   const skullGeo = new THREE.SphereGeometry(0.9, 24, 24);
@@ -832,6 +855,12 @@ export function buildHorseCharacter(): Character3DController {
  */
 export function buildProceduralRobotCharacter(theme: 'cyber' | 'mecha' | 'punk'): Character3DController {
   const root = new THREE.Group();
+  root.position.set(0, 0, 0);
+
+  // Vertical recentering container: elevates robot so visor screen aligns with camera target (y=3.8)
+  const content = new THREE.Group();
+  content.position.set(0, 0.62, 0);
+  root.add(content);
 
   const chassisColor = theme === 'cyber' ? 0x0f172a : theme === 'mecha' ? 0x1e293b : 0x3b0764;
   const accentColor = theme === 'cyber' ? 0x06b6d4 : theme === 'mecha' ? 0x10b981 : 0xa855f7;
@@ -844,18 +873,18 @@ export function buildProceduralRobotCharacter(theme: 'cyber' | 'mecha' | 'punk')
   const bodyMesh = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.8, 1.1), chassisMat);
   bodyMesh.position.set(0, 1.9, 0);
   bodyMesh.castShadow = true;
-  root.add(bodyMesh);
+  content.add(bodyMesh);
 
   // Glowing Chest Reactor
   const reactorMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 0.1, 16), glowMat);
   reactorMesh.rotation.x = Math.PI / 2;
   reactorMesh.position.set(0, 2.2, 0.58);
-  root.add(reactorMesh);
+  content.add(reactorMesh);
 
   // Head Pivot Group
   const headPivot = new THREE.Group();
   headPivot.position.set(0, 3.2, 0);
-  root.add(headPivot);
+  content.add(headPivot);
 
   // Robot Head Box
   const headMesh = new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.25, 1.2), chassisMat);
@@ -951,6 +980,12 @@ export function buildProceduralRobotCharacter(theme: 'cyber' | 'mecha' | 'punk')
  */
 export function buildFoxCharacter(): Character3DController {
   const root = new THREE.Group();
+  root.position.set(0, 0, 0);
+
+  // Vertical recentering container: elevates fox so facial center aligns with camera target (y=3.8)
+  const content = new THREE.Group();
+  content.position.set(0, 0.55, 0);
+  root.add(content);
 
   const orangeFurMat = createPBRMaterial(0xea580c, 0.6, 0.05); // Fox orange
   const whiteFurMat = createPBRMaterial(0xfff7ed, 0.65, 0.05); // Cream white muzzle & cheek fluff
@@ -968,31 +1003,31 @@ export function buildFoxCharacter(): Character3DController {
   const bodyMesh = new THREE.Mesh(bodyGeo, orangeFurMat);
   bodyMesh.position.set(0, 1.9, 0);
   bodyMesh.castShadow = true;
-  root.add(bodyMesh);
+  content.add(bodyMesh);
 
   // White Chest Bib
   const chestBib = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.2, 16), whiteFurMat);
   chestBib.position.set(0, 2.0, 0.45);
   chestBib.rotation.x = 0.2;
-  root.add(chestBib);
+  content.add(chestBib);
 
   // Collar with golden spirit bell
   const collarMesh = new THREE.Mesh(new THREE.TorusGeometry(0.52, 0.08, 12, 32), collarMat);
   collarMesh.rotation.x = Math.PI / 2;
   collarMesh.position.set(0, 2.85, 0);
-  root.add(collarMesh);
+  content.add(collarMesh);
 
   const bellPivot = new THREE.Group();
   bellPivot.position.set(0, 2.75, 0.55);
   const bellMesh = new THREE.Mesh(new THREE.SphereGeometry(0.14, 16, 16), bellMat);
   bellMesh.castShadow = true;
   bellPivot.add(bellMesh);
-  root.add(bellPivot);
+  content.add(bellPivot);
 
   // 2. Head Pivot Group
   const headPivot = new THREE.Group();
   headPivot.position.set(0, 3.25, 0);
-  root.add(headPivot);
+  content.add(headPivot);
 
   // Fox Skull
   const headGeo = new THREE.SphereGeometry(0.96, 32, 28);
@@ -1204,6 +1239,12 @@ export function buildFoxCharacter(): Character3DController {
  */
 export function buildMeshOutlineCharacter(): Character3DController {
   const root = new THREE.Group();
+  root.position.set(0, 0, 0);
+
+  // Vertical recentering container: elevates holo mesh so face oval aligns with camera target (y=3.8)
+  const content = new THREE.Group();
+  content.position.set(0, 0.55, 0);
+  root.add(content);
 
   // Holographic Wireframe Materials
   const neonCyanLine = new THREE.LineBasicMaterial({
@@ -1253,23 +1294,23 @@ export function buildMeshOutlineCharacter(): Character3DController {
   const torsoGeo = new THREE.CylinderGeometry(0.85, 1.25, 1.8, 16, 6, true);
   const torsoMesh = new THREE.Mesh(torsoGeo, holoMeshMat);
   torsoMesh.position.set(0, 1.9, 0);
-  root.add(torsoMesh);
+  content.add(torsoMesh);
 
   // Neck Rings
   const neckRing1 = new THREE.Mesh(new THREE.RingGeometry(0.48, 0.52, 24), neonCyanLine);
   neckRing1.rotation.x = Math.PI / 2;
   neckRing1.position.set(0, 2.75, 0);
-  root.add(neckRing1);
+  content.add(neckRing1);
 
   const neckRing2 = new THREE.Mesh(new THREE.RingGeometry(0.44, 0.48, 24), neonPurpleLine);
   neckRing2.rotation.x = Math.PI / 2;
   neckRing2.position.set(0, 2.95, 0);
-  root.add(neckRing2);
+  content.add(neckRing2);
 
   // 2. Head Pivot Group
   const headPivot = new THREE.Group();
   headPivot.position.set(0, 3.25, 0);
-  root.add(headPivot);
+  content.add(headPivot);
 
   // Holographic Cranial Wireframe Dome
   const skullGeo = new THREE.SphereGeometry(0.96, 20, 16);
@@ -1547,6 +1588,434 @@ export function buildMeshOutlineCharacter(): Character3DController {
       }
     },
     dispose: () => {},
+  };
+}
+
+/**
+ * Builds the Neon Cyber 3D Avatar (Vector Hologram with Full Tracking Points)
+ * Faithfully matches the user's glowing cyan neon vector aesthetic:
+ * - Oval cranial silhouette with hair parting stroke
+ * - Prominent circular/oval ear loops on both sides
+ * - Forehead wrinkle stroke reactive to eyebrow raises
+ * - Arched eyebrows with browRaise / browFurrow expressions
+ * - Elliptical eye contours with glowing pupils tracking gaze X/Y and eye blinking
+ * - Continuous stylized nose bridge with nostril curl
+ * - Electric blue glowing lips reactive to jawOpen, mouthSmile, mouthPucker
+ * - Minimalist vertical neck contours expanding into sleek shoulder contours
+ * - 48+ animated landmark tracking nodes responding to all tracking points
+ */
+export function buildNeonHoloCharacter(): Character3DController {
+  const root = new THREE.Group();
+  root.position.set(0, 0, 0);
+
+  // Vertical recentering container: elevates holo mesh so face oval aligns with camera target (y=3.8)
+  const content = new THREE.Group();
+  content.position.set(0, 0.55, 0);
+  root.add(content);
+
+  // 1. Neon Materials
+  const neonCyanLine = new THREE.LineBasicMaterial({
+    color: 0x00f0ff,
+    transparent: true,
+    opacity: 0.95,
+  });
+
+  const neonCyanGlowLine = new THREE.LineBasicMaterial({
+    color: 0x38bdf8,
+    transparent: true,
+    opacity: 0.55,
+  });
+
+  const neonBlueLipsLine = new THREE.LineBasicMaterial({
+    color: 0x3b82f6,
+    transparent: true,
+    opacity: 0.95,
+  });
+
+  const neonAccentLine = new THREE.LineBasicMaterial({
+    color: 0x67e8f9,
+    transparent: true,
+    opacity: 0.88,
+  });
+
+  const neonDotMat = new THREE.MeshBasicMaterial({
+    color: 0x00f0ff,
+    transparent: true,
+    opacity: 0.95,
+  });
+
+  const neonBlueDotMat = new THREE.MeshBasicMaterial({
+    color: 0x3b82f6,
+    transparent: true,
+    opacity: 0.95,
+  });
+
+  const pupilDotMat = new THREE.MeshBasicMaterial({
+    color: 0x22d3ee,
+    transparent: true,
+    opacity: 0.98,
+  });
+
+  const irisRingMat = new THREE.MeshBasicMaterial({
+    color: 0x00f0ff,
+    transparent: true,
+    opacity: 0.85,
+    side: THREE.DoubleSide,
+  });
+
+  const disposableGeometries: THREE.BufferGeometry[] = [];
+
+  // Helper to create dynamic line loop from 3D points
+  const createLineLoop = (points: THREE.Vector3[], mat: THREE.LineBasicMaterial, parent: THREE.Group) => {
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    disposableGeometries.push(geo);
+    const line = new THREE.LineLoop(geo, mat);
+    parent.add(line);
+    return { line, geo, points };
+  };
+
+  // Helper to create open dynamic line strip from 3D points
+  const createLineStrip = (points: THREE.Vector3[], mat: THREE.LineBasicMaterial, parent: THREE.Group) => {
+    const geo = new THREE.BufferGeometry().setFromPoints(points);
+    disposableGeometries.push(geo);
+    const line = new THREE.Line(geo, mat);
+    parent.add(line);
+    return { line, geo, points };
+  };
+
+  // Helper to add landmark tracking nodes
+  const landmarkDots: THREE.Mesh[] = [];
+  const dotGeo = new THREE.SphereGeometry(0.022, 8, 8);
+  disposableGeometries.push(dotGeo);
+
+  const addDot = (pos: THREE.Vector3, mat: THREE.Material, parent: THREE.Group) => {
+    const dot = new THREE.Mesh(dotGeo, mat);
+    dot.position.copy(pos);
+    parent.add(dot);
+    landmarkDots.push(dot);
+    return dot;
+  };
+
+  // 2. Neck & Shoulders (Anchored to body content)
+  // Left neck and shoulder contour
+  const leftNeckShoulderPoints = [
+    new THREE.Vector3(-0.34, 2.70, 0.45),
+    new THREE.Vector3(-0.34, 2.05, 0.35),
+    new THREE.Vector3(-0.52, 1.88, 0.30),
+    new THREE.Vector3(-0.85, 1.62, 0.18),
+    new THREE.Vector3(-1.30, 1.30, 0.05),
+    new THREE.Vector3(-1.75, 1.00, -0.10),
+  ];
+  createLineStrip(leftNeckShoulderPoints, neonCyanLine, content);
+
+  // Right neck and shoulder contour
+  const rightNeckShoulderPoints = [
+    new THREE.Vector3(0.34, 2.70, 0.45),
+    new THREE.Vector3(0.34, 2.05, 0.35),
+    new THREE.Vector3(0.52, 1.88, 0.30),
+    new THREE.Vector3(0.85, 1.62, 0.18),
+    new THREE.Vector3(1.30, 1.30, 0.05),
+    new THREE.Vector3(1.75, 1.00, -0.10),
+  ];
+  createLineStrip(rightNeckShoulderPoints, neonCyanLine, content);
+
+  // Clavicle / base collar connector arc
+  const collarPoints = [
+    new THREE.Vector3(-0.34, 2.05, 0.35),
+    new THREE.Vector3(0.0, 1.95, 0.42),
+    new THREE.Vector3(0.34, 2.05, 0.35),
+  ];
+  createLineStrip(collarPoints, neonCyanGlowLine, content);
+
+  // 3. Head Pivot Group (Rotates around neck at y=3.25)
+  const headPivot = new THREE.Group();
+  headPivot.position.set(0, 3.25, 0);
+  content.add(headPivot);
+
+  // 4. Head Oval Silhouette Contour (3D wrapping curve)
+  const headOvalBasePoints = [
+    new THREE.Vector3(0.0, 0.98, 0.35),     // Crown top
+    new THREE.Vector3(0.24, 0.92, 0.38),
+    new THREE.Vector3(0.48, 0.80, 0.42),
+    new THREE.Vector3(0.66, 0.60, 0.46),
+    new THREE.Vector3(0.74, 0.36, 0.48),    // Above ear R
+    new THREE.Vector3(0.75, 0.10, 0.50),    // Ear level R
+    new THREE.Vector3(0.72, -0.12, 0.52),   // Below ear R
+    new THREE.Vector3(0.64, -0.36, 0.58),
+    new THREE.Vector3(0.50, -0.62, 0.65),   // Jaw angle R
+    new THREE.Vector3(0.28, -0.82, 0.72),
+    new THREE.Vector3(0.0, -0.92, 0.78),    // Chin
+    new THREE.Vector3(-0.28, -0.82, 0.72),
+    new THREE.Vector3(-0.50, -0.62, 0.65),  // Jaw angle L
+    new THREE.Vector3(-0.64, -0.36, 0.58),
+    new THREE.Vector3(-0.72, -0.12, 0.52),  // Below ear L
+    new THREE.Vector3(-0.75, 0.10, 0.50),   // Ear level L
+    new THREE.Vector3(-0.74, 0.36, 0.48),   // Above ear L
+    new THREE.Vector3(-0.66, 0.60, 0.46),
+    new THREE.Vector3(-0.48, 0.80, 0.42),
+    new THREE.Vector3(-0.24, 0.92, 0.38),
+  ];
+  createLineLoop(headOvalBasePoints, neonCyanLine, headPivot);
+  headOvalBasePoints.forEach((p) => addDot(p, neonDotMat, headPivot));
+
+  // 5. Stylized Side Ears (Prominent rounded loops matching reference image)
+  // Left Ear Loop
+  const leftEarPoints = [
+    new THREE.Vector3(-0.74, 0.30, 0.48),
+    new THREE.Vector3(-0.88, 0.35, 0.38),
+    new THREE.Vector3(-1.06, 0.25, 0.28),
+    new THREE.Vector3(-1.08, 0.10, 0.28),
+    new THREE.Vector3(-0.95, -0.05, 0.38),
+    new THREE.Vector3(-0.72, -0.08, 0.50),
+  ];
+  createLineStrip(leftEarPoints, neonCyanLine, headPivot);
+  addDot(new THREE.Vector3(-1.08, 0.18, 0.28), neonDotMat, headPivot);
+
+  // Right Ear Loop
+  const rightEarPoints = [
+    new THREE.Vector3(0.74, 0.30, 0.48),
+    new THREE.Vector3(0.88, 0.35, 0.38),
+    new THREE.Vector3(1.06, 0.25, 0.28),
+    new THREE.Vector3(1.08, 0.10, 0.28),
+    new THREE.Vector3(0.95, -0.05, 0.38),
+    new THREE.Vector3(0.72, -0.08, 0.50),
+  ];
+  createLineStrip(rightEarPoints, neonCyanLine, headPivot);
+  addDot(new THREE.Vector3(1.08, 0.18, 0.28), neonDotMat, headPivot);
+
+  // 6. Hair Parting Stroke (At top of cranial oval)
+  const hairPartPoints = [
+    new THREE.Vector3(-0.04, 0.96, 0.36),
+    new THREE.Vector3(0.08, 0.86, 0.42),
+    new THREE.Vector3(0.18, 0.74, 0.46),
+    new THREE.Vector3(0.28, 0.60, 0.48),
+  ];
+  createLineStrip(hairPartPoints, neonCyanLine, headPivot);
+
+  // 7. Forehead Crease / Wrinkle Stroke (Curved horizontal line reactive to browRaise)
+  const foreheadBasePoints = [
+    new THREE.Vector3(-0.28, 0.55, 0.74),
+    new THREE.Vector3(-0.14, 0.58, 0.77),
+    new THREE.Vector3(0.0, 0.59, 0.78),
+    new THREE.Vector3(0.14, 0.58, 0.77),
+    new THREE.Vector3(0.28, 0.55, 0.74),
+  ];
+  const foreheadCrease = createLineStrip(foreheadBasePoints, neonAccentLine, headPivot);
+  const foreheadDots = foreheadBasePoints.map((p) => addDot(p, neonDotMat, headPivot));
+
+  // 8. Eyebrows (Left & Right smooth arched strokes)
+  const leftBrowPoints = [
+    new THREE.Vector3(-0.16, 0.38, 0.86),
+    new THREE.Vector3(-0.28, 0.44, 0.84),
+    new THREE.Vector3(-0.42, 0.43, 0.80),
+    new THREE.Vector3(-0.56, 0.36, 0.74),
+  ];
+  const rightBrowPoints = [
+    new THREE.Vector3(0.16, 0.38, 0.86),
+    new THREE.Vector3(0.28, 0.44, 0.84),
+    new THREE.Vector3(0.42, 0.43, 0.80),
+    new THREE.Vector3(0.56, 0.36, 0.74),
+  ];
+  const leftBrow = createLineStrip(leftBrowPoints, neonCyanLine, headPivot);
+  const rightBrow = createLineStrip(rightBrowPoints, neonCyanLine, headPivot);
+  const browDots = [...leftBrowPoints, ...rightBrowPoints].map((p) => addDot(p, neonDotMat, headPivot));
+
+  // 9. Eye Outlines (Smooth ovals)
+  const createEyeOvalPoints = (cx: number, cy: number, cz: number, rx: number, ry: number) => {
+    const pts: THREE.Vector3[] = [];
+    const segments = 12;
+    for (let i = 0; i < segments; i++) {
+      const theta = (i / segments) * Math.PI * 2;
+      pts.push(new THREE.Vector3(
+        cx + Math.cos(theta) * rx,
+        cy + Math.sin(theta) * ry,
+        cz - Math.abs(Math.cos(theta)) * 0.04
+      ));
+    }
+    return pts;
+  };
+
+  const leftEyeBasePoints = createEyeOvalPoints(-0.38, 0.18, 0.88, 0.14, 0.075);
+  const rightEyeBasePoints = createEyeOvalPoints(0.38, 0.18, 0.88, 0.14, 0.075);
+
+  const leftEye = createLineLoop(leftEyeBasePoints, neonCyanLine, headPivot);
+  const rightEye = createLineLoop(rightEyeBasePoints, neonCyanLine, headPivot);
+
+  // Glowing Pupil / Iris Assemblies (Tracking Gaze X/Y)
+  const leftPupilPivot = new THREE.Group();
+  leftPupilPivot.position.set(-0.38, 0.18, 0.88);
+  const leftPupilMesh = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), pupilDotMat);
+  disposableGeometries.push(leftPupilMesh.geometry);
+  const leftIrisRing = new THREE.Mesh(new THREE.RingGeometry(0.045, 0.072, 16), irisRingMat);
+  disposableGeometries.push(leftIrisRing.geometry);
+  leftPupilPivot.add(leftPupilMesh);
+  leftPupilPivot.add(leftIrisRing);
+  headPivot.add(leftPupilPivot);
+
+  const rightPupilPivot = new THREE.Group();
+  rightPupilPivot.position.set(0.38, 0.18, 0.88);
+  const rightPupilMesh = new THREE.Mesh(new THREE.SphereGeometry(0.045, 12, 12), pupilDotMat);
+  disposableGeometries.push(rightPupilMesh.geometry);
+  const rightIrisRing = new THREE.Mesh(new THREE.RingGeometry(0.045, 0.072, 16), irisRingMat);
+  disposableGeometries.push(rightIrisRing.geometry);
+  rightPupilPivot.add(rightPupilMesh);
+  rightPupilPivot.add(rightIrisRing);
+  headPivot.add(rightPupilPivot);
+
+  // 10. Stylized Continuous Nose Stroke (Bridge + Nostril loop)
+  const noseBasePoints = [
+    new THREE.Vector3(0.0, 0.28, 0.88),    // Glabella / top bridge
+    new THREE.Vector3(-0.02, 0.12, 0.96),  // Bridge
+    new THREE.Vector3(-0.03, -0.02, 1.02), // Lower bridge
+    new THREE.Vector3(-0.02, -0.10, 1.05), // Tip
+    new THREE.Vector3(0.08, -0.11, 1.00),  // Subnasale / base
+    new THREE.Vector3(0.14, -0.05, 0.95),  // Right nostril wing hook
+  ];
+  createLineStrip(noseBasePoints, neonCyanLine, headPivot);
+  noseBasePoints.forEach((p) => addDot(p, neonDotMat, headPivot));
+
+  // 11. Glowing Electric Blue Mouth Contour (Responsive to jawOpen, smile, pucker)
+  const mouthBasePoints = [
+    new THREE.Vector3(0.0, -0.27, 0.98),    // Upper center
+    new THREE.Vector3(0.14, -0.29, 0.95),   // Upper right
+    new THREE.Vector3(0.28, -0.34, 0.90),   // Corner right
+    new THREE.Vector3(0.16, -0.39, 0.95),   // Lower right
+    new THREE.Vector3(0.0, -0.41, 0.98),    // Lower center
+    new THREE.Vector3(-0.16, -0.39, 0.95),  // Lower left
+    new THREE.Vector3(-0.28, -0.34, 0.90),  // Corner left
+    new THREE.Vector3(-0.14, -0.29, 0.95),  // Upper left
+  ];
+  const mouthLoop = createLineLoop(mouthBasePoints, neonBlueLipsLine, headPivot);
+  const mouthDots = mouthBasePoints.map((p) => addDot(p, neonBlueDotMat, headPivot));
+
+  return {
+    group: root,
+    headPivot,
+    update: (features: FaceFeatures, dt: number, now: number) => {
+      // 1:1 Head Orientation Tracking (Pitch, Yaw, Roll)
+      headPivot.rotation.y = features.yaw || 0;
+      headPivot.rotation.x = features.pitch || 0;
+      headPivot.rotation.z = features.roll || 0;
+
+      // Extract Facial Tracking Dynamics
+      const lipAperture = Math.min(1, Math.max(0, features.jawOpen || 0));
+      const vol = Math.max(0, Math.min(1, features.audioVolume || 0));
+      const smile = features.mouthSmile || 0;
+      const pucker = Math.max(0, Math.min(1, features.mouthPucker || 0));
+      const mouthX = (features.mouthX || 0) * 0.05;
+      const browRaise = Math.min(1, Math.max(0, features.browRaise || 0));
+      const browFurrow = Math.min(1, Math.max(0, features.browFurrow || 0));
+      const blinkL = Math.min(1, Math.max(0, features.eyeBlinkLeft || 0));
+      const blinkR = Math.min(1, Math.max(0, features.eyeBlinkRight || 0));
+      const gX = (features.gazeX || 0) * 0.06;
+      const gY = (features.gazeY || 0) * 0.04;
+
+      // 1. Pupils Gaze Following & Blinking Scaling
+      leftPupilPivot.position.x = -0.38 + gX;
+      leftPupilPivot.position.y = 0.18 + gY;
+      leftPupilPivot.scale.y = Math.max(0.1, 1 - blinkL);
+
+      rightPupilPivot.position.x = 0.38 + gX;
+      rightPupilPivot.position.y = 0.18 + gY;
+      rightPupilPivot.scale.y = Math.max(0.1, 1 - blinkR);
+
+      // 2. Eyebrow Dynamic Deformations
+      const browShiftY = browRaise * 0.12 - browFurrow * 0.06;
+
+      const lbPos = leftBrow.geo.attributes.position as THREE.BufferAttribute;
+      leftBrowPoints.forEach((p, i) => {
+        const yOffset = browShiftY + (i === 0 ? -browFurrow * 0.08 : 0);
+        lbPos.setXYZ(i, p.x, p.y + yOffset, p.z);
+        if (browDots[i]) browDots[i].position.set(p.x, p.y + yOffset, p.z);
+      });
+      lbPos.needsUpdate = true;
+
+      const rbPos = rightBrow.geo.attributes.position as THREE.BufferAttribute;
+      rightBrowPoints.forEach((p, i) => {
+        const yOffset = browShiftY + (i === 0 ? -browFurrow * 0.08 : 0);
+        rbPos.setXYZ(i, p.x, p.y + yOffset, p.z);
+        const dotIdx = leftBrowPoints.length + i;
+        if (browDots[dotIdx]) browDots[dotIdx].position.set(p.x, p.y + yOffset, p.z);
+      });
+      rbPos.needsUpdate = true;
+
+      // 3. Forehead Wrinkle Stroke (Lifts and deepens with browRaise)
+      const foreheadShiftY = browRaise * 0.10;
+      const fPos = foreheadCrease.geo.attributes.position as THREE.BufferAttribute;
+      foreheadBasePoints.forEach((p, i) => {
+        const y = p.y + foreheadShiftY;
+        fPos.setXYZ(i, p.x, y, p.z);
+        if (foreheadDots[i]) foreheadDots[i].position.set(p.x, y, p.z);
+      });
+      fPos.needsUpdate = true;
+
+      // 4. Eyelid Blinking Deformation
+      const lePos = leftEye.geo.attributes.position as THREE.BufferAttribute;
+      leftEyeBasePoints.forEach((p, i) => {
+        // Upper eyelid points depress down
+        const isUpper = p.y > 0.18;
+        const y = isUpper ? p.y - blinkL * (p.y - 0.18) * 1.8 : p.y;
+        lePos.setXYZ(i, p.x, y, p.z);
+      });
+      lePos.needsUpdate = true;
+
+      const rePos = rightEye.geo.attributes.position as THREE.BufferAttribute;
+      rightEyeBasePoints.forEach((p, i) => {
+        const isUpper = p.y > 0.18;
+        const y = isUpper ? p.y - blinkR * (p.y - 0.18) * 1.8 : p.y;
+        rePos.setXYZ(i, p.x, y, p.z);
+      });
+      rePos.needsUpdate = true;
+
+      // 5. Electric Blue Lips Deformation (Smile, Lip Aperture, Pucker, Skew)
+      const mouthWidthFactor = 1.0 + smile * 0.22 - pucker * 0.28;
+      const lowerLipDrop = lipAperture * 0.24;
+      const upperLipRise = lipAperture * 0.06;
+      const smileCornerY = smile * 0.08;
+
+      const mPos = mouthLoop.geo.attributes.position as THREE.BufferAttribute;
+      mouthBasePoints.forEach((p, i) => {
+        let x = (p.x * mouthWidthFactor) + mouthX;
+        let y = p.y;
+        // Upper lip points (0: top center, 1: top right, 7: top left)
+        if (i === 0 || i === 1 || i === 7) {
+          y += upperLipRise;
+        }
+        // Lower lip points (3: bottom right, 4: bottom center, 5: bottom left)
+        else if (i === 3 || i === 4 || i === 5) {
+          y -= lowerLipDrop;
+        }
+        // Corners (2: right, 6: left)
+        if (i === 2 || i === 6) {
+          y += smileCornerY;
+        }
+        mPos.setXYZ(i, x, y, p.z);
+        if (mouthDots[i]) mouthDots[i].position.set(x, y, p.z);
+      });
+      mPos.needsUpdate = true;
+
+      // 6. Speech Audio Pulse Glow Effect
+      if (vol > 0.05) {
+        neonBlueLipsLine.opacity = 0.95 + Math.min(0.05, vol * 0.2);
+        neonCyanLine.opacity = 0.95 + Math.min(0.05, vol * 0.1);
+        neonAccentLine.opacity = 0.88 + Math.min(0.12, vol * 0.3);
+      } else {
+        neonBlueLipsLine.opacity = 0.95;
+        neonCyanLine.opacity = 0.95;
+        neonAccentLine.opacity = 0.88;
+      }
+    },
+    dispose: () => {
+      disposableGeometries.forEach((g) => g.dispose());
+      neonCyanLine.dispose();
+      neonCyanGlowLine.dispose();
+      neonBlueLipsLine.dispose();
+      neonAccentLine.dispose();
+      neonDotMat.dispose();
+      neonBlueDotMat.dispose();
+      pupilDotMat.dispose();
+      irisRingMat.dispose();
+    },
   };
 }
 

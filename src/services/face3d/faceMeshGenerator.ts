@@ -167,6 +167,7 @@ export function generateOralCavityMesh(
   lowerTeeth.rotation.x = -Math.PI * 0.45;
   lowerTeeth.rotation.z = Math.PI * 0.075;
   lowerTeeth.position.set(pMouthCenter.x, pMouthCenter.y - 0.022, pMouthCenter.z - 0.038);
+  lowerTeeth.userData.basePos = lowerTeeth.position.clone();
   group.add(lowerTeeth);
 
   return group;
@@ -508,8 +509,8 @@ export class FaceMeshGenerator {
       emissive: new THREE.Color(0x222222),
       emissiveIntensity: 0.2,
       side: THREE.DoubleSide,
-      transparent: true,
-      alphaTest: 0.1,
+      transparent: false,
+      depthWrite: true,
       polygonOffset: true,
       polygonOffsetFactor: -1,
       polygonOffsetUnits: -1,
@@ -760,51 +761,51 @@ export class FaceMeshGenerator {
         // ==========================================
         case 'mouthSmileLeft': {
           const dCorner = distToAny(index, [61, 78, 185, 40]);
-          const wCorner = smoothRadialFalloff(dCorner, 0.38);
-          y += 0.22 * smileScale * wCorner;
-          x -= 0.14 * smileScale * wCorner;
-          z += 0.06 * smileScale * wCorner;
+          const wCorner = smoothRadialFalloff(dCorner, 0.40);
+          y += 0.30 * smileScale * wCorner;
+          x -= 0.18 * smileScale * wCorner;
+          z += 0.08 * smileScale * wCorner;
 
           // Upper lip follow-through & zygomatic cheek pull
-          const wCheek = smoothRadialFalloff(distToAny(index, CHEEK_LEFT_INDICES), 0.32);
-          y += 0.08 * smileScale * wCheek;
-          z += 0.04 * smileScale * wCheek;
+          const wCheek = smoothRadialFalloff(distToAny(index, CHEEK_LEFT_INDICES), 0.35);
+          y += 0.12 * smileScale * wCheek;
+          z += 0.06 * smileScale * wCheek;
           break;
         }
 
         case 'mouthSmileRight': {
           const dCorner = distToAny(index, [291, 308, 409, 270]);
-          const wCorner = smoothRadialFalloff(dCorner, 0.38);
-          y += 0.22 * smileScale * wCorner;
-          x += 0.14 * smileScale * wCorner;
-          z += 0.06 * smileScale * wCorner;
+          const wCorner = smoothRadialFalloff(dCorner, 0.40);
+          y += 0.30 * smileScale * wCorner;
+          x += 0.18 * smileScale * wCorner;
+          z += 0.08 * smileScale * wCorner;
 
-          const wCheek = smoothRadialFalloff(distToAny(index, CHEEK_RIGHT_INDICES), 0.32);
-          y += 0.08 * smileScale * wCheek;
-          z += 0.04 * smileScale * wCheek;
+          const wCheek = smoothRadialFalloff(distToAny(index, CHEEK_RIGHT_INDICES), 0.35);
+          y += 0.12 * smileScale * wCheek;
+          z += 0.06 * smileScale * wCheek;
           break;
         }
 
         case 'mouthFrownLeft': {
-          const w = smoothRadialFalloff(distToAny(index, [61, 78, 146]), 0.34);
-          y -= 0.18 * frownScale * w;
-          x += 0.04 * frownScale * w;
+          const w = smoothRadialFalloff(distToAny(index, [61, 78, 146]), 0.36);
+          y -= 0.24 * frownScale * w;
+          x += 0.06 * frownScale * w;
           break;
         }
 
         case 'mouthFrownRight': {
-          const w = smoothRadialFalloff(distToAny(index, [291, 308, 375]), 0.34);
-          y -= 0.18 * frownScale * w;
-          x -= 0.04 * frownScale * w;
+          const w = smoothRadialFalloff(distToAny(index, [291, 308, 375]), 0.36);
+          y -= 0.24 * frownScale * w;
+          x -= 0.06 * frownScale * w;
           break;
         }
 
         case 'mouthPucker': {
           const dLip = distToAny(index, [...INNER_LIP_INDICES, ...OUTER_LIP_INDICES]);
-          const w = smoothRadialFalloff(Math.min(distToPoint(index, pMouthCenter), dLip + 0.04), 0.42);
+          const w = smoothRadialFalloff(Math.min(distToPoint(index, pMouthCenter), dLip + 0.04), 0.45);
           const dx = base.x - pMouthCenter.x;
-          x -= dx * 0.45 * puckerScale * w;
-          z += 0.18 * puckerScale * w;
+          x -= dx * 0.55 * puckerScale * w;
+          z += 0.24 * puckerScale * w;
           break;
         }
 
@@ -952,55 +953,61 @@ export class FaceMeshGenerator {
         // ==========================================
         case 'eyeBlinkLeft': {
           // Multi-point upper lid drops down smoothly to meet lower lid
-          const wUpper = smoothRadialFalloff(distToAny(index, EYE_LEFT_UPPER_LID), 0.18);
+          const wUpper = smoothRadialFalloff(distToAny(index, EYE_LEFT_UPPER_LID), 0.22);
           const pLower = basePoints[145] || basePoints[159];
-          const dy = pLower.y - (basePoints[159]?.y || pLower.y);
-          y += dy * 0.95 * blinkScale * wUpper;
+          const rawDy = pLower.y - (basePoints[159]?.y || pLower.y);
+          // Minimum anatomical stroke: guaranteed downward travel of at least -0.24 units
+          // so that the upper eyelid completely covers the 3D eyeball sphere (radius ~0.10)
+          const strokeDy = Math.min(rawDy * 1.15, -0.24);
+          y += strokeDy * blinkScale * wUpper;
+          z += 0.05 * blinkScale * wUpper; // covers forward surface of eyeball
 
           // Lower lid rises subtly
-          const wLower = smoothRadialFalloff(distToAny(index, EYE_LEFT_LOWER_LID), 0.13);
-          y += 0.02 * blinkScale * wLower;
+          const wLower = smoothRadialFalloff(distToAny(index, EYE_LEFT_LOWER_LID), 0.15);
+          y += 0.04 * blinkScale * wLower;
           break;
         }
 
         case 'eyeBlinkRight': {
-          const wUpper = smoothRadialFalloff(distToAny(index, EYE_RIGHT_UPPER_LID), 0.18);
+          const wUpper = smoothRadialFalloff(distToAny(index, EYE_RIGHT_UPPER_LID), 0.22);
           const pLower = basePoints[374] || basePoints[386];
-          const dy = pLower.y - (basePoints[386]?.y || pLower.y);
-          y += dy * 0.95 * blinkScale * wUpper;
+          const rawDy = pLower.y - (basePoints[386]?.y || pLower.y);
+          const strokeDy = Math.min(rawDy * 1.15, -0.24);
+          y += strokeDy * blinkScale * wUpper;
+          z += 0.05 * blinkScale * wUpper;
 
-          const wLower = smoothRadialFalloff(distToAny(index, EYE_RIGHT_LOWER_LID), 0.13);
-          y += 0.02 * blinkScale * wLower;
+          const wLower = smoothRadialFalloff(distToAny(index, EYE_RIGHT_LOWER_LID), 0.15);
+          y += 0.04 * blinkScale * wLower;
           break;
         }
 
         case 'eyeWideLeft': {
           const wUpper = smoothRadialFalloff(distToAny(index, EYE_LEFT_UPPER_LID), 0.20);
           const wLower = smoothRadialFalloff(distToAny(index, EYE_LEFT_LOWER_LID), 0.18);
-          y += 0.10 * wideScale * wUpper;
-          y -= 0.05 * wideScale * wLower;
+          y += 0.14 * wideScale * wUpper;
+          y -= 0.08 * wideScale * wLower;
           break;
         }
 
         case 'eyeWideRight': {
           const wUpper = smoothRadialFalloff(distToAny(index, EYE_RIGHT_UPPER_LID), 0.20);
           const wLower = smoothRadialFalloff(distToAny(index, EYE_RIGHT_LOWER_LID), 0.18);
-          y += 0.10 * wideScale * wUpper;
-          y -= 0.05 * wideScale * wLower;
+          y += 0.14 * wideScale * wUpper;
+          y -= 0.08 * wideScale * wLower;
           break;
         }
 
         case 'eyeSquintLeft': {
           const w = smoothRadialFalloff(distToAny(index, EYE_LEFT_LOWER_LID), 0.20);
           const wCheek = smoothRadialFalloff(distToAny(index, CHEEK_LEFT_INDICES), 0.25);
-          y += (0.08 * w + 0.04 * wCheek) * squintScale;
+          y += (0.12 * w + 0.06 * wCheek) * squintScale;
           break;
         }
 
         case 'eyeSquintRight': {
           const w = smoothRadialFalloff(distToAny(index, EYE_RIGHT_LOWER_LID), 0.20);
           const wCheek = smoothRadialFalloff(distToAny(index, CHEEK_RIGHT_INDICES), 0.25);
-          y += (0.08 * w + 0.04 * wCheek) * squintScale;
+          y += (0.12 * w + 0.06 * wCheek) * squintScale;
           break;
         }
 
@@ -1024,37 +1031,40 @@ export class FaceMeshGenerator {
         // ==========================================
         case 'browInnerUp': {
           // Multi-point inner brows arch
-          const w = smoothRadialFalloff(distToAny(index, [168, 107, 66, 336, 296, 9, 8]), 0.36);
-          y += 0.20 * browRaise * w;
+          const w = smoothRadialFalloff(distToAny(index, [168, 107, 66, 336, 296, 9, 8]), 0.38);
+          y += 0.30 * browRaise * w;
+          z += 0.04 * browRaise * w;
           break;
         }
 
         case 'browDownLeft': {
           // Multi-point left brow furrow
-          const w = smoothRadialFalloff(distToAny(index, [107, 66, 105, 63, 70]), 0.32);
-          y -= 0.18 * browFurrow * w;
-          x += 0.05 * browFurrow * w;
+          const w = smoothRadialFalloff(distToAny(index, [107, 66, 105, 63, 70]), 0.34);
+          y -= 0.25 * browFurrow * w;
+          x += 0.08 * browFurrow * w;
+          z -= 0.05 * browFurrow * w;
           break;
         }
 
         case 'browDownRight': {
           // Multi-point right brow furrow
-          const w = smoothRadialFalloff(distToAny(index, [336, 296, 334, 293, 300]), 0.32);
-          y -= 0.18 * browFurrow * w;
-          x -= 0.05 * browFurrow * w;
+          const w = smoothRadialFalloff(distToAny(index, [336, 296, 334, 293, 300]), 0.34);
+          y -= 0.25 * browFurrow * w;
+          x -= 0.08 * browFurrow * w;
+          z -= 0.05 * browFurrow * w;
           break;
         }
 
         case 'browOuterUpLeft': {
           // Multi-point outer brow elevation
-          const w = smoothRadialFalloff(distToAny(index, [70, 63, 46, 53, 52]), 0.30);
-          y += 0.18 * browRaise * w;
+          const w = smoothRadialFalloff(distToAny(index, [70, 63, 46, 53, 52]), 0.32);
+          y += 0.26 * browRaise * w;
           break;
         }
 
         case 'browOuterUpRight': {
-          const w = smoothRadialFalloff(distToAny(index, [300, 293, 276, 283, 282]), 0.30);
-          y += 0.18 * browRaise * w;
+          const w = smoothRadialFalloff(distToAny(index, [300, 293, 276, 283, 282]), 0.32);
+          y += 0.26 * browRaise * w;
           break;
         }
 

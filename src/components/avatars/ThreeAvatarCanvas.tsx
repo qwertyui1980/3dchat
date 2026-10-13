@@ -18,6 +18,7 @@ import {
   buildFoxCharacter,
   buildProceduralRobotCharacter,
   buildMeshOutlineCharacter,
+  buildNeonHoloCharacter,
   buildFaceCapCharacter,
   buildLincolnCharacter,
   buildBidenCharacter,
@@ -900,18 +901,36 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           const faceMeshObj = clonedScene.getObjectByName('faceMesh') as THREE.Mesh | undefined;
           if (faceMeshObj && faceMeshObj.isMesh && faceMeshObj.geometry) {
             const fGeo = faceMeshObj.geometry;
-            const jawIdx = faceMeshObj.morphTargetDictionary ? faceMeshObj.morphTargetDictionary['jawOpen'] : undefined;
-            if (jawIdx !== undefined && fGeo.morphAttributes?.position?.[jawIdx]) {
-              const morphAttr = fGeo.morphAttributes.position[jawIdx];
-              const posAttr = fGeo.getAttribute('position');
-              const isRelative = Boolean(fGeo.morphTargetsRelative);
+            const posAttr = fGeo.getAttribute('position');
 
-              if (posAttr && posAttr.count >= 468) {
-                // In relative mode delta13 IS morphAttr.getY(13), in absolute mode it's morph-base.
-                const delta13 = isRelative ? morphAttr.getY(13) : (morphAttr.getY(13) - posAttr.getY(13));
-                const delta14 = isRelative ? morphAttr.getY(14) : (morphAttr.getY(14) - posAttr.getY(14));
+            if (posAttr && fGeo.morphAttributes?.position && posAttr.count >= 468) {
+              // 1. Detect and convert any legacy absolute-mode morph targets to relative deltas
+              for (let tIdx = 0; tIdx < fGeo.morphAttributes.position.length; tIdx++) {
+                const morphAttr = fGeo.morphAttributes.position[tIdx];
+                const mY0 = morphAttr.getY(0);
+                const bY0 = posAttr.getY(0);
+                // If morphAttr at vertex 0 is near base vertex position rather than ~0, it's absolute
+                if (Math.abs(bY0) > 0.25 && Math.abs(mY0 - bY0) < 0.20 && Math.abs(mY0) > 0.25) {
+                  for (let i = 0; i < posAttr.count; i++) {
+                    morphAttr.setXYZ(
+                      i,
+                      morphAttr.getX(i) - posAttr.getX(i),
+                      morphAttr.getY(i) - posAttr.getY(i),
+                      morphAttr.getZ(i) - posAttr.getZ(i)
+                    );
+                  }
+                  morphAttr.needsUpdate = true;
+                }
+              }
+              fGeo.morphTargetsRelative = true;
 
-                // Upgrade if upper lip falls (delta13 < -0.02) or lower lip barely drops (delta14 > -0.22)
+              // 2. jawOpen auto-upgrade if upper lip falls or lower lip drop is shallow
+              const jawIdx = faceMeshObj.morphTargetDictionary ? faceMeshObj.morphTargetDictionary['jawOpen'] : undefined;
+              if (jawIdx !== undefined && fGeo.morphAttributes?.position?.[jawIdx]) {
+                const morphAttr = fGeo.morphAttributes.position[jawIdx];
+                const delta13 = morphAttr.getY(13);
+                const delta14 = morphAttr.getY(14);
+
                 if (delta13 < -0.02 || delta14 > -0.22) {
                   console.info('[ThreeAvatarCanvas] jawOpen hot-upgrade triggered: delta13=', delta13.toFixed(3), 'delta14=', delta14.toFixed(3));
                   const pMouthCenter = {
@@ -988,12 +1007,51 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                       }
                     }
 
-                    // Always write as relative delta — works for both old absolute and new relative GLBs
                     morphAttr.setXYZ(i, mx - bx, my - by, mz - bz);
                   }
                   morphAttr.needsUpdate = true;
-                  // Mark geometry as relative after upgrade
-                  fGeo.morphTargetsRelative = true;
+                }
+              }
+
+              // 3. Eyelid blink stroke guarantee for legacy models (landmarks 159 & 386)
+              const blinkLIdx = faceMeshObj.morphTargetDictionary ? faceMeshObj.morphTargetDictionary['eyeBlinkLeft'] : undefined;
+              if (blinkLIdx !== undefined && fGeo.morphAttributes?.position?.[blinkLIdx]) {
+                const bAttr = fGeo.morphAttributes.position[blinkLIdx];
+                const dy = bAttr.getY(159);
+                if (dy > -0.18) {
+                  const scale = Math.min(4.0, 0.25 / Math.max(0.02, Math.abs(dy)));
+                  for (let i = 0; i < posAttr.count; i++) {
+                    bAttr.setY(i, bAttr.getY(i) * scale);
+                    if (bAttr.getY(i) < -0.04) bAttr.setZ(i, bAttr.getZ(i) + 0.04);
+                  }
+                  bAttr.needsUpdate = true;
+                }
+              }
+              const blinkRIdx = faceMeshObj.morphTargetDictionary ? faceMeshObj.morphTargetDictionary['eyeBlinkRight'] : undefined;
+              if (blinkRIdx !== undefined && fGeo.morphAttributes?.position?.[blinkRIdx]) {
+                const bAttr = fGeo.morphAttributes.position[blinkRIdx];
+                const dy = bAttr.getY(386);
+                if (dy > -0.18) {
+                  const scale = Math.min(4.0, 0.25 / Math.max(0.02, Math.abs(dy)));
+                  for (let i = 0; i < posAttr.count; i++) {
+                    bAttr.setY(i, bAttr.getY(i) * scale);
+                    if (bAttr.getY(i) < -0.04) bAttr.setZ(i, bAttr.getZ(i) + 0.04);
+                  }
+                  bAttr.needsUpdate = true;
+                }
+              }
+
+              // 4. Eyebrow raise stroke guarantee (landmark 19)
+              const browIdx = faceMeshObj.morphTargetDictionary ? faceMeshObj.morphTargetDictionary['browInnerUp'] : undefined;
+              if (browIdx !== undefined && fGeo.morphAttributes?.position?.[browIdx]) {
+                const brAttr = fGeo.morphAttributes.position[browIdx];
+                const dy = brAttr.getY(19);
+                if (dy > 0.005 && dy < 0.16) {
+                  const scale = Math.min(3.5, 0.28 / dy);
+                  for (let i = 0; i < posAttr.count; i++) {
+                    brAttr.setY(i, brAttr.getY(i) * scale);
+                  }
+                  brAttr.needsUpdate = true;
                 }
               }
             }
@@ -1004,6 +1062,7 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           const faceMeshNode = clonedScene.getObjectByName('faceMesh');
           const headBaseNode = clonedScene.getObjectByName('headBaseMesh');
           const lowerTeethNode = clonedScene.getObjectByName('lowerTeeth');
+          const initialTeethPos = lowerTeethNode ? lowerTeethNode.position.clone() : new THREE.Vector3(0, -0.022, -0.038);
           const eyeLeftNode = clonedScene.getObjectByName('eyeLeft');
           const eyeRightNode = clonedScene.getObjectByName('eyeRight');
           const oralCavityNode = clonedScene.getObjectByName('oralCavity');
@@ -1088,10 +1147,10 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
               // Responsive, amplified mouth aperture (1.25x scaling for clear speech articulation)
               const finalJaw = Math.min(1, Math.max(rawJaw * 1.25, speechJaw));
 
-              // Animate Lower Dental Arch in Oral Cavity
+              // Animate Lower Dental Arch in Oral Cavity relative to baseline
               if (lowerTeethNode) {
-                lowerTeethNode.position.y = -0.022 - finalJaw * 0.26;
-                lowerTeethNode.position.z = -0.038 - finalJaw * 0.10;
+                lowerTeethNode.position.y = initialTeethPos.y - finalJaw * 0.18;
+                lowerTeethNode.position.z = initialTeethPos.z - finalJaw * 0.08;
               }
 
               // Animate Skeletal Jaw Bone if present in rigged characters
@@ -1099,10 +1158,10 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                 customJawBone.rotation.x = initialJawRot.x + finalJaw * 0.42;
               }
 
-              // Animate 3D Eyeballs with user gaze tracking
+              // Animate 3D Eyeballs with amplified user gaze tracking
               if (eyeLeftNode && eyeRightNode) {
-                const targetEyeYaw = (features.gazeX || 0) * 0.45;
-                const targetEyePitch = -(features.gazeY || 0) * 0.35;
+                const targetEyeYaw = (features.gazeX || 0) * 0.70;
+                const targetEyePitch = -(features.gazeY || 0) * 0.55;
                 eyeLeftNode.rotation.y = THREE.MathUtils.lerp(eyeLeftNode.rotation.y, targetEyeYaw, 0.35);
                 eyeLeftNode.rotation.x = THREE.MathUtils.lerp(eyeLeftNode.rotation.x, targetEyePitch, 0.35);
                 eyeRightNode.rotation.y = THREE.MathUtils.lerp(eyeRightNode.rotation.y, targetEyeYaw, 0.35);
@@ -1308,30 +1367,31 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                     const isLeft = cleanKey.includes('left') || cleanKey.includes('_l');
                     const isRight = cleanKey.includes('right') || cleanKey.includes('_r');
                     if (isLeft) {
-                      targetVal = targetVal ?? bShapes?.['mouthSmileLeft'] ?? features.mouthSmileLeft ?? Math.max(0, features.mouthSmile || 0);
+                      targetVal = Math.max(targetVal ?? 0, (bShapes?.['mouthSmileLeft'] ?? 0) * 1.85, features.mouthSmileLeft ?? 0, Math.max(0, features.mouthSmile || 0));
                     } else if (isRight) {
-                      targetVal = targetVal ?? bShapes?.['mouthSmileRight'] ?? features.mouthSmileRight ?? Math.max(0, features.mouthSmile || 0);
+                      targetVal = Math.max(targetVal ?? 0, (bShapes?.['mouthSmileRight'] ?? 0) * 1.85, features.mouthSmileRight ?? 0, Math.max(0, features.mouthSmile || 0));
                     } else {
-                      targetVal = targetVal ?? Math.max(0, features.mouthSmile || 0);
+                      targetVal = Math.max(targetVal ?? 0, Math.max(0, features.mouthSmile || 0));
                     }
                   } else if (cleanKey.includes('frown') || cleanKey.includes('mouthfrown')) {
                     const isLeft = cleanKey.includes('left') || cleanKey.includes('_l');
                     const isRight = cleanKey.includes('right') || cleanKey.includes('_r');
+                    const frownVal = features.mouthSmile < 0 ? -features.mouthSmile : 0;
                     if (isLeft) {
-                      targetVal = targetVal ?? bShapes?.['mouthFrownLeft'] ?? (features.mouthSmile < 0 ? -features.mouthSmile : 0);
+                      targetVal = Math.max(targetVal ?? 0, (bShapes?.['mouthFrownLeft'] ?? 0) * 1.6, frownVal);
                     } else if (isRight) {
-                      targetVal = targetVal ?? bShapes?.['mouthFrownRight'] ?? (features.mouthSmile < 0 ? -features.mouthSmile : 0);
+                      targetVal = Math.max(targetVal ?? 0, (bShapes?.['mouthFrownRight'] ?? 0) * 1.6, frownVal);
                     } else {
-                      targetVal = targetVal ?? (features.mouthSmile < 0 ? -features.mouthSmile : 0);
+                      targetVal = Math.max(targetVal ?? 0, frownVal);
                     }
                   }
 
                   // 7. Pucker & Funnel
                   if (cleanKey.includes('pucker') || cleanKey.includes('mouthpucker')) {
-                    targetVal = targetVal ?? bShapes?.['mouthPucker'] ?? features.mouthPucker ?? 0;
+                    targetVal = Math.max(targetVal ?? 0, (bShapes?.['mouthPucker'] ?? 0) * 1.7, features.mouthPucker ?? 0);
                   }
                   if (cleanKey.includes('funnel') || cleanKey.includes('mouthfunnel')) {
-                    targetVal = targetVal ?? bShapes?.['mouthFunnel'] ?? 0;
+                    targetVal = Math.max(targetVal ?? 0, (bShapes?.['mouthFunnel'] ?? 0) * 1.5);
                   }
 
                   // 8. Eyes Blinking
@@ -1339,26 +1399,30 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                     const isLeft = cleanKey.includes('left') || cleanKey.includes('_l');
                     const isRight = cleanKey.includes('right') || cleanKey.includes('_r');
                     if (isLeft) {
-                      targetVal = targetVal ?? bShapes?.['eyeBlinkLeft'] ?? features.eyeBlinkLeft ?? 0;
+                      targetVal = Math.max(targetVal ?? 0, (bShapes?.['eyeBlinkLeft'] ?? 0) * 2.2, features.eyeBlinkLeft ?? 0);
                     } else if (isRight) {
-                      targetVal = targetVal ?? bShapes?.['eyeBlinkRight'] ?? features.eyeBlinkRight ?? 0;
+                      targetVal = Math.max(targetVal ?? 0, (bShapes?.['eyeBlinkRight'] ?? 0) * 2.2, features.eyeBlinkRight ?? 0);
                     } else {
-                      targetVal = targetVal ?? ((features.eyeBlinkLeft || 0) + (features.eyeBlinkRight || 0)) / 2;
+                      targetVal = Math.max(targetVal ?? 0, ((features.eyeBlinkLeft || 0) + (features.eyeBlinkRight || 0)) / 2);
                     }
                   }
 
                   // 9. Eyebrows
                   if (cleanKey.includes('browinnerup') || cleanKey.includes('browup')) {
-                    targetVal = targetVal ?? bShapes?.['browInnerUp'] ?? features.browRaise ?? 0;
+                    targetVal = Math.max(targetVal ?? 0, (bShapes?.['browInnerUp'] ?? 0) * 2.1, features.browRaise ?? 0);
+                  } else if (cleanKey.includes('browouterupleft')) {
+                    targetVal = Math.max(targetVal ?? 0, (bShapes?.['browOuterUpLeft'] ?? 0) * 2.0, (features.browRaise ?? 0) * 0.85);
+                  } else if (cleanKey.includes('browouterupright')) {
+                    targetVal = Math.max(targetVal ?? 0, (bShapes?.['browOuterUpRight'] ?? 0) * 2.0, (features.browRaise ?? 0) * 0.85);
                   } else if (cleanKey.includes('browdown')) {
                     const isLeft = cleanKey.includes('left') || cleanKey.includes('_l');
                     const isRight = cleanKey.includes('right') || cleanKey.includes('_r');
                     if (isLeft) {
-                      targetVal = targetVal ?? bShapes?.['browDownLeft'] ?? features.browFurrow ?? 0;
+                      targetVal = Math.max(targetVal ?? 0, (bShapes?.['browDownLeft'] ?? 0) * 2.0, features.browFurrow ?? 0);
                     } else if (isRight) {
-                      targetVal = targetVal ?? bShapes?.['browDownRight'] ?? features.browFurrow ?? 0;
+                      targetVal = Math.max(targetVal ?? 0, (bShapes?.['browDownRight'] ?? 0) * 2.0, features.browFurrow ?? 0);
                     } else {
-                      targetVal = targetVal ?? features.browFurrow ?? 0;
+                      targetVal = Math.max(targetVal ?? 0, features.browFurrow ?? 0);
                     }
                   }
 
@@ -1424,6 +1488,8 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
         controller = buildFoxCharacter();
       } else if (avatarId === 'mesh_outline') {
         controller = buildMeshOutlineCharacter();
+      } else if (avatarId === 'neon_holo') {
+        controller = buildNeonHoloCharacter();
       } else if (avatarId === 'cyber_nova') {
         controller = buildProceduralRobotCharacter('cyber');
       } else if (avatarId === 'pixel_punk') {

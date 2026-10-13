@@ -8,6 +8,7 @@ export interface EyeCustomizationOptions {
   offsetY: number;      // -0.15 to 0.15 (default 0)
   offsetZ: number;      // -0.15 to 0.15 (default 0)
   irisColor: string;    // Hex color string (e.g. '#00e5ff')
+  pupilColor: string;   // Hex color string (default '#000000')
   pupilSize: number;    // 0.2 to 0.5 (default 0.35)
   gazeTracking: boolean;// whether to track webcam gaze
   manualGazeX: number;  // -1 to 1 (default 0)
@@ -21,6 +22,7 @@ export const DEFAULT_EYE_OPTIONS: EyeCustomizationOptions = {
   offsetY: 0,
   offsetZ: 0,
   irisColor: '#00e5ff',
+  pupilColor: '#000000',
   pupilSize: 0.35,
   gazeTracking: true,
   manualGazeX: 0,
@@ -38,6 +40,17 @@ export const IRIS_COLOR_PRESETS = [
   { name: 'Rojo Carmesí', color: '#dc2626' },
 ];
 
+export const PUPIL_COLOR_PRESETS = [
+  { name: 'Negro Obsidiana', color: '#000000' },
+  { name: 'Rojo Carmesí', color: '#dc2626' },
+  { name: 'Púrpura Místico', color: '#8b5cf6' },
+  { name: 'Azul Abisal', color: '#1d4ed8' },
+  { name: 'Ámbar Felino', color: '#d97706' },
+  { name: 'Verde Esmeralda', color: '#059669' },
+  { name: 'Gris Grafito', color: '#64748b' },
+  { name: 'Blanco Fantasma', color: '#f8fafc' },
+];
+
 export interface EyePairResult {
   group: THREE.Group;
   eyeLeft: THREE.Group;
@@ -47,6 +60,7 @@ export interface EyePairResult {
   updateGaze: (gazeX: number, gazeY: number) => void;
   updateOptions: (options: Partial<EyeCustomizationOptions>) => void;
   setIrisColor: (hexColor: string) => void;
+  setPupilColor: (hexColor: string) => void;
   setPupilSize: (pupilRatio: number) => void;
 }
 
@@ -61,8 +75,12 @@ export class EyeGenerator {
    * Generates a high-resolution procedural iris texture canvas
    * with limbal ring, radiating fiber stroma, collarette, pupil, and specular gloss.
    */
-  public static createIrisTexture(irisHexColor: string, pupilRatio: number = 0.35): THREE.CanvasTexture {
-    const cacheKey = `${irisHexColor}_${pupilRatio.toFixed(2)}`;
+  public static createIrisTexture(
+    irisHexColor: string,
+    pupilRatio: number = 0.35,
+    pupilHexColor: string = '#000000'
+  ): THREE.CanvasTexture {
+    const cacheKey = `${irisHexColor}_${pupilHexColor}_${pupilRatio.toFixed(2)}`;
     if (this.irisTextureCache.has(cacheKey)) {
       return this.irisTextureCache.get(cacheKey)!;
     }
@@ -124,12 +142,12 @@ export class EyeGenerator {
       ctx.lineWidth = radius * 0.08;
       ctx.stroke();
 
-      // 5. Central Pupil (deep obsidian black with crisp antialiased edge)
+      // 5. Central Pupil (custom pupil color with antialiased edge)
       const pupilRadius = radius * Math.max(0.18, Math.min(0.55, pupilRatio));
       const pupilGrad = ctx.createRadialGradient(cx, cy, pupilRadius * 0.82, cx, cy, pupilRadius);
-      pupilGrad.addColorStop(0, '#000000');
-      pupilGrad.addColorStop(0.95, '#000000');
-      pupilGrad.addColorStop(1, 'rgba(5, 7, 10, 0.95)');
+      pupilGrad.addColorStop(0, pupilHexColor);
+      pupilGrad.addColorStop(0.95, pupilHexColor);
+      pupilGrad.addColorStop(1, pupilHexColor);
 
       ctx.globalAlpha = 1.0;
       ctx.beginPath();
@@ -155,14 +173,15 @@ export class EyeGenerator {
    * Builds an individual 3D eyeball group consisting of:
    * - Sclera sphere (white of the eye with realistic gloss)
    * - Iris concave disc oriented along +Z
-   * - Physical obsidian pupil disc for 100% guaranteed high-contrast pupil visibility
+   * - Physical pupil disc with customizable pupil color
    * - Ultra-clear non-occluding cornea dome
    */
   public static buildSingleEyeball(
     name: string,
     radius: number,
     irisColor: string,
-    pupilRatio: number = 0.35
+    pupilRatio: number = 0.35,
+    pupilColor: string = '#000000'
   ): { eyeGroup: THREE.Group; irisMesh: THREE.Mesh; pupilMesh: THREE.Mesh; corneaMesh: THREE.Mesh; baseIrisRadius: number } {
     const eyeGroup = new THREE.Group();
     eyeGroup.name = name;
@@ -185,7 +204,7 @@ export class EyeGenerator {
     // 2. Iris disc positioned at the front (+Z) of the eyeball
     const irisRadius = radius * 0.58;
     const irisGeo = new THREE.CircleGeometry(irisRadius, 32);
-    const irisTexture = this.createIrisTexture(irisColor, pupilRatio);
+    const irisTexture = this.createIrisTexture(irisColor, pupilRatio, pupilColor);
     const irisMat = new THREE.MeshStandardMaterial({
       map: irisTexture,
       roughness: 0.25,
@@ -198,11 +217,11 @@ export class EyeGenerator {
     irisMesh.position.z = radius * 0.88;
     eyeGroup.add(irisMesh);
 
-    // 3. Physical Central Pupil disc (pure obsidian black, guaranteed visible under any lighting)
+    // 3. Physical Central Pupil disc (customizable color, guaranteed visible under any lighting)
     const pRadius = irisRadius * Math.max(0.18, Math.min(0.55, pupilRatio));
     const pupilGeo = new THREE.CircleGeometry(pRadius, 32);
     const pupilMat = new THREE.MeshBasicMaterial({
-      color: 0x000000,
+      color: new THREE.Color(pupilColor),
       side: THREE.FrontSide,
       depthTest: true,
     });
@@ -282,8 +301,8 @@ export class EyeGenerator {
 
     // Build left and right eyeball objects
     // IMPORTANT: Names 'eyeLeft' and 'eyeRight' match threeCharacterBuilder.ts detection!
-    const leftEyeData = this.buildSingleEyeball('eyeLeft', baseRadius, opts.irisColor, opts.pupilSize);
-    const rightEyeData = this.buildSingleEyeball('eyeRight', baseRadius, opts.irisColor, opts.pupilSize);
+    const leftEyeData = this.buildSingleEyeball('eyeLeft', baseRadius, opts.irisColor, opts.pupilSize, opts.pupilColor);
+    const rightEyeData = this.buildSingleEyeball('eyeRight', baseRadius, opts.irisColor, opts.pupilSize, opts.pupilColor);
 
     const eyeLeft = leftEyeData.eyeGroup;
     const eyeRight = rightEyeData.eyeGroup;
@@ -339,7 +358,7 @@ export class EyeGenerator {
 
     const setIrisColor = (hexColor: string) => {
       opts.irisColor = hexColor;
-      const newTexture = EyeGenerator.createIrisTexture(hexColor, opts.pupilSize);
+      const newTexture = EyeGenerator.createIrisTexture(hexColor, opts.pupilSize, opts.pupilColor);
       if (leftEyeData.irisMesh.material instanceof THREE.MeshStandardMaterial) {
         leftEyeData.irisMesh.material.map = newTexture;
         leftEyeData.irisMesh.material.needsUpdate = true;
@@ -348,6 +367,20 @@ export class EyeGenerator {
         rightEyeData.irisMesh.material.map = newTexture;
         rightEyeData.irisMesh.material.needsUpdate = true;
       }
+    };
+
+    const setPupilColor = (hexColor: string) => {
+      opts.pupilColor = hexColor;
+      const col = new THREE.Color(hexColor);
+      if (leftEyeData.pupilMesh.material instanceof THREE.MeshBasicMaterial) {
+        leftEyeData.pupilMesh.material.color.copy(col);
+        leftEyeData.pupilMesh.material.needsUpdate = true;
+      }
+      if (rightEyeData.pupilMesh.material instanceof THREE.MeshBasicMaterial) {
+        rightEyeData.pupilMesh.material.color.copy(col);
+        rightEyeData.pupilMesh.material.needsUpdate = true;
+      }
+      setIrisColor(opts.irisColor);
     };
 
     const setPupilSize = (pupilRatio: number) => {
@@ -365,6 +398,9 @@ export class EyeGenerator {
 
     const updateOptions = (newOpts: Partial<EyeCustomizationOptions>) => {
       Object.assign(opts, newOpts);
+      if (newOpts.pupilColor) {
+        setPupilColor(newOpts.pupilColor);
+      }
       if (newOpts.irisColor) {
         setIrisColor(newOpts.irisColor);
       }
@@ -383,6 +419,7 @@ export class EyeGenerator {
       updateGaze,
       updateOptions,
       setIrisColor,
+      setPupilColor,
       setPupilSize,
     };
   }

@@ -254,6 +254,54 @@ export const AVATAR_TRACKING_PROFILES: Record<AvatarId, AvatarTrackingProfile> =
     ],
   },
 
+  // Neon Cyber 3D: Holograma Vectorial con captura de todos los puntos anatómicos (48 Puntos)
+  neon_holo: {
+    avatarId: 'neon_holo',
+    name: 'Neon Cyber 3D',
+    pointsCount: 48,
+    badge: '48 Pts Neon Holo',
+    description: 'Avatar holográfico de líneas de neón vectoriales reactivo a todos los puntos anatómicos de tracking facial',
+    color: '#00f0ff',
+    dotColor: '#22d3ee',
+    glowColor: 'rgba(0, 240, 255, 0.45)',
+    activeIndices: [
+      // Cráneo, frente y coronilla
+      10, 338, 297, 67, 109, 151, 9, 8,
+      // Cejas (L/R)
+      70, 63, 105, 107, 300, 293, 334, 336,
+      // Ojos y Pupilas
+      33, 160, 158, 133, 153, 144, 362, 385, 387, 263, 373, 380, 468, 473,
+      // Nariz continua
+      168, 6, 197, 4, 1, 2, 98, 327,
+      // Orejas estilizadas / Sienes
+      234, 454, 127, 356,
+      // Labios y barbilla
+      61, 291, 13, 14, 0, 17, 78, 308, 82, 312, 152,
+    ],
+    contours: [
+      { name: 'head_oval', indices: [10, 297, 338, 454, 365, 377, 152, 148, 176, 234, 67, 109, 10], isClosed: true, color: '#00f0ff', width: 2.2 },
+      { name: 'forehead_crease', indices: [109, 108, 151, 337, 338], color: '#38bdf8', width: 1.8 },
+      { name: 'hair_part', indices: [10, 109, 67], color: '#00f0ff', width: 2.0 },
+      { name: 'brow_L', indices: [70, 63, 105, 107], color: '#22d3ee', width: 2.2 },
+      { name: 'brow_R', indices: [300, 293, 334, 336], color: '#22d3ee', width: 2.2 },
+      { name: 'eye_L', indices: [33, 160, 158, 133, 153, 144, 33], isClosed: true, color: '#00f0ff', width: 2.0 },
+      { name: 'eye_R', indices: [362, 385, 387, 263, 373, 380, 362], isClosed: true, color: '#00f0ff', width: 2.0 },
+      { name: 'nose_stroke', indices: [168, 6, 197, 4, 1, 2, 98], color: '#00f0ff', width: 2.0 },
+      { name: 'lips_glow', indices: [61, 82, 13, 312, 291, 317, 14, 87, 61], isClosed: true, color: '#3b82f6', width: 2.4 },
+      { name: 'ear_L', indices: [234, 127, 234], isClosed: true, color: '#00f0ff', width: 2.2 },
+      { name: 'ear_R', indices: [454, 356, 454], isClosed: true, color: '#00f0ff', width: 2.2 },
+    ],
+    mesh3DPoints: [
+      { name: 'ear_L', localPos: [-0.92, 0.15, 0.2], color: '#00f0ff' },
+      { name: 'ear_R', localPos: [0.92, 0.15, 0.2], color: '#00f0ff' },
+      { name: 'pupil_L', localPos: [-0.38, 0.18, 0.88], color: '#00f0ff' },
+      { name: 'pupil_R', localPos: [0.38, 0.18, 0.88], color: '#00f0ff' },
+      { name: 'nose_tip', localPos: [0.08, -0.06, 1.02], color: '#22d3ee' },
+      { name: 'mouth_center', localPos: [0, -0.34, 0.96], color: '#3b82f6' },
+      { name: 'forehead_crease', localPos: [0, 0.55, 0.76], color: '#38bdf8' },
+    ],
+  },
+
   // 8. Cyber Nova: HUD Cibernético + Sensores Pómulos (32 Puntos)
   cyber_nova: {
     avatarId: 'cyber_nova',

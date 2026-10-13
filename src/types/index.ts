@@ -6,6 +6,7 @@ export type AvatarId =
   | 'horse_3d'
   | 'fox_sensei'
   | 'mesh_outline'
+  | 'neon_holo'
   | 'cyber_nova'
   | 'bot_9000'
   | 'pixel_punk'
