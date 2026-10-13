@@ -123,6 +123,8 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
 
   // Transform params
   const [debugParams, setDebugParams] = useState<TransformDebugParams>(DEFAULT_DEBUG_PARAMS);
+  const debugParamsRef = useRef<TransformDebugParams>(DEFAULT_DEBUG_PARAMS);
+  debugParamsRef.current = debugParams;
 
   // Morph targets test values (0 to 1)
   const [testBlendshapes, setTestBlendshapes] = useState<Record<string, number>>({});
@@ -286,19 +288,20 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     }
     setIsLiveTracking(false);
 
+    const currentParams = debugParamsRef.current;
     // Reset rotation to neutral
     if (faceMeshRef.current) {
       faceMeshRef.current.rotation.set(
-        THREE.MathUtils.degToRad(debugParams.face.rotationX),
-        THREE.MathUtils.degToRad(debugParams.face.rotationY),
-        THREE.MathUtils.degToRad(debugParams.face.rotationZ)
+        THREE.MathUtils.degToRad(currentParams.face.rotationX),
+        THREE.MathUtils.degToRad(currentParams.face.rotationY),
+        THREE.MathUtils.degToRad(currentParams.face.rotationZ)
       );
     }
     if (headModelRef.current) {
       headModelRef.current.rotation.set(
-        THREE.MathUtils.degToRad(debugParams.head.rotationX),
-        THREE.MathUtils.degToRad(debugParams.head.rotationY),
-        THREE.MathUtils.degToRad(debugParams.head.rotationZ)
+        THREE.MathUtils.degToRad(currentParams.head.rotationX),
+        THREE.MathUtils.degToRad(currentParams.head.rotationY),
+        THREE.MathUtils.degToRad(currentParams.head.rotationZ)
       );
     }
     if (bustModelRef.current) {
@@ -314,8 +317,8 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     }
     if (eyePairResultRef.current) {
       eyePairResultRef.current.updateGaze(
-        debugParams.eyes?.manualGazeX || 0,
-        debugParams.eyes?.manualGazeY || 0
+        currentParams.eyes?.manualGazeX || 0,
+        currentParams.eyes?.manualGazeY || 0
       );
     }
     if (oralCavityRef.current) {
@@ -325,15 +328,17 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         lowerTeeth.position.z = -0.065;
       }
     }
-  }, [debugParams]);
+  }, []);
 
   useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
     if (isOpen && isAdmin) {
-      setTimeout(() => {
+      timer = setTimeout(() => {
         initThreeScene();
       }, 100);
     }
     return () => {
+      if (timer) clearTimeout(timer);
       if (animationFrameIdRef.current) {
         cancelAnimationFrame(animationFrameIdRef.current);
       }
