@@ -155,7 +155,20 @@ Implementado en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/component
 * A diferencia de cabezas flotantes estáticas, el sistema integra **cinemática bi-articular de torso**:
   * **Flexión de Cuello:** Distribución gradual de la rotación cefálica (70% en cráneo, 30% en vértebras cervicales).
   * **Balanceo de Hombros:** Reacción con retraso elástico (*spring physics*) al cabeceo lateral (*Roll*).
-### 5.3. Sincronización Universal de Boca y Mandíbula para Modelos 3D y Personalizados
+
+### 5.3. Centrado Vertical Unificado y Encuadre Retrato (Vertical Framing Standard)
+* **Objetivo de Cámara Unificado ($y = 3.80$):**
+  * La cámara de perspectiva (`FOV = 40°`, distancia $Z = 4.8$) enfoca permanentemente a $(0, 3.8, 0)$ con campo visual vertical de $y \in [2.05, 5.55]$.
+* **Alineación Vertical de Personajes Iniciales y Procedurales:**
+  * Para erradicar desajustes donde los personajes aparecían hundidos en la parte inferior de la tarjeta con espacio vacío superior, todos los personajes procedurales incorporan un contenedor de recentrado vertical (`contentGroup`) que eleva la anatomía de forma armónica:
+    * `cat_3d` y `dog_3d`: Elevados $+0.58$ en $Y$ (centro facial alineado a $y = 3.78$).
+    * `female_3d` (Chica Anime) y `fox_sensei` (Kitsune): Elevados $+0.55$ en $Y$ (centro facial a $y = 3.80$).
+    * `horse_3d` (Caballo): Elevado $+0.65$ en $Y$ (compensa el hocico alargado descendente para situar el eje ocular y nasal entre $y = 3.55$ y $3.85$).
+    * `buildProceduralRobotCharacter` (`cyber_nova`, `bot_9000`, `pixel_punk`): Elevados $+0.62$ en $Y$ (alinea la pantalla del visor a $y = 3.82$).
+    * `mesh_outline` (Holo Mesh 3D): Elevado $+0.55$ en $Y$ (centra el óvalo facial en $y = 3.80$).
+    * `three_robot` (`RobotExpressive.glb`): Posicionado en `clonedScene.position.set(0, 0.75, 0)` en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/components/avatars/ThreeAvatarCanvas.tsx), elevando el hueso `Head` de su posición de reposo ($y = 2.97$) hasta $y = 3.72$, encuadrando el visor y matriz LED bucal en el centro del viewport.
+  * Todas las mallas anatómicas de torso descienden fluidamente más allá del borde inferior ($y < 2.05$), creando un encuadre de busto/retrato profesional sin recortes toscos ni desfasajes en los 478 puntos de tracking 3D.
+### 5.4. Sincronización Universal de Boca y Mandíbula para Modelos 3D y Personalizados
 * **Separación Topológica Estricta de Labios (`UPPER_LIP_SET` vs `LOWER_LIP_SET` vs `MOUTH_CORNER_SET`):**
   * Elimina landmarks mandibulares erróneos del labio superior (43, 83, 106, 182 devueltos a la mandíbula inferior) delimitando con precisión la hendidura interlabial.
   * **Efecto Habla Auténtico:** La boca se divide estrictamente desde el labio inferior hacia abajo:
@@ -209,8 +222,17 @@ flowchart LR
 * **Calibración Anatómica de Boca y Cavidad Oral (`FaceMeshGenerator`):**
   * Elimina el estiramiento plano de texturas al hablar mediante curvatura tridimensional en Z y recesión anatómica sobre dientes.
   * **Parámetros Paramétricos de Boca:** Hundimiento oral hacia el interior (`mouthDepthPush`), volumen y grosor de labios (`lipThickness`), alineación vertical de altura (`mouthOffsetY`), elevación de comisuras para evitar gesto caído (`smileOffset`) y amplitud máxima de mandíbula (`jawOpenScale`).
+  * **División Cinemática de Habla:** El labio inferior se divide limpiamente hacia abajo con la mandíbula al hablar o abrir la boca, mientras el labio superior permanece anclado al cráneo como techo y plano de referencia de cierre.
   * **Cavidad Oral Interna y Dientes 3D (`generateOralCavityMesh`):** Cámara oscura anatómica con arcadas dentales superior e inferior acopladas detrás de los labios; la arcada dental inferior (`lowerTeeth`) desciende dinámicamente con `jawOpen` al hablar o cantar.
-* **Alineación 100% Desacoplada en 4 Vías:** Panel de calibración con selectores dedicados para *Malla Facial*, *Boca y Labios*, *Ojos 3D* y *Base de Cabeza*.
+* **Calibración y Rigging Multi-Punto para Captura de Gestos (`GestureCalibrationParams`):**
+  * Rigging facial basado en clusters anatómicos de MediaPipe (478 puntos) con deformación continua Hermite cúbica:
+    * **Cejas y Frente:** Arco multi-punto (`107, 66, 336, 296, 70, 300`) calibrable con `browRaiseScale`, `browFurrowScale` y `browOffsetY`.
+    * **Párpados y Ojos:** Contornos palpebrales pareados (`160, 159, 158` hacia `144, 145, 153` / `385, 386, 387` hacia `373, 374, 380`) calibrables con `eyeBlinkScale`, `eyeWideScale` y `eyeSquintScale`.
+    * **Mejillas y Sonrisa:** Deformación cigomática multi-punto (`61, 291, 205, 425`) calibrable con `smileScale`, `frownScale`, `cheekPuffScale` y `puckerScale`.
+    * **Mandíbula y Labios:** Separación del labio inferior gobernada por `lipSeparationRatio` y `jawOpenScale`.
+  * **Nube de 478 Puntos de Tracking en 3D (`createTrackingPointsMesh`):** Overlay visualizador de 478 puntos tridimensionales codificados por zonas faciales (Cian = cejas, Verde = ojos, Ámbar = nariz, Rosa = labios, Púrpura = mandíbula, Pizarra = contorno) animado dinámicamente con las influencias de los blendshapes en tiempo real.
+  * **Tira de Pruebas Rápidas de Gestos:** Acceso inmediato a expresiones preconfiguradas (Sonrisa, Sorpresa, Guiño, Ceño, Pucker y Neutral).
+* **Alineación Desacoplada en 5 Vías:** Panel de calibración con selectores dedicados para *Malla Facial*, *Boca y Labios*, *Ojos 3D*, *Base de Cabeza* y *Gestos 478*.
 * **Generador de Busto Procedural:** Permite equipar hombros ejecutivos con traje formal, corbata personalizable en color, camisa de vestir o cuello redondo con cinemática reactiva a 60 FPS.
 * **Espejo Webcam en Vivo (Live Mirror):** Prueba interactiva en tiempo real donde la cara, ojos y cuello del usuario animan el avatar antes de guardarlo.
 * **Exportación Estándar GLB:** Genera archivos `.glb` con texturas empaquetadas, materiales físicos PBR, ojos 3D, cavidad oral y los 52 morph targets listos para su uso en Unity, Unreal Engine, Blender o la propia plataforma.
@@ -220,6 +242,14 @@ flowchart LR
   * La creación de avatares fotogramétricos biomiméticos mediante foto (`+ Foto 3D` / `Face to 3D`) y la importación de nuevos modelos 3D (`Subir 3D` / `Gestionar Modelos`) están restringidas estrictamente a administradores autenticados.
   * Para los participantes estándar, el Lobby presenta una cuadrícula limpia de avatares sin botones de creación o subida ni accesos directos de eliminación con "X", garantizando una experiencia de usuario despejada y segura contra borrados accidentales.
   * La gestión y eliminación autorizada de modelos permanece centralizada para el administrador dentro del panel `AdminControlPanel`.
+
+### 6.2. Bloqueo de Avatar por Sesión (Sin Hot-Swap en Sala)
+* El cambio de avatar **en vivo dentro de la sala ha sido eliminado** deliberadamente de [`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx) para garantizar la **consistencia de identidad** del personaje durante toda la llamada.
+* El avatar se selecciona en el Lobby antes de unirse y permanece fijo para esa sesión. Esto evita:
+  * Inconsistencias visuales momentáneas durante la recarga del modelo 3D.
+  * Re-inicialización del pipeline de morph targets en medio de una conversación.
+  * Confusión en los participantes remotos al ver un cambio de identidad repentino.
+* Para cambiar de avatar, el usuario debe abandonar la sala, seleccionar un nuevo avatar en el Lobby y volver a unirse.
 
 ---
 
@@ -256,7 +286,7 @@ flowchart LR
 | **Privacidad Biométrica** | Procesamiento en el borde (*Edge Computing*); cero almacenamiento o transmisión de imágenes de cámara | [`Login.tsx`](file:///d:/Apps/xstreamx/src/components/auth/Login.tsx) |
 | **Atribución de Origen** | Requisito expreso de conservar *"Origin: Originally created and developed by XStreamX"* | [`LegalDisclaimerModal.tsx`](file:///d:/Apps/xstreamx/src/components/common/LegalDisclaimerModal.tsx) |
 | **Gestión de Hardware** | Liberación proactiva y segura de pistas `MediaStreamTrack.stop()` al abandonar llamadas | [`src/App.tsx`](file:///d:/Apps/xstreamx/src/App.tsx) |
-| **Repositorio Fuente** | Desarrollo privado centralizado en `https://github.com/qwertyui1980/presidents.git` | [`package.json`](file:///d:/Apps/xstreamx/package.json) |
+| **Repositorio Fuente** | Desarrollo privado centralizado en `https://github.com/qwertyui1980/3dchat.git` | [`package.json`](file:///d:/Apps/xstreamx/package.json) |
 
 ---
 
@@ -276,7 +306,7 @@ xstreamx/
 │   ├── components/
 │   │   ├── admin/                # FaceBlendshapeStudioModal (Estudio 3D de avatares)
 │   │   ├── auth/                 # Login (Controlador de acceso, modal de credenciales y privacidad)
-│   │   ├── home/                 # PresidentesNeonHome (Landing con figuras neón y glitch aleatorio)
+│   │   ├── home/                 # PresidentesNeonHome (Landing con figuras neón, glitch aleatorio por figura Y por letra individual)
 │   │   ├── avatars/              # ThreeAvatarCanvas, threeCharacterBuilder, configs
 │   │   ├── common/               # Header, LegalDisclaimerModal, StarfieldBackground
 │   │   ├── lobby/                # Lobby interactivo de entrada y selección de avatar
