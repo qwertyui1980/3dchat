@@ -65,18 +65,19 @@ export class BustGenerator {
     // 1. Torso & Shoulders Base Group (moves with body lean & subtle yaw)
     const torsoGroup = new THREE.Group();
     torsoGroup.name = 'torsoGroup';
-    torsoGroup.position.set(0, -1.05, 0);
+    // Anatomical placement seamlessly joined under the neck base
+    torsoGroup.position.set(0, -0.60, 0);
     root.add(torsoGroup);
 
     // Shoulders & Upper Chest Body Geometry (Trapezoid / sculpted upper torso)
-    // Scale: Human shoulders are approx 2.2x - 2.4x head width
-    const chestWidth = 2.4 * (opts.widthMultiplier || 1.0);
-    const chestDepth = 1.1;
-    const chestHeight = 1.1 * (opts.heightMultiplier || 1.0);
+    // Scale: Human shoulders are approx 1.9x - 2.1x head width
+    const chestWidth = 1.95 * (opts.widthMultiplier || 1.0);
+    const chestDepth = 0.95;
+    const chestHeight = 1.0 * (opts.heightMultiplier || 1.0);
 
     const chestGeo = new THREE.CylinderGeometry(
-      chestWidth * 0.48, // top radius (shoulder slope)
-      chestWidth * 0.54, // bottom radius (chest base)
+      chestWidth * 0.46, // top radius (shoulder slope)
+      chestWidth * 0.52, // bottom radius (chest base)
       chestHeight,
       32,
       4
@@ -86,23 +87,23 @@ export class BustGenerator {
 
     const chestMesh = new THREE.Mesh(chestGeo, suitMat);
     chestMesh.name = 'chestMesh';
-    chestMesh.position.set(0, -chestHeight * 0.4, -0.05);
+    chestMesh.position.set(0, -chestHeight * 0.45, -0.05);
     chestMesh.castShadow = true;
     chestMesh.receiveShadow = true;
     torsoGroup.add(chestMesh);
 
     // Shoulder Caps / Deltoids (natural rounded shoulder slopes)
-    const shoulderRadius = 0.36;
+    const shoulderRadius = 0.32;
     const leftShoulder = new THREE.Mesh(
       new THREE.SphereGeometry(shoulderRadius, 20, 16),
       suitMat
     );
     leftShoulder.scale.set(1.15, 0.75, 1.0);
-    leftShoulder.position.set(-chestWidth * 0.46, -0.15, -0.05);
+    leftShoulder.position.set(-chestWidth * 0.46, -0.12, -0.05);
     torsoGroup.add(leftShoulder);
 
     const rightShoulder = leftShoulder.clone();
-    rightShoulder.position.set(chestWidth * 0.46, -0.15, -0.05);
+    rightShoulder.position.set(chestWidth * 0.46, -0.12, -0.05);
     torsoGroup.add(rightShoulder);
 
     // 2. Neck Pivot Group (flexes between chest and head)

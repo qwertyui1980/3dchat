@@ -69,22 +69,30 @@ export interface TransformDebugParams {
     rotationY: number;
     rotationZ: number;
   };
+  bust: {
+    scale: number;
+    widthMultiplier: number;
+    heightMultiplier: number;
+    posOffsetX: number;
+    posOffsetY: number;
+    posOffsetZ: number;
+  };
   mouth: MouthCustomizationParams;
   eyes: EyeCustomizationOptions;
 }
 
 export const DEFAULT_DEBUG_PARAMS: TransformDebugParams = {
   head: {
-    scaleMultiplierX: 1.15,
-    scaleMultiplierY: 1.45,
-    scaleMultiplierZ: 1.45,
+    scaleMultiplierX: 1.08,
+    scaleMultiplierY: 1.18,
+    scaleMultiplierZ: 1.15,
     posOffsetX: 0,
     posOffsetY: 0,
     posOffsetZ: 0,
     rotationX: 0,
     rotationY: 0,
     rotationZ: 0,
-    pushBackFactor: 0.4,
+    pushBackFactor: 0.28,
   },
   face: {
     scaleUniform: 1.0,
@@ -98,8 +106,16 @@ export const DEFAULT_DEBUG_PARAMS: TransformDebugParams = {
     rotationY: 0,
     rotationZ: 0,
   },
+  bust: {
+    scale: 1.0,
+    widthMultiplier: 1.0,
+    heightMultiplier: 1.0,
+    posOffsetX: 0,
+    posOffsetY: 0,
+    posOffsetZ: 0,
+  },
   mouth: { ...DEFAULT_MOUTH_PARAMS },
-  eyes: { ...DEFAULT_EYE_OPTIONS },
+  eyes: { ...DEFAULT_EYE_OPTIONS, pupilSize: 0.32 },
 };
 
 export class FaceToBlendshapeService {
@@ -334,6 +350,15 @@ export class FaceToBlendshapeService {
       params.face.posOffsetZ || 0
     );
 
+    // Guaranteed visibility: faceMesh rendered forward in render order & polygon offset
+    faceMesh.renderOrder = 10;
+    if (faceMesh.material && !Array.isArray(faceMesh.material)) {
+      faceMesh.material.polygonOffset = true;
+      faceMesh.material.polygonOffsetFactor = -2;
+      faceMesh.material.polygonOffsetUnits = -2;
+      faceMesh.material.depthTest = true;
+    }
+
     // 3. Align 3D Eyeballs group directly locked to faceMesh coordinate space
     if (eyePairResult && params.eyes) {
       eyePairResult.updateOptions(params.eyes);
@@ -343,6 +368,7 @@ export class FaceToBlendshapeService {
       eyesGroup.rotation.copy(faceMesh.rotation);
       eyesGroup.position.copy(faceMesh.position);
       eyesGroup.visible = params.eyes?.enabled ?? true;
+      eyesGroup.renderOrder = 9;
     }
 
     // 4. Align Oral Cavity backing mesh directly locked to faceMesh coordinate space
@@ -351,6 +377,7 @@ export class FaceToBlendshapeService {
       oralCavity.rotation.copy(faceMesh.rotation);
       oralCavity.position.copy(faceMesh.position);
       oralCavity.visible = params.mouth?.oralCavityEnabled ?? true;
+      oralCavity.renderOrder = 8;
     }
 
     // 5. Align 478 Landmark Tracking Points mesh
@@ -358,9 +385,16 @@ export class FaceToBlendshapeService {
       trackingPointsMesh.scale.copy(faceMesh.scale);
       trackingPointsMesh.rotation.copy(faceMesh.rotation);
       trackingPointsMesh.position.copy(faceMesh.position);
+      trackingPointsMesh.renderOrder = 12;
     }
 
-    // 5. Align Head Base Model independently based on stable base face dimensions
+    // Coordinated reference center: face mesh position offsets shift the anatomical system together
+    const effFaceCenterX = baseFaceCenter.x + (params.face.posOffsetX || 0);
+    const effFaceCenterY = baseFaceCenter.y + (params.face.posOffsetY || 0);
+    const effFaceCenterZ = baseFaceCenter.z + (params.face.posOffsetZ || 0);
+
+    // 6. Align Head Base Model proportionally anchored to the face
+    let currentHeadHeight = baseFaceHeight * 1.18;
     if (headModel) {
       headModel.scale.set(1, 1, 1);
       headModel.rotation.set(0, 0, 0);
@@ -371,8 +405,8 @@ export class FaceToBlendshapeService {
       const headWidth = Math.max(0.001, resetHeadBox.max.x - resetHeadBox.min.x);
       const headHeight = Math.max(0.001, resetHeadBox.max.y - resetHeadBox.min.y);
 
-      const targetHeadWidth = baseFaceWidth * params.head.scaleMultiplierX;
-      const targetHeadHeight = baseFaceHeight * params.head.scaleMultiplierY;
+      const targetHeadWidth = baseFaceWidth * effScaleX * params.head.scaleMultiplierX;
+      const targetHeadHeight = baseFaceHeight * effScaleY * params.head.scaleMultiplierY;
 
       const scaleX = targetHeadWidth / headWidth;
       const scaleY = targetHeadHeight / headHeight;
@@ -381,10 +415,11 @@ export class FaceToBlendshapeService {
         (params.head.scaleMultiplierZ / params.head.scaleMultiplierY);
 
       headModel.scale.set(scaleX, scaleY, scaleZ);
+      currentHeadHeight = targetHeadHeight;
       headModel.rotation.set(
-        THREE.MathUtils.degToRad(params.head.rotationX || 0),
-        THREE.MathUtils.degToRad(params.head.rotationY || 0),
-        THREE.MathUtils.degToRad(params.head.rotationZ || 0)
+        THREE.MathUtils.degToRad((params.face.rotationX || 0) + (params.head.rotationX || 0)),
+        THREE.MathUtils.degToRad((params.face.rotationY || 0) + (params.head.rotationY || 0)),
+        THREE.MathUtils.degToRad((params.face.rotationZ || 0) + (params.head.rotationZ || 0))
       );
       headModel.updateMatrixWorld(true);
 
@@ -392,25 +427,61 @@ export class FaceToBlendshapeService {
       const scaledHeadCenter = scaledHeadBox.getCenter(new THREE.Vector3());
       const scaledHeadDepth = scaledHeadBox.max.z - scaledHeadBox.min.z;
 
-      const offsetX = baseFaceCenter.x - scaledHeadCenter.x + (params.head.posOffsetX || 0);
-      const offsetY = baseFaceCenter.y - scaledHeadCenter.y + (params.head.posOffsetY || 0);
-      const targetZ = baseFaceCenter.z - scaledHeadCenter.z;
-      const pushBack = scaledHeadDepth * (params.head.pushBackFactor ?? 0.4);
+      const offsetX = effFaceCenterX - scaledHeadCenter.x + (params.head.posOffsetX || 0);
+      const offsetY = effFaceCenterY - scaledHeadCenter.y + (params.head.posOffsetY || 0);
+      const targetZ = effFaceCenterZ - scaledHeadCenter.z;
+      const pushBack = scaledHeadDepth * (params.head.pushBackFactor ?? 0.28);
       const offsetZ = targetZ - pushBack + (params.head.posOffsetZ || 0);
 
       headModel.position.set(offsetX, offsetY, offsetZ);
+
+      // Prevent head base from occluding face mesh
+      headModel.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          const mesh = child as THREE.Mesh;
+          mesh.renderOrder = 1;
+          if (mesh.material && !Array.isArray(mesh.material)) {
+            mesh.material.polygonOffset = true;
+            mesh.material.polygonOffsetFactor = 2;
+            mesh.material.polygonOffsetUnits = 2;
+            mesh.material.depthTest = true;
+          }
+        }
+      });
     }
 
-    // 6. Align Torso & Bust Model seamlessly below the neck
+    // 7. Align Torso & Bust Model seamlessly below the neck and shoulders
     if (bustModel) {
-      const headBaseY = headModel ? headModel.position.y : baseFaceCenter.y;
-      const bustY = headBaseY - baseFaceHeight * 0.48;
-      const bustZ = baseFaceCenter.z - 0.08 + (params.head?.posOffsetZ || 0) * 0.5;
+      const bustOpts = params.bust || {
+        scale: 1.0,
+        widthMultiplier: 1.0,
+        heightMultiplier: 1.0,
+        posOffsetX: 0,
+        posOffsetY: 0,
+        posOffsetZ: 0,
+      };
+
+      const bustBaseScale = (bustOpts.scale ?? 1.0) * effScaleY;
+      bustModel.scale.set(
+        bustBaseScale * (bustOpts.widthMultiplier ?? 1.0),
+        bustBaseScale * (bustOpts.heightMultiplier ?? 1.0),
+        bustBaseScale
+      );
+
+      const headBaseY = headModel ? headModel.position.y : effFaceCenterY;
+      const headBaseX = headModel ? headModel.position.x : effFaceCenterX;
+      const headBaseZ = headModel ? headModel.position.z : effFaceCenterZ;
+
+      // Anatomical neck attachment point under the chin/cranium base
+      const neckAttachY = headBaseY - currentHeadHeight * 0.44 + (bustOpts.posOffsetY || 0);
+      const bustZ = headBaseZ - 0.05 + (bustOpts.posOffsetZ || 0);
+
       bustModel.position.set(
-        baseFaceCenter.x + (params.head?.posOffsetX || 0) * 0.5,
-        bustY,
+        headBaseX + (bustOpts.posOffsetX || 0),
+        neckAttachY,
         bustZ
       );
+      bustModel.renderOrder = 2;
     }
   }
 

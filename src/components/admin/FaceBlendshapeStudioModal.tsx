@@ -29,12 +29,15 @@ import {
   Wand2,
   Volume2,
   VolumeX,
+  ScanFace,
 } from 'lucide-react';
 import {
   faceToBlendshapeServiceSingleton,
   Face3DGenerationResult,
   TransformDebugParams,
   DEFAULT_DEBUG_PARAMS,
+  createTrackingPointsMesh,
+  DEFAULT_GESTURE_PARAMS,
 } from '../../services/face3d/faceToBlendshapeService';
 import { EyePairResult, IRIS_COLOR_PRESETS } from '../../services/face3d/eyeGenerator';
 import { ARKIT_BLENDSHAPE_NAMES, ARKitBlendshapeName, ARKitBlendshapeMapper } from '../../services/face3d/arkitMapper';
@@ -97,6 +100,8 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   const eyesGroupRef = useRef<THREE.Group | null>(null);
   const oralCavityRef = useRef<THREE.Group | null>(null);
   const eyePairResultRef = useRef<EyePairResult | null>(null);
+  const trackingPointsRef = useRef<THREE.Points | null>(null);
+  const photoPlaneRef = useRef<THREE.Mesh | null>(null);
   const currentResultRef = useRef<Face3DGenerationResult | null>(null);
 
   // Display toggles
@@ -104,7 +109,10 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   const [showWireframe, setShowWireframe] = useState(false);
   const [showHeadBase, setShowHeadBase] = useState(true);
   const [showShoulders, setShowShoulders] = useState(true);
-  const [tuningTarget, setTuningTarget] = useState<'face' | 'mouth' | 'eyes' | 'head'>('face');
+  const [showTrackingPoints, setShowTrackingPoints] = useState(false);
+  const [showPhotoPlane, setShowPhotoPlane] = useState(false);
+  const [photoPlaneOpacity, setPhotoPlaneOpacity] = useState(0.7);
+  const [tuningTarget, setTuningTarget] = useState<'face' | 'mouth' | 'eyes' | 'head' | 'bust' | 'gestures'>('face');
   const [isCopied, setIsCopied] = useState(false);
 
   // Clothing & Bust Customization
@@ -230,6 +238,34 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
             lowerTeeth.position.y = -0.022 - speechOpen * 0.26;
             lowerTeeth.position.z = -0.038 - speechOpen * 0.10;
           }
+        }
+      }
+
+      // Animate 478 MediaPipe tracking points dynamically with mesh morph target influences
+      if (trackingPointsRef.current && trackingPointsRef.current.visible && faceMeshRef.current) {
+        const mesh = faceMeshRef.current;
+        const ptsGeo = trackingPointsRef.current.geometry;
+        const posAttr = ptsGeo.attributes.position;
+        const basePoints = mesh.userData.canonicalPoints;
+        const morphAttrs = mesh.geometry.morphAttributes.position;
+        const influences = mesh.morphTargetInfluences;
+        if (basePoints && morphAttrs && influences) {
+          for (let i = 0; i < basePoints.length; i++) {
+            let px = basePoints[i].x;
+            let py = basePoints[i].y;
+            let pz = basePoints[i].z + 0.008;
+            for (let m = 0; m < morphAttrs.length; m++) {
+              const inf = influences[m];
+              if (inf > 0.001) {
+                const morphPos = morphAttrs[m];
+                px += (morphPos.getX(i) - basePoints[i].x) * inf;
+                py += (morphPos.getY(i) - basePoints[i].y) * inf;
+                pz += (morphPos.getZ(i) - basePoints[i].z) * inf;
+              }
+            }
+            posAttr.setXYZ(i, px, py, pz);
+          }
+          posAttr.needsUpdate = true;
         }
       }
 
@@ -509,6 +545,76 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     reader.readAsDataURL(file);
   };
 
+  // Reference Photo Plane in 3D Viewport (align 3D avatar against background photo)
+  const updatePhotoPlane = useCallback(
+    (img: HTMLImageElement | HTMLCanvasElement | null) => {
+      const scene = sceneRef.current;
+      if (!scene) return;
+
+      if (!img) {
+        if (photoPlaneRef.current) {
+          scene.remove(photoPlaneRef.current);
+          photoPlaneRef.current.geometry.dispose();
+          if (photoPlaneRef.current.material instanceof THREE.Material) {
+            photoPlaneRef.current.material.dispose();
+          }
+          photoPlaneRef.current = null;
+        }
+        return;
+      }
+
+      const naturalWidth = 'naturalWidth' in img ? (img.naturalWidth || img.width) : img.width;
+      const naturalHeight = 'naturalHeight' in img ? (img.naturalHeight || img.height) : img.height;
+      const aspect = naturalWidth / (naturalHeight || 1);
+
+      const texture = new THREE.Texture(img);
+      texture.needsUpdate = true;
+      texture.colorSpace = THREE.SRGBColorSpace;
+
+      if (photoPlaneRef.current) {
+        scene.remove(photoPlaneRef.current);
+        photoPlaneRef.current.geometry.dispose();
+        if (photoPlaneRef.current.material instanceof THREE.Material) {
+          photoPlaneRef.current.material.dispose();
+        }
+      }
+
+      const planeHeight = 2.4;
+      const planeWidth = planeHeight * aspect;
+      const geo = new THREE.PlaneGeometry(planeWidth, planeHeight);
+      const mat = new THREE.MeshBasicMaterial({
+        map: texture,
+        transparent: true,
+        opacity: photoPlaneOpacity,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.name = 'referencePhotoPlane';
+      mesh.position.set(0, 0, -1.15);
+      mesh.visible = showPhotoPlane;
+      mesh.renderOrder = 0;
+      scene.add(mesh);
+      photoPlaneRef.current = mesh;
+    },
+    [photoPlaneOpacity, showPhotoPlane]
+  );
+
+  useEffect(() => {
+    if (selectedImageElement) {
+      updatePhotoPlane(selectedImageElement);
+    }
+  }, [selectedImageElement, updatePhotoPlane]);
+
+  useEffect(() => {
+    if (photoPlaneRef.current) {
+      photoPlaneRef.current.visible = showPhotoPlane;
+      if (photoPlaneRef.current.material instanceof THREE.MeshBasicMaterial) {
+        photoPlaneRef.current.material.opacity = photoPlaneOpacity;
+      }
+    }
+  }, [showPhotoPlane, photoPlaneOpacity]);
+
   // Process image with MediaPipe Face Landmarker & Generate 3D Model
   const processImage = async () => {
     if (!selectedImageElement) {
@@ -549,6 +655,8 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       if (oldEyes) scene.remove(oldEyes);
       const oldCavity = scene.getObjectByName('oralCavity');
       if (oldCavity) scene.remove(oldCavity);
+      const oldPts = scene.getObjectByName('trackingPointsMesh');
+      if (oldPts) scene.remove(oldPts);
 
       faceMeshRef.current = result.faceMesh;
       headModelRef.current = result.headModel;
@@ -575,6 +683,14 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         scene.add(result.bustModel);
       }
 
+      // Create 478 MediaPipe landmark tracking points cloud
+      if (result.faceMesh.userData.canonicalPoints) {
+        const ptsMesh = createTrackingPointsMesh(result.faceMesh.userData.canonicalPoints);
+        ptsMesh.visible = showTrackingPoints;
+        trackingPointsRef.current = ptsMesh;
+        scene.add(ptsMesh);
+      }
+
       // Apply transforms
       faceToBlendshapeServiceSingleton.applyTransforms(
         result.faceMesh,
@@ -583,7 +699,8 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         debugParams,
         result.eyesGroup,
         result.oralCavity,
-        result.eyePairResult
+        result.eyePairResult,
+        trackingPointsRef.current
       );
 
       // Initialize blendshapes map to 0 (neutral rest pose)
@@ -671,7 +788,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
 
   // Update Transforms & Calibration Parameters
   const handleDebugParamChange = (
-    category: 'head' | 'face' | 'mouth' | 'eyes',
+    category: 'head' | 'face' | 'mouth' | 'eyes' | 'bust',
     key: string,
     value: any
   ) => {
@@ -684,10 +801,12 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         },
       };
 
-      // Real-time Eyeball Appearance / Manual Gaze Update
+      // Real-time Eyeball Appearance / Manual Gaze / Pupil Size Update
       if (category === 'eyes' && eyePairResultRef.current) {
         if (key === 'irisColor') {
           eyePairResultRef.current.setIrisColor(value);
+        } else if (key === 'pupilSize') {
+          eyePairResultRef.current.setPupilSize(value);
         } else if (key === 'manualGazeX' || key === 'manualGazeY') {
           const gx = key === 'manualGazeX' ? value : updated.eyes.manualGazeX;
           const gy = key === 'manualGazeY' ? value : updated.eyes.manualGazeY;
@@ -703,12 +822,20 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
           updated,
           eyesGroupRef.current,
           oralCavityRef.current,
-          eyePairResultRef.current
+          eyePairResultRef.current,
+          trackingPointsRef.current
         );
       }
       return updated;
     });
   };
+
+  // Sync 478 Landmark Tracking Points visibility toggle
+  useEffect(() => {
+    if (trackingPointsRef.current) {
+      trackingPointsRef.current.visible = showTrackingPoints;
+    }
+  }, [showTrackingPoints]);
 
   // Re-generate Face Mesh with new mouth parameters
   const handleRebakeMouthMesh = async () => {
@@ -726,6 +853,113 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     } finally {
       setIsProcessing(false);
     }
+  };
+
+  // Re-generate Face Mesh with new gestures and multi-point calibration parameters
+  const handleRebakeGestureMesh = async () => {
+    if (!selectedImageElement) {
+      setStatus('Sube o captura una foto primero.', 'error');
+      return;
+    }
+    setIsProcessing(true);
+    setStatus('Re-generando morph targets con calibración multi-punto para captura de gestos...', 'info');
+    try {
+      await processImage();
+      setStatus('¡Geometría y morph targets para captura de gestos actualizados con éxito!', 'success');
+    } catch (err: any) {
+      setStatus(err?.message || 'Error al actualizar malla.', 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Reset Gesture Parameters Exclusively
+  const handleResetGestureParams = () => {
+    setDebugParams((prev) => {
+      const updated: TransformDebugParams = {
+        ...prev,
+        mouth: {
+          ...prev.mouth,
+          ...DEFAULT_GESTURE_PARAMS,
+        },
+      };
+      if (faceMeshRef.current) {
+        faceToBlendshapeServiceSingleton.applyTransforms(
+          faceMeshRef.current,
+          headModelRef.current,
+          bustModelRef.current,
+          updated,
+          eyesGroupRef.current,
+          oralCavityRef.current,
+          eyePairResultRef.current,
+          trackingPointsRef.current
+        );
+      }
+      return updated;
+    });
+    setStatus('Parámetros de gestos restablecidos por defecto.', 'info');
+  };
+
+  // Test Quick Gesture Combinations
+  const handleTestQuickGesture = (gesture: 'smile' | 'surprise' | 'wink' | 'furrow' | 'pucker' | 'neutral') => {
+    if (!faceMeshRef.current) return;
+    const mesh = faceMeshRef.current;
+    const dict = mesh.morphTargetDictionary;
+    const influences = mesh.morphTargetInfluences;
+    if (!dict || !influences) return;
+
+    // Reset all
+    influences.fill(0);
+    const updatedTest: Record<string, number> = {};
+    ARKIT_BLENDSHAPE_NAMES.forEach((name) => {
+      updatedTest[name] = 0;
+    });
+
+    const setMorph = (name: string, val: number) => {
+      const idx = dict[name];
+      if (idx !== undefined) {
+        influences[idx] = val;
+        updatedTest[name] = val;
+      }
+    };
+
+    switch (gesture) {
+      case 'smile':
+        setMorph('mouthSmileLeft', 0.95);
+        setMorph('mouthSmileRight', 0.95);
+        setMorph('cheekSquintLeft', 0.4);
+        setMorph('cheekSquintRight', 0.4);
+        break;
+      case 'surprise':
+        setMorph('jawOpen', 0.65);
+        setMorph('browInnerUp', 0.9);
+        setMorph('browOuterUpLeft', 0.7);
+        setMorph('browOuterUpRight', 0.7);
+        setMorph('eyeWideLeft', 0.85);
+        setMorph('eyeWideRight', 0.85);
+        break;
+      case 'wink':
+        setMorph('eyeBlinkLeft', 1.0);
+        setMorph('mouthSmileLeft', 0.7);
+        setMorph('browDownLeft', 0.3);
+        break;
+      case 'furrow':
+        setMorph('browDownLeft', 0.95);
+        setMorph('browDownRight', 0.95);
+        setMorph('eyeSquintLeft', 0.5);
+        setMorph('eyeSquintRight', 0.5);
+        setMorph('mouthFrownLeft', 0.3);
+        setMorph('mouthFrownRight', 0.3);
+        break;
+      case 'pucker':
+        setMorph('mouthPucker', 1.0);
+        break;
+      case 'neutral':
+      default:
+        break;
+    }
+
+    setTestBlendshapes(updatedTest);
   };
 
   // Reset All Transforms
@@ -824,6 +1058,28 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       const updated: TransformDebugParams = {
         ...prev,
         head: { ...DEFAULT_DEBUG_PARAMS.head },
+      };
+      if (faceMeshRef.current) {
+        faceToBlendshapeServiceSingleton.applyTransforms(
+          faceMeshRef.current,
+          headModelRef.current,
+          bustModelRef.current,
+          updated,
+          eyesGroupRef.current,
+          oralCavityRef.current,
+          eyePairResultRef.current
+        );
+      }
+      return updated;
+    });
+  };
+
+  // Reset Torso & Bust Transforms Exclusively
+  const handleResetBustTransforms = () => {
+    setDebugParams((prev) => {
+      const updated: TransformDebugParams = {
+        ...prev,
+        bust: { ...DEFAULT_DEBUG_PARAMS.bust },
       };
       if (faceMeshRef.current) {
         faceToBlendshapeServiceSingleton.applyTransforms(
@@ -1309,6 +1565,28 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   <Sliders className="w-3.5 h-3.5" />
                   Boca
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setShowTrackingPoints(!showTrackingPoints)}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                    showTrackingPoints ? 'bg-amber-400 text-slate-950 font-black shadow-md shadow-amber-400/30' : 'text-neutral-400 hover:bg-white/10'
+                  }`}
+                  title="Mostrar/Ocultar Nube 3D de 478 Puntos Faciales MediaPipe"
+                >
+                  <ScanFace className="w-3.5 h-3.5" />
+                  478 Puntos
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowPhotoPlane(!showPhotoPlane)}
+                  className={`px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
+                    showPhotoPlane ? 'bg-cyan-500 text-slate-950 font-black shadow-md shadow-cyan-500/30' : 'text-neutral-400 hover:bg-white/10'
+                  }`}
+                  title="Mostrar/Ocultar Foto Original en el Plano de Fondo 3D"
+                >
+                  <ImageIcon className="w-3.5 h-3.5" />
+                  Plano Foto
+                </button>
               </div>
 
               <button
@@ -1536,6 +1814,74 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   </button>
                 </div>
 
+                {/* Quick Gestures Testing Strip */}
+                <div className="p-3 rounded-2xl bg-gradient-to-r from-amber-950/40 via-orange-950/30 to-amber-950/40 border border-amber-500/30 shadow-lg shrink-0 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <ScanFace className="w-4 h-4 text-amber-400" />
+                      <span className="text-xs font-bold text-amber-200">Prueba Rápida de Gestos</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTestQuickGesture('neutral')}
+                      disabled={!hasGeneratedModel}
+                      className="text-[10px] text-amber-300 hover:text-white underline cursor-pointer"
+                    >
+                      Reset Neutral
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleTestQuickGesture('smile')}
+                      disabled={!hasGeneratedModel}
+                      className="py-1.5 px-1 rounded-lg bg-black/40 hover:bg-amber-500/20 border border-amber-500/20 text-[10px] font-bold text-neutral-200 hover:text-amber-200 transition text-center cursor-pointer disabled:opacity-40"
+                    >
+                      😊 Sonrisa
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTestQuickGesture('surprise')}
+                      disabled={!hasGeneratedModel}
+                      className="py-1.5 px-1 rounded-lg bg-black/40 hover:bg-amber-500/20 border border-amber-500/20 text-[10px] font-bold text-neutral-200 hover:text-amber-200 transition text-center cursor-pointer disabled:opacity-40"
+                    >
+                      😲 Sorpresa
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTestQuickGesture('wink')}
+                      disabled={!hasGeneratedModel}
+                      className="py-1.5 px-1 rounded-lg bg-black/40 hover:bg-amber-500/20 border border-amber-500/20 text-[10px] font-bold text-neutral-200 hover:text-amber-200 transition text-center cursor-pointer disabled:opacity-40"
+                    >
+                      😉 Guiño
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTestQuickGesture('furrow')}
+                      disabled={!hasGeneratedModel}
+                      className="py-1.5 px-1 rounded-lg bg-black/40 hover:bg-amber-500/20 border border-amber-500/20 text-[10px] font-bold text-neutral-200 hover:text-amber-200 transition text-center cursor-pointer disabled:opacity-40"
+                    >
+                      😠 Ceño
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTestQuickGesture('pucker')}
+                      disabled={!hasGeneratedModel}
+                      className="py-1.5 px-1 rounded-lg bg-black/40 hover:bg-amber-500/20 border border-amber-500/20 text-[10px] font-bold text-neutral-200 hover:text-amber-200 transition text-center cursor-pointer disabled:opacity-40"
+                    >
+                      😗 Pucker
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTestQuickGesture('neutral')}
+                      disabled={!hasGeneratedModel}
+                      className="py-1.5 px-1 rounded-lg bg-black/40 hover:bg-white/10 border border-white/10 text-[10px] font-bold text-neutral-400 hover:text-white transition text-center cursor-pointer disabled:opacity-40"
+                    >
+                      😐 Neutral
+                    </button>
+                  </div>
+                </div>
+
                 {!hasGeneratedModel ? (
                   <div className="py-12 text-center text-xs text-neutral-500">
                     Genera el modelo 3D primero para probar los morph targets.
@@ -1736,55 +2082,79 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   </div>
                 </div>
 
-                {/* Sub-selector: Malla Facial, Boca y Labios, Ojos 3D, Base de Cabeza */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 p-1 bg-black/40 rounded-xl border border-white/[0.08]">
+                {/* Sub-selector: Malla Facial, Boca y Labios, Ojos 3D, Base de Cabeza, Hombros y Busto, Gestos y Tracking */}
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 p-1 bg-black/40 rounded-xl border border-white/[0.08]">
                   <button
                     type="button"
                     onClick={() => setTuningTarget('face')}
-                    className={`py-2 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    className={`py-2 px-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                       tuningTarget === 'face'
                         ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
                         : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.04]'
                     }`}
                   >
                     <Smile className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">Malla Facial</span>
+                    <span className="truncate">Cara</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setTuningTarget('mouth')}
-                    className={`py-2 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    className={`py-2 px-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                       tuningTarget === 'mouth'
                         ? 'bg-rose-500 text-white shadow-md font-black'
                         : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.04]'
                     }`}
                   >
                     <Sliders className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">Boca y Labios</span>
+                    <span className="truncate">Boca</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setTuningTarget('eyes')}
-                    className={`py-2 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    className={`py-2 px-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                       tuningTarget === 'eyes'
                         ? 'bg-emerald-500 text-slate-950 shadow-md font-black'
                         : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.04]'
                     }`}
                   >
                     <Eye className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">Ojos 3D</span>
+                    <span className="truncate">Ojos</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setTuningTarget('head')}
-                    className={`py-2 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    className={`py-2 px-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
                       tuningTarget === 'head'
                         ? 'bg-indigo-500 text-white shadow-md font-black'
                         : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.04]'
                     }`}
                   >
                     <Layers className="w-3.5 h-3.5 shrink-0" />
-                    <span className="truncate">Base Cabeza</span>
+                    <span className="truncate">Cabeza</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTuningTarget('bust')}
+                    className={`py-2 px-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                      tuningTarget === 'bust'
+                        ? 'bg-purple-500 text-white shadow-md font-black'
+                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <Shirt className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">Hombros</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTuningTarget('gestures')}
+                    className={`py-2 px-2 rounded-lg text-[11px] font-bold transition flex items-center justify-center gap-1 cursor-pointer ${
+                      tuningTarget === 'gestures'
+                        ? 'bg-amber-400 text-slate-950 shadow-md font-black'
+                        : 'text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    <ScanFace className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">Gestos</span>
                   </button>
                 </div>
 
@@ -2302,6 +2672,27 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                             </span>
                           </div>
                         </div>
+
+                        <div className="flex items-center justify-between text-[11px] pt-1 border-t border-white/[0.04]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Tamaño de Pupila</span>
+                            <span className="text-[9px] text-neutral-500">Diámetro de la pupila negra</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.18"
+                              max="0.55"
+                              step="0.01"
+                              value={debugParams.eyes?.pupilSize ?? 0.32}
+                              onChange={(e) => handleDebugParamChange('eyes', 'pupilSize', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-emerald-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-emerald-300 font-bold">
+                              {Math.round(((debugParams.eyes?.pupilSize ?? 0.32) / 0.32) * 100)}%
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -2610,6 +3001,448 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                             />
                             <span className="w-10 text-right font-mono text-[10px] text-indigo-300 font-bold">
                               {debugParams.head.rotationZ}°
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* --- 5. Hombros y Torso (Calibración Anatómica de Busto) --- */}
+                {tuningTarget === 'bust' && (
+                  <div className="space-y-3">
+                    <div className="p-2.5 rounded-xl bg-purple-950/20 border border-purple-500/20 text-[11px] text-purple-300 flex items-center justify-between">
+                      <span>Calibración anatómica de <strong>hombros, cuello y torso</strong>.</span>
+                      <button
+                        type="button"
+                        onClick={handleResetBustTransforms}
+                        className="text-[10px] text-purple-400 underline hover:text-purple-200 cursor-pointer"
+                      >
+                        Reset Busto
+                      </button>
+                    </div>
+
+                    {/* Proporción y Dimensiones */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <span className="text-[11px] font-black text-purple-300 uppercase tracking-wider block">
+                        Proporción de Hombros y Torso
+                      </span>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Escala General</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.6"
+                              max="1.6"
+                              step="0.02"
+                              value={debugParams.bust?.scale ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('bust', 'scale', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-purple-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-purple-300 font-bold">
+                              {(debugParams.bust?.scale ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Ancho de Hombros</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.6"
+                              max="1.6"
+                              step="0.02"
+                              value={debugParams.bust?.widthMultiplier ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('bust', 'widthMultiplier', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-purple-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-purple-300 font-bold">
+                              {(debugParams.bust?.widthMultiplier ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Altura de Pecho</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.6"
+                              max="1.6"
+                              step="0.02"
+                              value={debugParams.bust?.heightMultiplier ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('bust', 'heightMultiplier', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-purple-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-purple-300 font-bold">
+                              {(debugParams.bust?.heightMultiplier ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Acople de Cuello y Profundidad */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <span className="text-[11px] font-black text-purple-300 uppercase tracking-wider block">
+                        Acople de Cuello y Profundidad
+                      </span>
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Alineación Vertical Y</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-0.4"
+                              max="0.4"
+                              step="0.005"
+                              value={debugParams.bust?.posOffsetY ?? 0.0}
+                              onChange={(e) => handleDebugParamChange('bust', 'posOffsetY', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-purple-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-purple-300 font-bold">
+                              {(debugParams.bust?.posOffsetY ?? 0.0).toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="text-neutral-300">Profundidad Z</span>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-0.4"
+                              max="0.4"
+                              step="0.005"
+                              value={debugParams.bust?.posOffsetZ ?? 0.0}
+                              onChange={(e) => handleDebugParamChange('bust', 'posOffsetZ', parseFloat(e.target.value))}
+                              className="w-28 sm:w-36 accent-purple-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-purple-300 font-bold">
+                              {(debugParams.bust?.posOffsetZ ?? 0.0).toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* --- 6. Calibración de Gestos y Tracking Multi-Punto --- */}
+                {tuningTarget === 'gestures' && (
+                  <div className="space-y-3">
+                    <div className="p-2.5 rounded-xl bg-amber-950/30 border border-amber-500/30 text-[11px] text-amber-200 flex items-center justify-between">
+                      <div>
+                        <span className="font-bold block">Calibración de Gestos Multi-Punto</span>
+                        <span className="text-[10px] text-neutral-400">
+                          Ajusta la respuesta y amplitud para el modo <strong>Reconocimiento de Gestos</strong>.
+                        </span>
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={handleRebakeGestureMesh}
+                          className="text-[10px] text-amber-950 font-black bg-amber-400 hover:bg-amber-300 px-2.5 py-1 rounded-lg flex items-center gap-1 cursor-pointer transition shadow-md shadow-amber-400/20"
+                          title="Re-calcular los 52 morph targets con estos parámetros de gestos"
+                        >
+                          <Wand2 className="w-3 h-3" />
+                          Re-calcular Malla
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleResetGestureParams}
+                          className="text-[10px] text-amber-400 underline hover:text-amber-200 cursor-pointer"
+                        >
+                          Reset
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Grupo 1: Cejas y Frente (Multi-Punto) */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <span className="text-[11px] font-black text-amber-400 uppercase tracking-wider block">
+                        Cejas y Frente (Arco Multi-Punto)
+                      </span>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Elevación de Cejas</span>
+                            <span className="text-[9px] text-neutral-500">Amplitud de arco frontal (browInnerUp, outer)</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.5"
+                              step="0.05"
+                              value={debugParams.mouth?.browRaiseScale ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('mouth', 'browRaiseScale', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-amber-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-amber-300 font-bold">
+                              {(debugParams.mouth?.browRaiseScale ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Fruncido / Ceño</span>
+                            <span className="text-[9px] text-neutral-500">Tensión hacia glabella (browDown)</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.5"
+                              step="0.05"
+                              value={debugParams.mouth?.browFurrowScale ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('mouth', 'browFurrowScale', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-amber-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-amber-300 font-bold">
+                              {(debugParams.mouth?.browFurrowScale ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Altura Base de Cejas (Y)</span>
+                            <span className="text-[9px] text-neutral-500">Desplazamiento vertical del arco natural</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="-0.15"
+                              max="0.15"
+                              step="0.005"
+                              value={debugParams.mouth?.browOffsetY ?? 0.0}
+                              onChange={(e) => handleDebugParamChange('mouth', 'browOffsetY', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-amber-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-amber-300 font-bold">
+                              {(debugParams.mouth?.browOffsetY ?? 0.0).toFixed(3)}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Grupo 2: Ojos y Párpados */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <span className="text-[11px] font-black text-amber-400 uppercase tracking-wider block">
+                        Ojos y Párpados (Contorno Completo)
+                      </span>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Cierre de Párpados (Blink)</span>
+                            <span className="text-[9px] text-neutral-500">Amplitud de parpadeo superior/inferior</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.0"
+                              step="0.05"
+                              value={debugParams.mouth?.eyeBlinkScale ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('mouth', 'eyeBlinkScale', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-amber-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-amber-300 font-bold">
+                              {(debugParams.mouth?.eyeBlinkScale ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Sorpresa / Apertura (Wide)</span>
+                            <span className="text-[9px] text-neutral-500">Expansión palpebral al abrir los ojos</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.0"
+                              step="0.05"
+                              value={debugParams.mouth?.eyeWideScale ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('mouth', 'eyeWideScale', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-amber-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-amber-300 font-bold">
+                              {(debugParams.mouth?.eyeWideScale ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Entrecerrar / Squint</span>
+                            <span className="text-[9px] text-neutral-500">Elevación de párpado inferior y mejilla</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.0"
+                              step="0.05"
+                              value={debugParams.mouth?.eyeSquintScale ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('mouth', 'eyeSquintScale', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-amber-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-amber-300 font-bold">
+                              {(debugParams.mouth?.eyeSquintScale ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Grupo 3: Mejillas y Sonrisa */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <span className="text-[11px] font-black text-amber-400 uppercase tracking-wider block">
+                        Mejillas, Sonrisa y Gestos Cigomáticos
+                      </span>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Amplitud de Sonrisa</span>
+                            <span className="text-[9px] text-neutral-500">Elevación bilateral y extensión de comisuras</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.5"
+                              step="0.05"
+                              value={debugParams.mouth?.smileScale ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('mouth', 'smileScale', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-amber-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-amber-300 font-bold">
+                              {(debugParams.mouth?.smileScale ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Tristeza / Descenso (Frown)</span>
+                            <span className="text-[9px] text-neutral-500">Tracción hacia abajo de comisuras</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.5"
+                              step="0.05"
+                              value={debugParams.mouth?.frownScale ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('mouth', 'frownScale', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-amber-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-amber-300 font-bold">
+                              {(debugParams.mouth?.frownScale ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Inflado de Mejillas (Cheek Puff)</span>
+                            <span className="text-[9px] text-neutral-500">Volumen expansivo en Z y X</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.5"
+                              step="0.05"
+                              value={debugParams.mouth?.cheekPuffScale ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('mouth', 'cheekPuffScale', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-amber-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-amber-300 font-bold">
+                              {(debugParams.mouth?.cheekPuffScale ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Beso / Fruncido (Pucker)</span>
+                            <span className="text-[9px] text-neutral-500">Compresión radial y proyección frontal</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.5"
+                              step="0.05"
+                              value={debugParams.mouth?.puckerScale ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('mouth', 'puckerScale', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-amber-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-amber-300 font-bold">
+                              {(debugParams.mouth?.puckerScale ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Grupo 4: Mandíbula y Labios */}
+                    <div className="p-3 rounded-xl bg-black/40 border border-white/[0.06] space-y-2.5">
+                      <span className="text-[11px] font-black text-amber-400 uppercase tracking-wider block">
+                        Mandíbula y Cinemática Labial
+                      </span>
+
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Apertura Mandibular (Jaw Open)</span>
+                            <span className="text-[9px] text-neutral-500">Multiplicador de apertura de quijada</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.0"
+                              step="0.05"
+                              value={debugParams.mouth?.jawOpenScale ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('mouth', 'jawOpenScale', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-amber-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-amber-300 font-bold">
+                              {(debugParams.mouth?.jawOpenScale ?? 1.0).toFixed(2)}x
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center justify-between text-[11px]">
+                          <div>
+                            <span className="text-neutral-300 block font-medium">Separación Labio Inferior</span>
+                            <span className="text-[9px] text-neutral-500">Fuerza de división hacia abajo al hablar o abrir la boca</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="range"
+                              min="0.5"
+                              max="2.0"
+                              step="0.05"
+                              value={debugParams.mouth?.lipSeparationRatio ?? 1.0}
+                              onChange={(e) => handleDebugParamChange('mouth', 'lipSeparationRatio', parseFloat(e.target.value))}
+                              className="w-24 sm:w-32 accent-amber-400 cursor-pointer"
+                            />
+                            <span className="w-10 text-right font-mono text-[10px] text-amber-300 font-bold">
+                              {(debugParams.mouth?.lipSeparationRatio ?? 1.0).toFixed(2)}x
                             </span>
                           </div>
                         </div>

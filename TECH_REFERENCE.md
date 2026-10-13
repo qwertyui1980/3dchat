@@ -241,9 +241,18 @@ flowchart LR
 ### Características Técnicas del Estudio:
 * **Generación a partir de Foto Única:** Genera una malla de 478 vértices y ~900 triángulos texturizada por coordenadas UV calculadas sobre el rostro con normalización ortonormal frontal canónica.
 * **Sistema de Ojos 3D Biomiméticos con Seguimiento por Webcam (`EyeGenerator`):**
-  * Genera esferas oculares tridimensionales con esclera PBR cálida, estroma de iris procedural multiradial de 512x512 (anillo limbal, fibras estromales, collarette y pupila) y córnea con refracción física vítrea (IOR 1.376 y clearcoat).
+  * Genera esferas oculares tridimensionales con esclera PBR cálida, estroma de iris procedural multiradial de 512x512 y **pupila física de obsidiana 3D independiente** (`${name}_pupil`) con contraste absoluto y calibración interactiva de escala (`pupilSize`), eliminando cataratas o reflejos blanquecinos y garantizando visibilidad 100% nítida bajo cualquier ángulo o iluminación.
+  * Córnea vítrea sutil no oclusiva con `depthWrite: false` orientada frontalmente en +Z para preservar el relieve del iris y la pupila.
   * **Seguimiento Ocular en Tiempo Real:** Las esferas rotan dinámicamente en Yaw (±26°) y Pitch (±20°) acopladas a la mirada del usuario capturada por la webcam mediante los puntos de iris MediaPipe (468 y 473) y blendshapes ARKit (`eyeLook*`), tanto en el visor de administración como en todas las salas de videoconferencia a través de [`threeCharacterBuilder.ts`](file:///d:/Apps/xstreamx/src/components/avatars/threeCharacterBuilder.ts).
-  * Paleta de 8 presets de iris (Cyber Cyan, Azul Océano, Verde Esmeralda, Miel/Avellana, Marrón Café, Gris Platino, Violeta Neón, Rojo Carmesí) y selector RGB hex libre.
+  * Paleta de 8 presets de iris y selector libre RGB, complementada con slider de **Tamaño de Pupila** (18% a 55% del radio de iris).
+* **Calibración Anatómica de Proporciones Cabeza & Hombros (`BustGenerator` & `FaceToBlendshapeService`):**
+  * Proporción craneal natural normalizada (X: 1.08, Y: 1.18, Z: 1.15, pushBack: 0.28) que elimina el estiramiento vertical o deformaciones desproporcionadas.
+  * Proporción de hombros y torso anatómicamente vinculada a la escala de la cabeza (~1.95x de amplitud relativa con acople continuo bajo el mentón a `y = -0.60`).
+  * Sub-panel dedicado de **Hombros / Busto** en Ajustes para calibración de Escala General, Ancho de Hombros, Altura de Pecho y Desplazamiento Y/Z en tiempo real.
+* **Coordinación Anatómica en Ajustes sin Desfase ni Oclusión:**
+  * La máscara facial (`faceMesh`, `renderOrder: 10`, `polygonOffset: -2`), los ojos (`renderOrder: 9`), la cavidad oral (`renderOrder: 8`) y el cráneo base (`renderOrder: 1`, `polygonOffset: 2`) están anclados coordinadamente a un centro de referencia común, eliminando el z-fighting y evitando que los elementos desaparezcan detrás del cráneo al ajustar sliders.
+* **Plano de Foto de Referencia en el Visor 3D (`referencePhotoPlane`):**
+  * Proyección del plano fotográfico original 1:1 en el fondo del visor 3D con botón toggle en la barra de herramientas para comparar y alinear la malla tridimensional directamente sobre la fotografía de captura en tiempo real.
 * **Calibración Anatómica de Boca y Cavidad Oral (`FaceMeshGenerator`):**
   * Elimina el estiramiento plano de texturas al hablar mediante curvatura tridimensional en Z y recesión anatómica sobre dientes.
   * **Parámetros Paramétricos de Boca:** Hundimiento oral hacia el interior (`mouthDepthPush`), volumen y grosor de labios (`lipThickness`), alineación vertical de altura (`mouthOffsetY`), elevación de comisuras para evitar gesto caído (`smileOffset`) y amplitud máxima de mandíbula (`jawOpenScale`).
@@ -257,7 +266,7 @@ flowchart LR
     * **Mandíbula y Labios:** Separación del labio inferior gobernada por `lipSeparationRatio` y `jawOpenScale`.
   * **Nube de 478 Puntos de Tracking en 3D (`createTrackingPointsMesh`):** Overlay visualizador de 478 puntos tridimensionales codificados por zonas faciales (Cian = cejas, Verde = ojos, Ámbar = nariz, Rosa = labios, Púrpura = mandíbula, Pizarra = contorno) animado dinámicamente con las influencias de los blendshapes en tiempo real.
   * **Tira de Pruebas Rápidas de Gestos:** Acceso inmediato a expresiones preconfiguradas (Sonrisa, Sorpresa, Guiño, Ceño, Pucker y Neutral).
-* **Alineación Desacoplada en 5 Vías:** Panel de calibración con selectores dedicados para *Malla Facial*, *Boca y Labios*, *Ojos 3D*, *Base de Cabeza* y *Gestos 478*.
+* **Alineación Desacoplada en 6 Vías:** Panel de calibración con selectores dedicados para *Malla Facial*, *Boca y Labios*, *Ojos 3D*, *Base de Cabeza*, *Hombros y Busto* y *Gestos 478*.
 * **Generador de Busto Procedural:** Permite equipar hombros ejecutivos con traje formal, corbata personalizable en color, camisa de vestir o cuello redondo con cinemática reactiva a 60 FPS.
 * **Espejo Webcam en Vivo (Live Mirror):** Prueba interactiva en tiempo real donde la cara, ojos y cuello del usuario animan el avatar antes de guardarlo.
 * **Exportación Estándar GLB:** Genera archivos `.glb` con texturas empaquetadas, materiales físicos PBR, ojos 3D, cavidad oral y los 52 morph targets listos para su uso en Unity, Unreal Engine, Blender o la propia plataforma.

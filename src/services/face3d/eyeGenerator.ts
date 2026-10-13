@@ -47,6 +47,7 @@ export interface EyePairResult {
   updateGaze: (gazeX: number, gazeY: number) => void;
   updateOptions: (options: Partial<EyeCustomizationOptions>) => void;
   setIrisColor: (hexColor: string) => void;
+  setPupilSize: (pupilRatio: number) => void;
 }
 
 /**
@@ -123,12 +124,12 @@ export class EyeGenerator {
       ctx.lineWidth = radius * 0.08;
       ctx.stroke();
 
-      // 5. Central Pupil (deep obsidian black with soft antialiased edge)
-      const pupilRadius = radius * pupilRatio;
-      const pupilGrad = ctx.createRadialGradient(cx, cy, pupilRadius * 0.8, cx, cy, pupilRadius);
+      // 5. Central Pupil (deep obsidian black with crisp antialiased edge)
+      const pupilRadius = radius * Math.max(0.18, Math.min(0.55, pupilRatio));
+      const pupilGrad = ctx.createRadialGradient(cx, cy, pupilRadius * 0.82, cx, cy, pupilRadius);
       pupilGrad.addColorStop(0, '#000000');
-      pupilGrad.addColorStop(0.92, '#000000');
-      pupilGrad.addColorStop(1, 'rgba(0,0,0,0.85)');
+      pupilGrad.addColorStop(0.95, '#000000');
+      pupilGrad.addColorStop(1, 'rgba(5, 7, 10, 0.95)');
 
       ctx.globalAlpha = 1.0;
       ctx.beginPath();
@@ -136,10 +137,10 @@ export class EyeGenerator {
       ctx.fillStyle = pupilGrad;
       ctx.fill();
 
-      // 6. Corneal specular highlight accent
+      // Subtle limbal reflection only at the edge of the iris (away from pupil)
       ctx.beginPath();
-      ctx.arc(cx - pupilRadius * 0.35, cy - pupilRadius * 0.35, pupilRadius * 0.22, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.arc(cx - radius * 0.55, cy - radius * 0.55, radius * 0.08, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
       ctx.fill();
     }
 
@@ -154,14 +155,15 @@ export class EyeGenerator {
    * Builds an individual 3D eyeball group consisting of:
    * - Sclera sphere (white of the eye with realistic gloss)
    * - Iris concave disc oriented along +Z
-   * - Cornea clearcoat dome
+   * - Physical obsidian pupil disc for 100% guaranteed high-contrast pupil visibility
+   * - Ultra-clear non-occluding cornea dome
    */
   public static buildSingleEyeball(
     name: string,
     radius: number,
     irisColor: string,
     pupilRatio: number = 0.35
-  ): { eyeGroup: THREE.Group; irisMesh: THREE.Mesh; corneaMesh: THREE.Mesh } {
+  ): { eyeGroup: THREE.Group; irisMesh: THREE.Mesh; pupilMesh: THREE.Mesh; corneaMesh: THREE.Mesh; baseIrisRadius: number } {
     const eyeGroup = new THREE.Group();
     eyeGroup.name = name;
 
@@ -169,10 +171,10 @@ export class EyeGenerator {
     const scleraGeo = new THREE.SphereGeometry(radius, 32, 24);
     const scleraMat = new THREE.MeshStandardMaterial({
       color: 0xfcfbfa,
-      roughness: 0.22,
+      roughness: 0.18,
       metalness: 0.02,
       emissive: new THREE.Color(0x18181b),
-      emissiveIntensity: 0.1,
+      emissiveIntensity: 0.08,
     });
     const scleraMesh = new THREE.Mesh(scleraGeo, scleraMat);
     scleraMesh.name = `${name}_sclera`;
@@ -186,7 +188,7 @@ export class EyeGenerator {
     const irisTexture = this.createIrisTexture(irisColor, pupilRatio);
     const irisMat = new THREE.MeshStandardMaterial({
       map: irisTexture,
-      roughness: 0.3,
+      roughness: 0.25,
       metalness: 0.05,
       side: THREE.FrontSide,
     });
@@ -196,25 +198,37 @@ export class EyeGenerator {
     irisMesh.position.z = radius * 0.88;
     eyeGroup.add(irisMesh);
 
-    // 3. Clear Cornea Dome over the iris for realistic specular reflection
-    const corneaGeo = new THREE.SphereGeometry(irisRadius * 1.08, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.4);
-    const corneaMat = new THREE.MeshPhysicalMaterial({
+    // 3. Physical Central Pupil disc (pure obsidian black, guaranteed visible under any lighting)
+    const pRadius = irisRadius * Math.max(0.18, Math.min(0.55, pupilRatio));
+    const pupilGeo = new THREE.CircleGeometry(pRadius, 32);
+    const pupilMat = new THREE.MeshBasicMaterial({
+      color: 0x000000,
+      side: THREE.FrontSide,
+      depthTest: true,
+    });
+    const pupilMesh = new THREE.Mesh(pupilGeo, pupilMat);
+    pupilMesh.name = `${name}_pupil`;
+    pupilMesh.position.z = radius * 0.885; // Slightly in front of iris
+    pupilMesh.renderOrder = 2;
+    eyeGroup.add(pupilMesh);
+
+    // 4. Ultra-clear non-occluding Cornea Dome (depthWrite: false ensures pupil/iris are never hidden)
+    const corneaGeo = new THREE.SphereGeometry(irisRadius * 1.08, 24, 16, 0, Math.PI * 2, 0, Math.PI * 0.35);
+    const corneaMat = new THREE.MeshStandardMaterial({
       color: 0xffffff,
       roughness: 0.05,
-      metalness: 0.0,
-      transmission: 0.95,
+      metalness: 0.05,
       transparent: true,
-      opacity: 0.85,
-      clearcoat: 1.0,
-      clearcoatRoughness: 0.05,
-      ior: 1.376, // Natural human cornea index of refraction
+      opacity: 0.12,
+      depthWrite: false, // Never occlude pupil or iris
     });
     const corneaMesh = new THREE.Mesh(corneaGeo, corneaMat);
     corneaMesh.name = `${name}_cornea`;
-    corneaMesh.position.z = radius * 0.65;
+    corneaMesh.rotation.x = Math.PI / 2; // Point dome forward in +Z
+    corneaMesh.position.z = radius * 0.85;
     eyeGroup.add(corneaMesh);
 
-    return { eyeGroup, irisMesh, corneaMesh };
+    return { eyeGroup, irisMesh, pupilMesh, corneaMesh, baseIrisRadius: irisRadius };
   }
 
   /**
@@ -336,10 +350,26 @@ export class EyeGenerator {
       }
     };
 
+    const setPupilSize = (pupilRatio: number) => {
+      const clamped = Math.max(0.18, Math.min(0.55, pupilRatio));
+      opts.pupilSize = clamped;
+      // Rescale physical pupil mesh
+      const baseRatio = DEFAULT_EYE_OPTIONS.pupilSize;
+      const scaleMultiplier = clamped / baseRatio;
+      leftEyeData.pupilMesh.scale.set(scaleMultiplier, scaleMultiplier, 1.0);
+      rightEyeData.pupilMesh.scale.set(scaleMultiplier, scaleMultiplier, 1.0);
+
+      // Refresh iris texture with new pupil proportion
+      setIrisColor(opts.irisColor);
+    };
+
     const updateOptions = (newOpts: Partial<EyeCustomizationOptions>) => {
       Object.assign(opts, newOpts);
       if (newOpts.irisColor) {
         setIrisColor(newOpts.irisColor);
+      }
+      if (newOpts.pupilSize !== undefined) {
+        setPupilSize(newOpts.pupilSize);
       }
       applyCurrentOptions(opts);
     };
@@ -353,6 +383,7 @@ export class EyeGenerator {
       updateGaze,
       updateOptions,
       setIrisColor,
+      setPupilSize,
     };
   }
 }
