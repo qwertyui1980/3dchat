@@ -583,7 +583,8 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           setIsLoading(false);
 
           const clonedScene = SkeletonUtils.clone(gltf.scene) as THREE.Group;
-          clonedScene.position.set(0, 0, 0);
+          // Elevate robot so its head bone (y=2.97 in rest pose) aligns with camera center (y=3.8)
+          clonedScene.position.set(0, 0.75, 0);
           clonedScene.traverse((child) => {
             if ((child as THREE.Mesh).isMesh) {
               child.castShadow = true;
@@ -893,28 +894,26 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             }
           });
 
-          // Automatically detect and upgrade jawOpen morph target if loaded model has old/shallow mouth aperture
+          // \u2500\u2500 jawOpen auto-upgrade for legacy absolute-mode avatars in LocalStorage \u2500\u2500\u2500\u2500\u2500
+          // New avatars (morphTargetsRelative=true) store proper deltas, so this only fires
+          // for older models that have shallow aperture or incorrect upper-lip drop.
           const faceMeshObj = clonedScene.getObjectByName('faceMesh') as THREE.Mesh | undefined;
           if (faceMeshObj && faceMeshObj.isMesh && faceMeshObj.geometry) {
             const fGeo = faceMeshObj.geometry;
             const jawIdx = faceMeshObj.morphTargetDictionary ? faceMeshObj.morphTargetDictionary['jawOpen'] : undefined;
-            if (jawIdx !== undefined && fGeo.morphAttributes && fGeo.morphAttributes.position && fGeo.morphAttributes.position[jawIdx]) {
+            if (jawIdx !== undefined && fGeo.morphAttributes?.position?.[jawIdx]) {
               const morphAttr = fGeo.morphAttributes.position[jawIdx];
               const posAttr = fGeo.getAttribute('position');
               const isRelative = Boolean(fGeo.morphTargetsRelative);
 
               if (posAttr && posAttr.count >= 468) {
-                const y13_base = posAttr.getY(13);
-                const y13_morph = morphAttr.getY(13);
-                const y14_base = posAttr.getY(14);
-                const y14_morph = morphAttr.getY(14);
+                // In relative mode delta13 IS morphAttr.getY(13), in absolute mode it's morph-base.
+                const delta13 = isRelative ? morphAttr.getY(13) : (morphAttr.getY(13) - posAttr.getY(13));
+                const delta14 = isRelative ? morphAttr.getY(14) : (morphAttr.getY(14) - posAttr.getY(14));
 
-                // Compute actual jaw drop delta on lower lip vs upper lip
-                const delta13 = isRelative ? y13_morph : (y13_morph - y13_base);
-                const delta14 = isRelative ? y14_morph : (y14_morph - y14_base);
-
-                // Upgrade if upper lip drops downward or mouth separation is too shallow (< 0.22)
+                // Upgrade if upper lip falls (delta13 < -0.02) or lower lip barely drops (delta14 > -0.22)
                 if (delta13 < -0.02 || delta14 > -0.22) {
+                  console.info('[ThreeAvatarCanvas] jawOpen hot-upgrade triggered: delta13=', delta13.toFixed(3), 'delta14=', delta14.toFixed(3));
                   const pMouthCenter = {
                     x: (posAttr.getX(13) + posAttr.getX(14)) / 2,
                     y: (posAttr.getY(13) + posAttr.getY(14)) / 2,
@@ -967,7 +966,7 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                         mx -= Math.sign(bx - pMouthCenter.x) * 0.02 * w;
                       }
                     } else if (isUpper) {
-                      // Upper lip stays anchored to skull (0 drop: closing reference)
+                      // Upper lip stays anchored (0 drop)
                     } else if (isLower) {
                       const dx = Math.abs(bx - pMouthCenter.x);
                       const latW = Math.max(0, 1 - Math.min(1, (dx / mouthHalfWidth) ** 1.8));
@@ -975,13 +974,8 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                       const d14 = Math.hypot(bx - pLowerLip.x, by - pLowerLip.y, bz - pLowerLip.z);
                       const isLipMargin = LOWER_LIP_SET.has(i) || d14 < 0.28;
                       if (isLipMargin) {
-                        let lipDistW = 1.0;
-                        if (d14 < 0.28) {
-                          const t = 1 - (d14 / 0.28) ** 2;
-                          lipDistW = Math.max(0.60, t * t);
-                        } else {
-                          lipDistW = 0.60;
-                        }
+                        const t = d14 < 0.28 ? (1 - (d14 / 0.28) ** 2) : 0;
+                        const lipDistW = Math.max(0.60, t * t);
                         my -= 0.38 * latW * lipDistW;
                         mz -= 0.12 * latW * lipDistW;
                       }
@@ -994,13 +988,12 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                       }
                     }
 
-                    if (isRelative) {
-                      morphAttr.setXYZ(i, mx - bx, my - by, mz - bz);
-                    } else {
-                      morphAttr.setXYZ(i, mx, my, mz);
-                    }
+                    // Always write as relative delta — works for both old absolute and new relative GLBs
+                    morphAttr.setXYZ(i, mx - bx, my - by, mz - bz);
                   }
                   morphAttr.needsUpdate = true;
+                  // Mark geometry as relative after upgrade
+                  fGeo.morphTargetsRelative = true;
                 }
               }
             }
@@ -1015,6 +1008,41 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           const eyeRightNode = clonedScene.getObjectByName('eyeRight');
           const oralCavityNode = clonedScene.getObjectByName('oralCavity');
           const eyesGroupNode = clonedScene.getObjectByName('eyesGroup');
+
+          // ── Read embedded calibration metadata ────────────────────────────
+          const metaNode = clonedScene.getObjectByName('xstreamx_meta');
+          if (metaNode?.userData?.version) {
+            console.info(
+              '[ThreeAvatarCanvas] xstreamx_meta v' + metaNode.userData.version +
+              ' loaded. mouthParams:', metaNode.userData.mouthParams ?? '(none)',
+              '| gestureParams:', metaNode.userData.gestureParams ?? '(none)'
+            );
+            // Store on scene userData for future studio re-edit access
+            clonedScene.userData.calibrationMeta = {
+              mouthParams: metaNode.userData.mouthParams ?? null,
+              gestureParams: metaNode.userData.gestureParams ?? null,
+              landmarksSampled: metaNode.userData.landmarksSampled ?? null,
+            };
+          }
+
+          // ── Lerp speed lookup tables (Fase 4) ────────────────────────────
+          // Fast: immediate physiological responses (blinks, jaw)
+          const FAST_MORPH_KEYS = new Set([
+            'jawopen', 'eyeblinkleft', 'eyeblinkright', 'mouthclose',
+          ]);
+          // Medium: visible expressions (brows, smiles, cheeks, nose)
+          const MEDIUM_MORPH_KEYS = new Set([
+            'browdownleft', 'browdownright', 'browinnerup',
+            'browouterupleft', 'browouterupright',
+            'mouthsmileleft', 'mouthsmileright',
+            'mouthfrownleft', 'mouthfrownright',
+            'mouthpucker', 'mouthfunnel',
+            'cheekpuff', 'cheeksquintleft', 'cheeksquintright',
+            'nosesneerleft', 'nosesneerright',
+            'eyewideleft', 'eyewideright',
+            'eyesquintleft', 'eyesquintright',
+            'mouthlowerdownleft', 'mouthlowerdownright',
+          ]);
 
           const controller: Character3DController = {
             group: rootGroup,
@@ -1127,6 +1155,84 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                 }
               }
 
+              // ── Comprehensive FaceFeatures fallback (Fase 4) ─────────────────────
+              // When blendshapes are absent (lipsync/parafernalia mode or remote peer
+              // running an older client), derive all 52 ARKit values from the simpler
+              // FaceFeatures primitives so the face is never expressionless.
+              const fbSmileL  = Math.max(0, features.mouthSmileLeft  ?? Math.max(0, features.mouthSmile || 0));
+              const fbSmileR  = Math.max(0, features.mouthSmileRight ?? Math.max(0, features.mouthSmile || 0));
+              const fbFrownL  = Math.max(0, -(features.mouthSmileLeft  ?? Math.min(0, features.mouthSmile || 0)));
+              const fbFrownR  = Math.max(0, -(features.mouthSmileRight ?? Math.min(0, features.mouthSmile || 0)));
+              const fbPucker  = features.mouthPucker ?? 0;
+              const fbMouthX  = features.mouthX ?? 0;
+              const fbBrowR   = features.browRaise ?? 0;
+              const fbBrowF   = features.browFurrow ?? 0;
+
+              // Master fallback map — used when bShapes[key] is not found
+              const featureFallback: Record<string, number> = {
+                // Jaw
+                jawopen:    finalJaw,
+                // Mouth
+                mouthsmileleft:      fbSmileL,
+                mouthsmileright:     fbSmileR,
+                mouthfrownleft:      fbFrownL,
+                mouthfrownright:     fbFrownR,
+                mouthpucker:         fbPucker,
+                mouthfunnel:         fbPucker * 0.6,
+                mouthleft:           Math.max(0, -fbMouthX),
+                mouthright:          Math.max(0,  fbMouthX),
+                mouthlowerdownleft:  finalJaw * 0.45,
+                mouthlowerdownright: finalJaw * 0.45,
+                mouthshrugower:      0,
+                mouthshrugupper:     0,
+                mouthclose:          0,
+                mouthdimpleleft:     fbSmileL * 0.4,
+                mouthdimpleright:    fbSmileR * 0.4,
+                mouthrollupper:      0,
+                mouthrolllower:      0,
+                mouthpressleft:      0,
+                mouthpressright:     0,
+                mouthstretchleft:    0,
+                mouthstretchright:   0,
+                mouthupperupright:   0,
+                mouthupperupleft:    0,
+                // Eyebrows
+                browinnerup:    fbBrowR,
+                browouterupleft:  fbBrowR * 0.8,
+                browouterupright: fbBrowR * 0.8,
+                browdownleft:   fbBrowF,
+                browdownright:  fbBrowF,
+                // Eyes
+                eyeblinkleft:  features.eyeBlinkLeft  ?? 0,
+                eyeblinkright: features.eyeBlinkRight ?? 0,
+                eyewideleft:   features.eyeWideLeft   ?? 0,
+                eyewideright:  features.eyeWideRight  ?? 0,
+                eyesquintleft:  features.eyeWideLeft  ? 0 : (features.eyeBlinkLeft ?? 0) * 0.3,
+                eyesquintright: features.eyeWideRight ? 0 : (features.eyeBlinkRight ?? 0) * 0.3,
+                // Eye look — no mesh deformation; handled by 3D eyeballs
+                eyelookupleft:   0,
+                eyelookupright:  0,
+                eyelookdownleft: 0,
+                eyelookdownright:0,
+                eyelookinleft:   0,
+                eyelookinright:  0,
+                eyelookoutleft:  0,
+                eyelookoutright: 0,
+                // Cheeks
+                cheekpuff:       0,
+                cheeksquintleft: fbSmileL * 0.5,
+                cheeksquintright:fbSmileR * 0.5,
+                // Nose
+                nosesneerleft:  fbBrowF * 0.3,
+                nosesneerright: fbBrowF * 0.3,
+                // Jaw lateral
+                jawforward: 0,
+                jawleft:    Math.max(0, -fbMouthX) * 0.5,
+                jawright:   Math.max(0,  fbMouthX) * 0.5,
+                // Tongue
+                tongueout: 0,
+              };
+
               for (let m = 0; m < morphMeshes.length; m++) {
                 const { dict, infl, keys } = morphMeshes[m];
 
@@ -1148,6 +1254,11 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                     } else if (bsLookup[cleanKey] !== undefined) {
                       targetVal = bsLookup[cleanKey];
                     }
+                  }
+
+                  // 1b. Feature fallback when bShapes not available
+                  if (targetVal === undefined) {
+                    targetVal = featureFallback[cleanKey] ?? featureFallback[lk];
                   }
 
                   // 2. Comprehensive Mouth & Jaw Opening Synchronization
@@ -1251,10 +1362,18 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                     }
                   }
 
-                  // 10. Smooth interpolation with fast responsive speech attack
+                  // 10. Smooth interpolation with differentiated speed groups (Fase 4)
+                  // Fast: jaw/blink need instant response for lip-sync and natural blink
+                  // Medium: expressions have moderate attack/decay
+                  // Slow: subtle morphs fade gently
                   if (targetVal !== undefined) {
-                    const speed = isJawOpen ? (targetVal > (infl[idx] || 0) ? 0.90 : 0.75) : 0.45;
-                    infl[idx] = THREE.MathUtils.lerp(infl[idx] || 0, Math.min(1, Math.max(0, targetVal)), speed);
+                    const curVal = infl[idx] || 0;
+                    const speed = FAST_MORPH_KEYS.has(cleanKey)
+                      ? (targetVal > curVal ? 0.92 : 0.82)
+                      : MEDIUM_MORPH_KEYS.has(cleanKey)
+                      ? 0.62
+                      : 0.42;
+                    infl[idx] = THREE.MathUtils.lerp(curVal, Math.min(1, Math.max(0, targetVal)), speed);
                   }
                 }
               }

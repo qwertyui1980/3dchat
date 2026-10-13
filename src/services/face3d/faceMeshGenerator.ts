@@ -10,16 +10,46 @@ export interface Point3D {
   z: number;
 }
 
-export interface MouthCustomizationParams {
+export interface GestureCalibrationParams {
+  browRaiseScale: number;     // Multiplies eyebrow raise (browInnerUp, browOuterUp) (0.5 to 2.5, default 1.0)
+  browFurrowScale: number;    // Multiplies eyebrow furrow / down (0.5 to 2.5, default 1.0)
+  browOffsetY: number;        // Eyebrow vertical anchor offset (-0.15 to 0.15, default 0.0)
+  eyeBlinkScale: number;      // Multiplies eyelid blink closure (0.5 to 2.0, default 1.0)
+  eyeWideScale: number;       // Multiplies eyelid wide opening (0.5 to 2.0, default 1.0)
+  eyeSquintScale: number;     // Multiplies squint cheek/lid squeeze (0.5 to 2.0, default 1.0)
+  smileScale: number;         // Multiplies smile elevation & lateral pull (0.5 to 2.5, default 1.0)
+  frownScale: number;         // Multiplies frown depressor pull (0.5 to 2.5, default 1.0)
+  cheekPuffScale: number;     // Multiplies cheek inflation volume (0.5 to 2.5, default 1.0)
+  puckerScale: number;        // Multiplies mouth pucker forward projection (0.5 to 2.5, default 1.0)
+  jawOpenScale: number;       // Multiplies jawOpen morph target (0.5 to 2.0, default 1.0)
+  lipSeparationRatio: number; // Ratio of lower lip downward separation when opening jaw (0.5 to 2.0, default 1.0)
+}
+
+export const DEFAULT_GESTURE_PARAMS: GestureCalibrationParams = {
+  browRaiseScale: 1.0,
+  browFurrowScale: 1.0,
+  browOffsetY: 0.0,
+  eyeBlinkScale: 1.0,
+  eyeWideScale: 1.0,
+  eyeSquintScale: 1.0,
+  smileScale: 1.0,
+  frownScale: 1.0,
+  cheekPuffScale: 1.0,
+  puckerScale: 1.0,
+  jawOpenScale: 1.0,
+  lipSeparationRatio: 1.0,
+};
+
+export interface MouthCustomizationParams extends GestureCalibrationParams {
   mouthDepthPush: number;     // pushes inner lips into cavity in -Z (0 to 0.35, default 0.12)
   lipThickness: number;       // scales lip volume in Z and Y (0.5 to 2.0, default 1.0)
   mouthOffsetY: number;       // vertical shift of mouth (-0.2 to 0.2, default 0.0)
   smileOffset: number;        // corner elevation offset (-0.15 to 0.2, default 0.02)
-  jawOpenScale: number;       // multiplies jawOpen morph target (0.5 to 1.8, default 1.0)
   oralCavityEnabled: boolean; // whether to attach an oral cavity backing mesh (default true)
 }
 
 export const DEFAULT_MOUTH_PARAMS: MouthCustomizationParams = {
+  ...DEFAULT_GESTURE_PARAMS,
   mouthDepthPush: 0.12,
   lipThickness: 1.0,
   mouthOffsetY: 0.0,
@@ -27,6 +57,24 @@ export const DEFAULT_MOUTH_PARAMS: MouthCustomizationParams = {
   jawOpenScale: 1.0,
   oralCavityEnabled: true,
 };
+
+// --- Multi-Point Landmark Tracking Groups (MediaPipe 478) ---
+export const EYEBROW_LEFT_INDICES = [70, 63, 105, 66, 107, 55, 65, 52, 53, 46];
+export const EYEBROW_RIGHT_INDICES = [300, 293, 334, 296, 336, 285, 295, 282, 283, 276];
+export const GLABELLA_FOREHEAD_INDICES = [10, 151, 9, 8, 168, 6, 197, 195, 5, 4];
+
+export const EYE_LEFT_UPPER_LID = [160, 159, 158, 157, 173];
+export const EYE_LEFT_LOWER_LID = [144, 145, 153, 154, 155];
+export const EYE_LEFT_INDICES = [33, 7, 163, 144, 145, 153, 154, 155, 133, 173, 157, 158, 159, 160, 161, 246];
+
+export const EYE_RIGHT_UPPER_LID = [385, 386, 387, 388, 398];
+export const EYE_RIGHT_LOWER_LID = [373, 374, 380, 381, 382];
+export const EYE_RIGHT_INDICES = [263, 249, 390, 373, 374, 380, 381, 382, 362, 398, 384, 385, 386, 387, 388, 466];
+
+export const CHEEK_LEFT_INDICES = [205, 50, 187, 123, 116, 147, 213, 192];
+export const CHEEK_RIGHT_INDICES = [425, 280, 411, 352, 345, 376, 433, 416];
+export const NOSE_INDICES = [1, 2, 98, 327, 198, 420, 195, 5, 4, 19, 94, 97, 326, 242, 462];
+export const JAW_MANDIBLE_INDICES = [172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 379, 365, 397, 288, 361, 323, 454, 58, 132];
 
 export const INNER_LIP_INDICES = [
   78, 191, 80, 81, 82, 13, 312, 311, 310, 415, 308, 324, 318, 402, 317, 14, 87, 178, 88, 95,
@@ -56,6 +104,11 @@ export const MOUTH_CORNER_INDICES = [61, 78, 291, 308];
 export const UPPER_LIP_SET = new Set(UPPER_LIP_INDICES);
 export const LOWER_LIP_SET = new Set(LOWER_LIP_INDICES);
 export const MOUTH_CORNER_SET = new Set(MOUTH_CORNER_INDICES);
+export const EYEBROW_SET = new Set([...EYEBROW_LEFT_INDICES, ...EYEBROW_RIGHT_INDICES, ...GLABELLA_FOREHEAD_INDICES]);
+export const EYE_SET = new Set([...EYE_LEFT_INDICES, ...EYE_RIGHT_INDICES]);
+export const NOSE_SET = new Set(NOSE_INDICES);
+export const LIP_SET = new Set([...UPPER_LIP_INDICES, ...LOWER_LIP_INDICES, ...INNER_LIP_INDICES, ...OUTER_LIP_INDICES]);
+export const JAW_SET = new Set(JAW_MANDIBLE_INDICES);
 
 /**
  * Creates a dark anatomical oral cavity backing mesh with dental arches
@@ -127,6 +180,58 @@ function smoothRadialFalloff(dist: number, radius: number): number {
   if (dist >= radius) return 0;
   const t = 1 - (dist / radius) * (dist / radius);
   return t * t;
+}
+
+/**
+ * Creates a high-precision 478-point landmark tracking cloud overlay.
+ * Points are color-coded by facial functional zone to visually diagnose
+ * MediaPipe landmark alignment and blendshape deformation.
+ */
+export function createTrackingPointsMesh(basePoints: Point3D[]): THREE.Points {
+  const geometry = new THREE.BufferGeometry();
+  const positions: number[] = [];
+  const colors: number[] = [];
+
+  basePoints.forEach((p, idx) => {
+    positions.push(p.x, p.y, p.z + 0.008); // Slight forward bias to prevent z-fighting with the face mesh
+
+    if (EYEBROW_SET.has(idx)) {
+      // Eyebrows & Glabella: Cyan
+      colors.push(0.06, 0.71, 0.83);
+    } else if (EYE_SET.has(idx)) {
+      // Eyes & Lids: Emerald Green
+      colors.push(0.06, 0.73, 0.51);
+    } else if (NOSE_SET.has(idx)) {
+      // Nose: Amber
+      colors.push(0.96, 0.62, 0.04);
+    } else if (LIP_SET.has(idx)) {
+      // Lips: Rose
+      colors.push(0.96, 0.25, 0.37);
+    } else if (JAW_SET.has(idx)) {
+      // Mandible & Chin: Purple
+      colors.push(0.66, 0.33, 0.97);
+    } else {
+      // Perimeter / Cheeks: Sky / Slate
+      colors.push(0.58, 0.64, 0.72);
+    }
+  });
+
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+  const material = new THREE.PointsMaterial({
+    size: 0.035,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.95,
+    depthTest: true,
+    sizeAttenuation: true,
+  });
+
+  const pointsMesh = new THREE.Points(geometry, material);
+  pointsMesh.name = 'trackingPointsMesh';
+  pointsMesh.renderOrder = 999;
+  return pointsMesh;
 }
 
 export class FaceMeshGenerator {
@@ -351,6 +456,11 @@ export class FaceMeshGenerator {
         }
       }
 
+      // E. Eyebrow Vertical Offset Tuning
+      if (this.mouthParams.browOffsetY !== 0 && EYEBROW_SET.has(index)) {
+        y += this.mouthParams.browOffsetY;
+      }
+
       vertices.push(x, y, z);
       basePoints.push({ x, y, z });
 
@@ -501,7 +611,9 @@ export class FaceMeshGenerator {
       morphTargetNames.push(blendshapeName);
     });
 
-    this.geometry.morphTargetsRelative = false;
+    // glTF 2.0 standard: morph targets MUST be stored as relative deltas (dx, dy, dz)
+    // ThreeAvatarCanvas hot-upgrade also respects morphTargetsRelative=true
+    this.geometry.morphTargetsRelative = true;
     this.geometry.userData.targetNames = morphTargetNames;
   }
 
@@ -527,6 +639,29 @@ export class FaceMeshGenerator {
       return Math.hypot(p.x - pt.x, p.y - pt.y, p.z - pt.z);
     };
 
+    // Helper: minimum 3D distance between vertex and an array of landmark indices
+    const distToAny = (index: number, indices: number[]): number => {
+      let minDist = 999;
+      for (let i = 0; i < indices.length; i++) {
+        const d = distTo(index, indices[i]);
+        if (d < minDist) minDist = d;
+      }
+      return minDist;
+    };
+
+    // Gesture & Mouth calibration multipliers
+    const jawScale = this.mouthParams.jawOpenScale ?? 1.0;
+    const lipSepRatio = this.mouthParams.lipSeparationRatio ?? 1.0;
+    const browRaise = this.mouthParams.browRaiseScale ?? 1.0;
+    const browFurrow = this.mouthParams.browFurrowScale ?? 1.0;
+    const blinkScale = this.mouthParams.eyeBlinkScale ?? 1.0;
+    const wideScale = this.mouthParams.eyeWideScale ?? 1.0;
+    const squintScale = this.mouthParams.eyeSquintScale ?? 1.0;
+    const smileScale = this.mouthParams.smileScale ?? 1.0;
+    const frownScale = this.mouthParams.frownScale ?? 1.0;
+    const cheekPuffScale = this.mouthParams.cheekPuffScale ?? 1.0;
+    const puckerScale = this.mouthParams.puckerScale ?? 1.0;
+
     // Key Anchor Points (Canonical Normalized Space):
     const pChin = basePoints[152] || { x: 0, y: -0.9, z: 0 };
     const pUpperLip = basePoints[13] || { x: 0, y: -0.3, z: 0 };
@@ -549,7 +684,6 @@ export class FaceMeshGenerator {
         // 1. JAW BLENDSHAPES
         // ==========================================
         case 'jawOpen': {
-          const jawScale = this.mouthParams.jawOpenScale ?? 1.0;
           const isCorner = MOUTH_CORNER_SET.has(index);
           const isUpper = !isCorner && (UPPER_LIP_SET.has(index) || (base.y >= pMouthCenter.y && !LOWER_LIP_SET.has(index)));
           const isLower = !isCorner && (LOWER_LIP_SET.has(index) || base.y < pMouthCenter.y);
@@ -577,7 +711,7 @@ export class FaceMeshGenerator {
             if (isLipMargin) {
               const lipDistW = Math.max(0.60, smoothRadialFalloff(d14, 0.28));
               // Full lower lip downward drop (-Y) and slight oral cavity recession (-Z)
-              y -= 0.38 * jawScale * latW * lipDistW;
+              y -= 0.38 * jawScale * lipSepRatio * latW * lipDistW;
               z -= 0.12 * jawScale * latW * lipDistW;
             }
 
@@ -625,47 +759,52 @@ export class FaceMeshGenerator {
         // 2. MOUTH & SMILE BLENDSHAPES
         // ==========================================
         case 'mouthSmileLeft': {
-          const wCorner = smoothRadialFalloff(distTo(index, 61), 0.38);
-          y += 0.22 * wCorner;
-          x -= 0.14 * wCorner;
-          z += 0.06 * wCorner;
+          const dCorner = distToAny(index, [61, 78, 185, 40]);
+          const wCorner = smoothRadialFalloff(dCorner, 0.38);
+          y += 0.22 * smileScale * wCorner;
+          x -= 0.14 * smileScale * wCorner;
+          z += 0.06 * smileScale * wCorner;
 
-          // Upper lip follow-through
-          const wUpper = smoothRadialFalloff(distTo(index, 37), 0.25);
-          y += 0.08 * wUpper;
+          // Upper lip follow-through & zygomatic cheek pull
+          const wCheek = smoothRadialFalloff(distToAny(index, CHEEK_LEFT_INDICES), 0.32);
+          y += 0.08 * smileScale * wCheek;
+          z += 0.04 * smileScale * wCheek;
           break;
         }
 
         case 'mouthSmileRight': {
-          const wCorner = smoothRadialFalloff(distTo(index, 291), 0.38);
-          y += 0.22 * wCorner;
-          x += 0.14 * wCorner;
-          z += 0.06 * wCorner;
+          const dCorner = distToAny(index, [291, 308, 409, 270]);
+          const wCorner = smoothRadialFalloff(dCorner, 0.38);
+          y += 0.22 * smileScale * wCorner;
+          x += 0.14 * smileScale * wCorner;
+          z += 0.06 * smileScale * wCorner;
 
-          const wUpper = smoothRadialFalloff(distTo(index, 267), 0.25);
-          y += 0.08 * wUpper;
+          const wCheek = smoothRadialFalloff(distToAny(index, CHEEK_RIGHT_INDICES), 0.32);
+          y += 0.08 * smileScale * wCheek;
+          z += 0.04 * smileScale * wCheek;
           break;
         }
 
         case 'mouthFrownLeft': {
-          const w = smoothRadialFalloff(distTo(index, 61), 0.32);
-          y -= 0.18 * w;
-          x += 0.04 * w;
+          const w = smoothRadialFalloff(distToAny(index, [61, 78, 146]), 0.34);
+          y -= 0.18 * frownScale * w;
+          x += 0.04 * frownScale * w;
           break;
         }
 
         case 'mouthFrownRight': {
-          const w = smoothRadialFalloff(distTo(index, 291), 0.32);
-          y -= 0.18 * w;
-          x -= 0.04 * w;
+          const w = smoothRadialFalloff(distToAny(index, [291, 308, 375]), 0.34);
+          y -= 0.18 * frownScale * w;
+          x -= 0.04 * frownScale * w;
           break;
         }
 
         case 'mouthPucker': {
-          const w = smoothRadialFalloff(distToPoint(index, pMouthCenter), 0.42);
+          const dLip = distToAny(index, [...INNER_LIP_INDICES, ...OUTER_LIP_INDICES]);
+          const w = smoothRadialFalloff(Math.min(distToPoint(index, pMouthCenter), dLip + 0.04), 0.42);
           const dx = base.x - pMouthCenter.x;
-          x -= dx * 0.45 * w;
-          z += 0.18 * w;
+          x -= dx * 0.45 * puckerScale * w;
+          z += 0.18 * puckerScale * w;
           break;
         }
 
@@ -679,15 +818,15 @@ export class FaceMeshGenerator {
 
         case 'mouthDimpleLeft': {
           const w = smoothRadialFalloff(distTo(index, 61), 0.28);
-          x -= 0.08 * w;
-          z -= 0.12 * w;
+          x -= 0.08 * smileScale * w;
+          z -= 0.12 * smileScale * w;
           break;
         }
 
         case 'mouthDimpleRight': {
           const w = smoothRadialFalloff(distTo(index, 291), 0.28);
-          x += 0.08 * w;
-          z -= 0.12 * w;
+          x += 0.08 * smileScale * w;
+          z -= 0.12 * smileScale * w;
           break;
         }
 
@@ -812,131 +951,110 @@ export class FaceMeshGenerator {
         // 3. EYES BLENDSHAPES
         // ==========================================
         case 'eyeBlinkLeft': {
-          // Upper lid drops down smoothly to meet lower lid
-          const wUpper = smoothRadialFalloff(distTo(index, 159), 0.16);
+          // Multi-point upper lid drops down smoothly to meet lower lid
+          const wUpper = smoothRadialFalloff(distToAny(index, EYE_LEFT_UPPER_LID), 0.18);
           const pLower = basePoints[145] || basePoints[159];
           const dy = pLower.y - (basePoints[159]?.y || pLower.y);
-          y += dy * 0.95 * wUpper;
+          y += dy * 0.95 * blinkScale * wUpper;
 
           // Lower lid rises subtly
-          const wLower = smoothRadialFalloff(distTo(index, 145), 0.12);
-          y += 0.02 * wLower;
+          const wLower = smoothRadialFalloff(distToAny(index, EYE_LEFT_LOWER_LID), 0.13);
+          y += 0.02 * blinkScale * wLower;
           break;
         }
 
         case 'eyeBlinkRight': {
-          const wUpper = smoothRadialFalloff(distTo(index, 386), 0.16);
+          const wUpper = smoothRadialFalloff(distToAny(index, EYE_RIGHT_UPPER_LID), 0.18);
           const pLower = basePoints[374] || basePoints[386];
           const dy = pLower.y - (basePoints[386]?.y || pLower.y);
-          y += dy * 0.95 * wUpper;
+          y += dy * 0.95 * blinkScale * wUpper;
 
-          const wLower = smoothRadialFalloff(distTo(index, 374), 0.12);
-          y += 0.02 * wLower;
+          const wLower = smoothRadialFalloff(distToAny(index, EYE_RIGHT_LOWER_LID), 0.13);
+          y += 0.02 * blinkScale * wLower;
           break;
         }
 
         case 'eyeWideLeft': {
-          const wUpper = smoothRadialFalloff(distTo(index, 159), 0.20);
-          const wLower = smoothRadialFalloff(distTo(index, 145), 0.18);
-          y += 0.10 * wUpper;
-          y -= 0.05 * wLower;
+          const wUpper = smoothRadialFalloff(distToAny(index, EYE_LEFT_UPPER_LID), 0.20);
+          const wLower = smoothRadialFalloff(distToAny(index, EYE_LEFT_LOWER_LID), 0.18);
+          y += 0.10 * wideScale * wUpper;
+          y -= 0.05 * wideScale * wLower;
           break;
         }
 
         case 'eyeWideRight': {
-          const wUpper = smoothRadialFalloff(distTo(index, 386), 0.20);
-          const wLower = smoothRadialFalloff(distTo(index, 374), 0.18);
-          y += 0.10 * wUpper;
-          y -= 0.05 * wLower;
+          const wUpper = smoothRadialFalloff(distToAny(index, EYE_RIGHT_UPPER_LID), 0.20);
+          const wLower = smoothRadialFalloff(distToAny(index, EYE_RIGHT_LOWER_LID), 0.18);
+          y += 0.10 * wideScale * wUpper;
+          y -= 0.05 * wideScale * wLower;
           break;
         }
 
         case 'eyeSquintLeft': {
-          const w = smoothRadialFalloff(distTo(index, 145), 0.20);
-          const wCheek = smoothRadialFalloff(distTo(index, 116), 0.25);
-          y += 0.08 * w + 0.04 * wCheek;
+          const w = smoothRadialFalloff(distToAny(index, EYE_LEFT_LOWER_LID), 0.20);
+          const wCheek = smoothRadialFalloff(distToAny(index, CHEEK_LEFT_INDICES), 0.25);
+          y += (0.08 * w + 0.04 * wCheek) * squintScale;
           break;
         }
 
         case 'eyeSquintRight': {
-          const w = smoothRadialFalloff(distTo(index, 374), 0.20);
-          const wCheek = smoothRadialFalloff(distTo(index, 345), 0.25);
-          y += 0.08 * w + 0.04 * wCheek;
+          const w = smoothRadialFalloff(distToAny(index, EYE_RIGHT_LOWER_LID), 0.20);
+          const wCheek = smoothRadialFalloff(distToAny(index, CHEEK_RIGHT_INDICES), 0.25);
+          y += (0.08 * w + 0.04 * wCheek) * squintScale;
           break;
         }
 
+        // eyeLook* targets: ZERO delta on the face mesh.
+        // Gaze animation is handled exclusively by the 3D eyeball spheres (eyeLeft/eyeRight nodes)
+        // via gazeX / gazeY in ThreeAvatarCanvas. Applying mesh deformation here would cause
+        // double-animation artifacts where eyelid verts move while the spheres also rotate.
         case 'eyeLookUpLeft':
-        case 'eyeLookUpRight': {
-          const anchor = blendshapeName === 'eyeLookUpLeft' ? 159 : 386;
-          const w = smoothRadialFalloff(distTo(index, anchor), 0.18);
-          y += 0.06 * w;
-          break;
-        }
-
+        case 'eyeLookUpRight':
         case 'eyeLookDownLeft':
-        case 'eyeLookDownRight': {
-          const anchor = blendshapeName === 'eyeLookDownLeft' ? 145 : 374;
-          const w = smoothRadialFalloff(distTo(index, anchor), 0.18);
-          y -= 0.06 * w;
+        case 'eyeLookDownRight':
+        case 'eyeLookInLeft':
+        case 'eyeLookInRight':
+        case 'eyeLookOutLeft':
+        case 'eyeLookOutRight':
+          // Intentionally no-op: x, y, z remain == base → delta will be 0,0,0
           break;
-        }
-
-        case 'eyeLookInLeft': {
-          const w = smoothRadialFalloff(distTo(index, 133), 0.18);
-          x += 0.06 * w;
-          break;
-        }
-
-        case 'eyeLookOutLeft': {
-          const w = smoothRadialFalloff(distTo(index, 33), 0.18);
-          x -= 0.06 * w;
-          break;
-        }
-
-        case 'eyeLookInRight': {
-          const w = smoothRadialFalloff(distTo(index, 362), 0.18);
-          x -= 0.06 * w;
-          break;
-        }
-
-        case 'eyeLookOutRight': {
-          const w = smoothRadialFalloff(distTo(index, 263), 0.18);
-          x += 0.06 * w;
-          break;
-        }
 
         // ==========================================
         // 4. EYEBROWS BLENDSHAPES
         // ==========================================
         case 'browInnerUp': {
-          const w = smoothRadialFalloff(distTo(index, 168), 0.35);
-          y += 0.20 * w;
+          // Multi-point inner brows arch
+          const w = smoothRadialFalloff(distToAny(index, [168, 107, 66, 336, 296, 9, 8]), 0.36);
+          y += 0.20 * browRaise * w;
           break;
         }
 
         case 'browDownLeft': {
-          const w = smoothRadialFalloff(distTo(index, 105), 0.30);
-          y -= 0.18 * w;
-          x += 0.05 * w;
+          // Multi-point left brow furrow
+          const w = smoothRadialFalloff(distToAny(index, [107, 66, 105, 63, 70]), 0.32);
+          y -= 0.18 * browFurrow * w;
+          x += 0.05 * browFurrow * w;
           break;
         }
 
         case 'browDownRight': {
-          const w = smoothRadialFalloff(distTo(index, 334), 0.30);
-          y -= 0.18 * w;
-          x -= 0.05 * w;
+          // Multi-point right brow furrow
+          const w = smoothRadialFalloff(distToAny(index, [336, 296, 334, 293, 300]), 0.32);
+          y -= 0.18 * browFurrow * w;
+          x -= 0.05 * browFurrow * w;
           break;
         }
 
         case 'browOuterUpLeft': {
-          const w = smoothRadialFalloff(distTo(index, 70), 0.28);
-          y += 0.18 * w;
+          // Multi-point outer brow elevation
+          const w = smoothRadialFalloff(distToAny(index, [70, 63, 46, 53, 52]), 0.30);
+          y += 0.18 * browRaise * w;
           break;
         }
 
         case 'browOuterUpRight': {
-          const w = smoothRadialFalloff(distTo(index, 300), 0.28);
-          y += 0.18 * w;
+          const w = smoothRadialFalloff(distToAny(index, [300, 293, 276, 283, 282]), 0.30);
+          y += 0.18 * browRaise * w;
           break;
         }
 
@@ -944,23 +1062,23 @@ export class FaceMeshGenerator {
         // 5. CHEEKS & NOSE BLENDSHAPES
         // ==========================================
         case 'cheekPuff': {
-          const wLeft = smoothRadialFalloff(distTo(index, 205), 0.38);
-          const wRight = smoothRadialFalloff(distTo(index, 425), 0.38);
-          z += 0.18 * (wLeft + wRight);
-          x -= 0.14 * wLeft;
-          x += 0.14 * wRight;
+          const wLeft = smoothRadialFalloff(distToAny(index, CHEEK_LEFT_INDICES), 0.38);
+          const wRight = smoothRadialFalloff(distToAny(index, CHEEK_RIGHT_INDICES), 0.38);
+          z += 0.18 * cheekPuffScale * (wLeft + wRight);
+          x -= 0.14 * cheekPuffScale * wLeft;
+          x += 0.14 * cheekPuffScale * wRight;
           break;
         }
 
         case 'cheekSquintLeft': {
-          const w = smoothRadialFalloff(distTo(index, 205), 0.32);
-          y += 0.14 * w;
+          const w = smoothRadialFalloff(distToAny(index, CHEEK_LEFT_INDICES), 0.32);
+          y += 0.14 * squintScale * w;
           break;
         }
 
         case 'cheekSquintRight': {
-          const w = smoothRadialFalloff(distTo(index, 425), 0.32);
-          y += 0.14 * w;
+          const w = smoothRadialFalloff(distToAny(index, CHEEK_RIGHT_INDICES), 0.32);
+          y += 0.14 * squintScale * w;
           break;
         }
 
@@ -989,7 +1107,8 @@ export class FaceMeshGenerator {
         }
       }
 
-      vertices.push(x, y, z);
+      // Store RELATIVE delta (displacement from rest pose) — required by glTF 2.0 morphTargetsRelative=true
+      vertices.push(x - base.x, y - base.y, z - base.z);
     });
 
     return Float32Array.from(vertices);

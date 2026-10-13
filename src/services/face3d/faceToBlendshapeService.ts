@@ -8,7 +8,10 @@ import {
   FaceMeshGenerator,
   MouthCustomizationParams,
   DEFAULT_MOUTH_PARAMS,
+  GestureCalibrationParams,
+  DEFAULT_GESTURE_PARAMS,
   generateOralCavityMesh,
+  createTrackingPointsMesh,
 } from './faceMeshGenerator';
 import { BustGenerator, BustOptions, ClothingStyle } from './bustGenerator';
 import {
@@ -17,6 +20,16 @@ import {
   EyeCustomizationOptions,
   DEFAULT_EYE_OPTIONS,
 } from './eyeGenerator';
+
+export type {
+  GestureCalibrationParams,
+  MouthCustomizationParams,
+};
+export {
+  DEFAULT_GESTURE_PARAMS,
+  DEFAULT_MOUTH_PARAMS,
+  createTrackingPointsMesh,
+};
 
 export interface Face3DGenerationResult {
   faceMesh: THREE.Mesh;
@@ -289,7 +302,8 @@ export class FaceToBlendshapeService {
     params: TransformDebugParams = DEFAULT_DEBUG_PARAMS,
     eyesGroup: THREE.Group | null = null,
     oralCavity: THREE.Group | null = null,
-    eyePairResult: EyePairResult | null = null
+    eyePairResult: EyePairResult | null = null,
+    trackingPointsMesh: THREE.Points | null = null
   ): void {
     if (!faceMesh) return;
 
@@ -337,6 +351,13 @@ export class FaceToBlendshapeService {
       oralCavity.rotation.copy(faceMesh.rotation);
       oralCavity.position.copy(faceMesh.position);
       oralCavity.visible = params.mouth?.oralCavityEnabled ?? true;
+    }
+
+    // 5. Align 478 Landmark Tracking Points mesh
+    if (trackingPointsMesh) {
+      trackingPointsMesh.scale.copy(faceMesh.scale);
+      trackingPointsMesh.rotation.copy(faceMesh.rotation);
+      trackingPointsMesh.position.copy(faceMesh.position);
     }
 
     // 5. Align Head Base Model independently based on stable base face dimensions
@@ -402,7 +423,12 @@ export class FaceToBlendshapeService {
     includeHead: boolean = true,
     includeBust: boolean = true,
     includeEyes: boolean = true,
-    includeOralCavity: boolean = true
+    includeOralCavity: boolean = true,
+    calibrationMeta?: {
+      mouthParams?: MouthCustomizationParams;
+      gestureParams?: GestureCalibrationParams;
+      canonicalLandmarks?: Array<{ x: number; y: number; z: number }>;
+    }
   ): Promise<ArrayBuffer> {
     return new Promise((resolve, reject) => {
       const exporter = new GLTFExporter();
@@ -418,6 +444,46 @@ export class FaceToBlendshapeService {
         clonedFace.morphTargetDictionary = { ...faceMesh.morphTargetDictionary };
       }
       exportGroup.add(clonedFace);
+
+      // ── neckPivot anchor ──────────────────────────────────────────────────
+      // A named Object3D at chin/neck level lets ThreeAvatarCanvas distribute
+      // head rotation between neck (35%) and face (75%) for organic movement.
+      // Position is derived from the chin landmark (152) stored in faceMesh userData.
+      const neckPivot = new THREE.Object3D();
+      neckPivot.name = 'neckPivot';
+      const mouthCenter = (faceMesh.userData.mouthCenter as { x: number; y: number; z: number } | undefined);
+      // Neck sits ~0.22 units below the mouth center in canonical space (scaled by faceMesh)
+      const neckOffsetY = (mouthCenter?.y ?? 0) - 0.22;
+      neckPivot.position.set(
+        faceMesh.position.x,
+        faceMesh.position.y + neckOffsetY * (faceMesh.scale.y || 1),
+        faceMesh.position.z
+      );
+      exportGroup.add(neckPivot);
+
+      // ── Calibration metadata node ─────────────────────────────────────────
+      // Embeds all studio parameters so avatars can be re-edited with the exact
+      // same calibration point they were created with.
+      if (calibrationMeta) {
+        const metaNode = new THREE.Object3D();
+        metaNode.name = 'xstreamx_meta';
+        metaNode.userData.version = 2;
+        if (calibrationMeta.mouthParams) {
+          metaNode.userData.mouthParams = JSON.parse(JSON.stringify(calibrationMeta.mouthParams));
+        }
+        if (calibrationMeta.gestureParams) {
+          metaNode.userData.gestureParams = JSON.parse(JSON.stringify(calibrationMeta.gestureParams));
+        }
+        if (calibrationMeta.canonicalLandmarks) {
+          // Store every 4th landmark (every 4 = 120 points, ~1.4 KB) to save GLB space.
+          // Full 478-point array can be reconstructed by the studio via interpolation.
+          const compressed = calibrationMeta.canonicalLandmarks
+            .filter((_: unknown, i: number) => i % 4 === 0)
+            .map((p: { x: number; y: number; z: number }) => [+p.x.toFixed(5), +p.y.toFixed(5), +p.z.toFixed(5)]);
+          metaNode.userData.landmarksSampled = compressed;
+        }
+        exportGroup.add(metaNode);
+      }
 
       // Include 3D Eyeballs with left and right eye objects
       if (eyesGroup && includeEyes) {
