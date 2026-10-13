@@ -1,16 +1,23 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 interface PresidentesNeonHomeProps {
   onEnterSalon: () => void;
   onOpenLegal?: () => void;
 }
 
+// Letters in the title — spaces are kept as non-glitchable
+const TITLE_CHARS = 'Presidentes Muertos'.split('');
+
 export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
   onEnterSalon,
   onOpenLegal,
 }) => {
-  // Glitch malfunction state for the neon sign
+  // Glitch malfunction state for the neon sign (puppets)
   const [glitchTarget, setGlitchTarget] = useState<'head1' | 'head2' | 'head3' | 'all' | 'mouths' | null>(null);
+
+  // Per-letter glitch set — which letter indices are currently dead/dim
+  const [deadLetters, setDeadLetters] = useState<Set<number>>(new Set());
+  const deadLettersTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Random neon malfunction/flicker generator
   useEffect(() => {
@@ -51,6 +58,48 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
     return () => {
       isMounted = false;
       if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, []);
+
+  // Per-letter random illumination glitch loop
+  useEffect(() => {
+    let mounted = true;
+
+    const triggerLetterFault = () => {
+      // Random delay between 1.5s and 5.5s
+      const delay = Math.random() * 4000 + 1500;
+      deadLettersTimeoutRef.current = setTimeout(() => {
+        if (!mounted) return;
+
+        // Pick 1–3 non-space letter indices
+        const eligibleIndices = TITLE_CHARS
+          .map((ch, i) => (ch !== ' ' ? i : -1))
+          .filter((i) => i >= 0);
+
+        const count = Math.floor(Math.random() * 3) + 1;
+        const chosen = new Set<number>();
+        while (chosen.size < count && chosen.size < eligibleIndices.length) {
+          chosen.add(eligibleIndices[Math.floor(Math.random() * eligibleIndices.length)]);
+        }
+
+        setDeadLetters(chosen);
+
+        // Duration of the dead/dim phase: 100ms–500ms
+        const duration = Math.random() * 400 + 100;
+        setTimeout(() => {
+          if (mounted) {
+            setDeadLetters(new Set());
+            triggerLetterFault();
+          }
+        }, duration);
+      }, delay);
+    };
+
+    triggerLetterFault();
+
+    return () => {
+      mounted = false;
+      if (deadLettersTimeoutRef.current) clearTimeout(deadLettersTimeoutRef.current);
     };
   }, []);
 
@@ -457,11 +506,28 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
 
 
 
-        {/* Título Principal: Presidentes Muertos */}
-        <h1 className="neon-text-title text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight mt-2 sm:mt-3 text-center">
-          Presidentes Muertos
+        {/* Título Principal: Presidentes Muertos — letters glitch individually */}
+        <h1 className="neon-text-title text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-black tracking-tight mt-2 sm:mt-3 text-center select-none">
+          {TITLE_CHARS.map((char, i) =>
+            char === ' ' ? (
+              <span key={i}>&nbsp;</span>
+            ) : (
+              <span
+                key={i}
+                className="inline-block transition-all duration-75"
+                style={deadLetters.has(i) ? {
+                  opacity: Math.random() > 0.5 ? 0.07 : 0.25,
+                  textShadow: 'none',
+                  filter: 'none',
+                  color: '#1e3a5f',
+                } : undefined}
+              >
+                {char}
+              </span>
+            )
+          )}
         </h1>
-        {/* Subtítulo: Chilling Club */}
+        {/* Subtítulo: ...y vivos. */}
         <h3 className="neon-text-club text-sm sm:text-base md:text-xl font-bold tracking-wider mt-7 sm:mt-10 uppercase">
           ...y vivos.
         </h3>
