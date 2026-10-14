@@ -293,11 +293,27 @@ flowchart LR
 * **Espejo Webcam en Vivo (Live Mirror):** Prueba interactiva en tiempo real donde la cara, ojos y cabeza del usuario animan el avatar antes de guardarlo.
 * **Exportación Estándar GLB:** Genera archivos `.glb` con textura UV sólida de 1024x1024, materiales físicos PBR, clonación aislada de materiales para evitar mutaciones en el visor, ojos 3D, cavidad oral y los 52 morph targets listos para su uso en Unity, Unreal Engine, Blender o la propia plataforma.
 
-### 6.1. Control de Acceso y Permisos en el Lobby (`Lobby.tsx`):
-* **Exclusividad para Administrador (`role: 'admin'`):**
-  * La creación de avatares fotogramétricos biomiméticos mediante foto (`+ Foto 3D` / `Face to 3D`) y la importación de nuevos modelos 3D (`Subir 3D` / `Gestionar Modelos`) están restringidas estrictamente a administradores autenticados.
-  * Para los participantes estándar, el Lobby presenta una cuadrícula limpia de avatares sin botones de creación o subida ni accesos directos de eliminación con "X", garantizando una experiencia de usuario despejada y segura contra borrados accidentales.
-  * La gestión y eliminación autorizada de modelos permanece centralizada para el administrador dentro del panel `AdminControlPanel`.
+### 6.1. Selector de Avatares en el Lobby (`Lobby.tsx`):
+* **Pestañas Duales en "Elige tu Avatar 3D":**
+  * **Modelos Predefinidos:** Presenta el catálogo nativo del sistema (robots, animales, anime, esculturas, neon holo).
+  * **Mis Avatares (3D Masks):** Aloja los avatares faciales personalizados creados por el usuario mediante el estudio *3D Masks*.
+* **Persistencia Exclusiva en LocalStorage:**
+  * Los avatares generados con 3D Masks se almacenan localmente en el navegador (`xstreamx_custom_avatars_v1`), garantizando privacidad absoluta por diseño sin subir geometría ni fotos biométricas a ningún servidor central.
+* **Eliminación con Botón "X" para Cualquier Usuario o Administrador:**
+  * Cada tarjeta de la pestaña *Mis Avatares* incorpora un botón de eliminación circular con ícono "X" en la esquina superior derecha (`top-1 right-1`).
+  * Al hacer clic, se confirma la acción y se invoca `avatarModelServiceSingleton.deleteModel(avatarId)`, purjando el modelo de la memoria y del LocalStorage de forma inmediata.
+  * Si el avatar eliminado estaba activo, el sistema conmuta automáticamente a un modelo predefinido seguro como fallback.
+* **Renombrado Universal de Modelos por el Administrador:**
+  * El administrador tiene potestad de cambiar el nombre visible de **cualquier modelo** (tanto modelos predefinidos del sistema como avatares creados con 3D Masks).
+  * **Puntos de Entrada:**
+    * Directamente desde las tarjetas del Lobby ([`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx)) mediante el botón de edición (ícono de lápiz `Pencil`) visible exclusivamente para administradores.
+    * Desde el Panel de Control del Administrador ([`AdminControlPanel.tsx`](file:///d:/Apps/xstreamx/src/components/room/AdminControlPanel.tsx)) con edición en línea (`inline input`), atajos de teclado (`Enter` para guardar, `Escape` para cancelar) y botones de confirmación rápida.
+  * **Persistencia en LocalStorage (`xstreamx_renamed_avatars_v1`):**
+    * Los nombres modificados se almacenan bajo la clave `xstreamx_renamed_avatars_v1` (`avatarModelService.ts`).
+    * Se aplican de forma reactiva e inmediata a todas las listas y componentes suscriptores sin requerir recargar la página.
+    * Al restablecer los modelos por defecto o eliminar un modelo personalizado, los nombres personalizados se sincronizan o limpian correspondientemente.
+* **Acceso y Gestión por Roles:**
+  * La subida de archivos crudos externos 3D (`Subir 3D` / `.glb` / `.obj` / `.stl`) y la desactivación global de modelos de plataforma continúan reservadas al panel del administrador (`AdminControlPanel`).
 
 ### 6.2. Bloqueo de Avatar por Sesión (Sin Hot-Swap en Sala)
 * El cambio de avatar **en vivo dentro de la sala ha sido eliminado** deliberadamente de [`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx) para garantizar la **consistencia de identidad** del personaje durante toda la llamada.

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Shield,
   Users,
@@ -23,6 +23,9 @@ import {
   Plus,
   Layers,
   ScanFace,
+  X,
+  Box,
+  Pencil,
 } from 'lucide-react';
 import { AvatarId, FaceFeatures, AvatarDefinition, DynamicTrackingMode } from '../../types';
 import { AVATAR_LIST } from '../avatars/avatarConfigs';
@@ -175,6 +178,41 @@ export const Lobby: React.FC<LobbyProps> = ({
     }
     return 'three_robot';
   });
+
+  // Tabs: 'predefined' (Modelos Predefinidos) vs 'custom' (Mis Avatares / 3D Masks en LocalStorage)
+  const [avatarTab, setAvatarTab] = useState<'predefined' | 'custom'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(STORAGE_AVATAR_KEY) as AvatarId;
+      if (saved) {
+        const found = avatarModelServiceSingleton.getAvatarById(saved);
+        if (found?.isCustom) return 'custom';
+      }
+    }
+    return 'predefined';
+  });
+
+  const predefinedAvatars = useMemo(() => avatars.filter((a) => !a.isCustom), [avatars]);
+  const customAvatars = useMemo(() => avatars.filter((a) => !!a.isCustom), [avatars]);
+
+  const handleDeleteCustomAvatar = (avatarId: string, avatarName: string) => {
+    if (window.confirm(`¿Estás seguro de que deseas eliminar el avatar "${avatarName}"?`)) {
+      avatarModelServiceSingleton.deleteModel(avatarId);
+      if (selectedAvatarId === avatarId) {
+        const fallback = predefinedAvatars[0]?.id || 'three_robot';
+        setSelectedAvatarId(fallback);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(STORAGE_AVATAR_KEY, fallback);
+        }
+      }
+    }
+  };
+
+  const handleRenameAvatar = (avatarId: string, currentName: string) => {
+    const newName = window.prompt(`Cambiar nombre del modelo "${currentName}":`, currentName);
+    if (newName && newName.trim() && newName.trim() !== currentName) {
+      avatarModelServiceSingleton.renameModel(avatarId, newName.trim());
+    }
+  };
 
   const [error, setError] = useState<string | null>(null);
   const [showCameraPip, setShowCameraPip] = useState(false);
@@ -999,112 +1037,259 @@ export const Lobby: React.FC<LobbyProps> = ({
             {/* Direct Join / Create Form */}
             <form onSubmit={handleSubmit} className="space-y-4">
 
-              {/* Paso 1: Selector de Avatar 3D */}
+              {/* Paso 1: Selector de Avatar 3D con Pestañas (Predefinidos vs Mis Avatares) */}
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
                     <span className="w-4 h-4 rounded-full bg-cyan-500 text-slate-950 text-[10px] font-black flex items-center justify-center">1</span>
                     <span>Elige tu Avatar 3D</span>
                   </label>
-                  {isAdminUser && (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => setIsFaceStudioOpen(true)}
-                        className="text-[11px] text-cyan-300 hover:text-cyan-200 font-black flex items-center gap-1 cursor-pointer bg-gradient-to-r from-cyan-500/20 to-indigo-500/20 hover:from-cyan-500/30 hover:to-indigo-500/30 px-2.5 py-1 rounded-lg border border-cyan-400/40 shadow-sm"
-                        title="Abrir Generador 3D Masks"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                        <span>3D Masks</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setIsAdminPanelOpen(true)}
-                        className="text-[11px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 px-2 py-1 rounded-lg border border-amber-500/30"
-                      >
-                        <Shield className="w-3 h-3" />
-                        <span>Gestionar Modelos</span>
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
-                  {avatars.map((avatar) => {
-                    const isSelected = avatar.id === selectedAvatarId;
-                    return (
-                      <div
-                        key={avatar.id}
-                        onClick={() => handleSelectAvatar(avatar.id)}
-                        className={`group relative p-2 rounded-xl border text-left flex flex-col items-center gap-1 transition cursor-pointer ${isSelected
-                            ? 'bg-cyan-950/80 border-cyan-400 ring-2 ring-cyan-400/40 shadow-md shadow-cyan-500/20 scale-[1.02]'
-                            : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
-                          }`}
-                      >
-                        <div
-                          className="w-10 h-10 rounded-lg border flex items-center justify-center text-xl shadow-inner shrink-0"
-                          style={{
-                            background: `linear-gradient(135deg, ${avatar.themeColor}22, ${avatar.accentColor}33)`,
-                            borderColor: `${avatar.themeColor}55`,
-                          }}
-                        >
-                          {avatar.emoji || '🎭'}
-                        </div>
-                        <span className="text-[10px] font-bold text-slate-200 truncate w-full text-center">
-                          {avatar.name}
-                        </span>
-
-                        {/* Selected Indicator Check */}
-                        {isSelected && (
-                          <div className="absolute top-1 left-1 w-3.5 h-3.5 rounded-full bg-cyan-400 flex items-center justify-center shadow">
-                            <Check className="w-2.5 h-2.5 text-slate-950" />
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-
-                  {/* Botón 3D Masks Directo para Admin */}
-                  {isAdminUser && (
+                  <div className="flex items-center gap-1.5">
                     <button
                       type="button"
                       onClick={() => setIsFaceStudioOpen(true)}
-                      title="Generar modelo 3D desde foto con 52 blendshapes ARKit"
-                      className="relative p-2 rounded-xl border border-cyan-500/50 hover:border-cyan-400 bg-gradient-to-b from-cyan-950/40 to-indigo-950/40 hover:from-cyan-950/60 hover:to-indigo-950/60 text-left flex flex-col items-center justify-center gap-1 cursor-pointer transition active:scale-95 shadow-lg shadow-cyan-950/30"
+                      className="text-[11px] text-cyan-300 hover:text-cyan-200 font-black flex items-center gap-1 cursor-pointer bg-gradient-to-r from-cyan-500/20 to-indigo-500/20 hover:from-cyan-500/30 hover:to-indigo-500/30 px-2.5 py-1 rounded-lg border border-cyan-400/40 shadow-sm transition active:scale-95"
+                      title="Crear Avatar Facial con 3D Masks"
                     >
-                      <div className="w-10 h-10 rounded-lg bg-gradient-to-tr from-cyan-500 to-indigo-600 text-white flex items-center justify-center text-sm shadow-md shrink-0">
-                        <Sparkles className="w-5 h-5" />
-                      </div>
-                      <span className="text-[9px] font-black text-cyan-200 text-center leading-tight">
-                        + Foto 3D
-                      </span>
-                      <span className="text-[8px] font-mono text-cyan-300 px-1 py-0.2 bg-cyan-900/60 rounded border border-cyan-600/50">
-                        Blendshapes
-                      </span>
+                      <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>3D Masks</span>
                     </button>
-                  )}
 
-                  {/* Subir Modelo / Abrir Panel (Solo Admin) */}
-                  {isAdminUser && (
-                    <button
-                      type="button"
-                      onClick={() => setIsAdminPanelOpen(true)}
-                      title="Subir nuevo archivo de modelo 3D (.glb, .gltf, .vrm)"
-                      className="relative p-2 rounded-xl border border-dashed border-cyan-500/40 hover:border-cyan-400 bg-cyan-950/20 hover:bg-cyan-950/40 text-left flex flex-col items-center justify-center gap-1 cursor-pointer transition active:scale-95"
-                    >
-                      <div className="w-10 h-10 rounded-lg border border-dashed border-cyan-500/40 flex items-center justify-center text-cyan-400 shrink-0">
-                        <Plus className="w-4 h-4" />
-                      </div>
-                      <span className="text-[9px] font-bold text-cyan-300 text-center leading-tight">
-                        Subir 3D
-                      </span>
-                      <span className="text-[8px] font-mono text-cyan-400 px-1 py-0.2 bg-cyan-950/80 rounded border border-cyan-900">
-                        Admin
-                      </span>
-                    </button>
-                  )}
+                    {isAdminUser && (
+                      <button
+                        type="button"
+                        onClick={() => setIsAdminPanelOpen(true)}
+                        className="text-[11px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 px-2 py-1 rounded-lg border border-amber-500/30 transition active:scale-95"
+                        title="Gestionar Modelos 3D"
+                      >
+                        <Shield className="w-3 h-3" />
+                        <span className="hidden sm:inline">Gestionar</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
+
+                {/* Selector de Pestañas: Modelos Predefinidos vs Mis Avatares */}
+                <div className="flex items-center gap-1.5 p-1 mb-2.5 rounded-xl bg-slate-950/80 border border-slate-800">
+                  <button
+                    type="button"
+                    onClick={() => setAvatarTab('predefined')}
+                    className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      avatarTab === 'predefined'
+                        ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                    }`}
+                  >
+                    <Box className="w-3.5 h-3.5" />
+                    <span>Modelos Predefinidos</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                        avatarTab === 'predefined'
+                          ? 'bg-slate-950/20 text-slate-950'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {predefinedAvatars.length}
+                    </span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setAvatarTab('custom')}
+                    className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      avatarTab === 'custom'
+                        ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
+                        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
+                    }`}
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Mis Avatares</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                        avatarTab === 'custom'
+                          ? 'bg-slate-950/20 text-slate-950'
+                          : 'bg-slate-800 text-slate-400'
+                      }`}
+                    >
+                      {customAvatars.length}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Contenido Pestaña 1: Modelos Predefinidos */}
+                {avatarTab === 'predefined' && (
+                  <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
+                    {predefinedAvatars.map((avatar) => {
+                      const isSelected = avatar.id === selectedAvatarId;
+                      return (
+                        <div
+                          key={avatar.id}
+                          onClick={() => handleSelectAvatar(avatar.id)}
+                          className={`group relative p-2 rounded-xl border text-left flex flex-col items-center gap-1 transition cursor-pointer ${
+                            isSelected
+                              ? 'bg-cyan-950/80 border-cyan-400 ring-2 ring-cyan-400/40 shadow-md shadow-cyan-500/20 scale-[1.02]'
+                              : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+                          }`}
+                        >
+                          <div
+                            className="w-10 h-10 rounded-lg border flex items-center justify-center text-xl shadow-inner shrink-0"
+                            style={{
+                              background: `linear-gradient(135deg, ${avatar.themeColor}22, ${avatar.accentColor}33)`,
+                              borderColor: `${avatar.themeColor}55`,
+                            }}
+                          >
+                            {avatar.emoji || '🎭'}
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-200 truncate w-full text-center">
+                            {avatar.name}
+                          </span>
+
+                          {/* Selected Indicator Check */}
+                          {isSelected && (
+                            <div className="absolute top-1 left-1 w-3.5 h-3.5 rounded-full bg-cyan-400 flex items-center justify-center shadow">
+                              <Check className="w-2.5 h-2.5 text-slate-950" />
+                            </div>
+                          )}
+
+                          {/* Botón Admin: Renombrar Modelo */}
+                          {isAdminUser && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRenameAvatar(avatar.id, avatar.name);
+                              }}
+                              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-slate-900/90 hover:bg-cyan-600 text-slate-400 hover:text-white border border-slate-700 hover:border-cyan-400 flex items-center justify-center transition shadow-md z-10 cursor-pointer"
+                              title={`Cambiar nombre de "${avatar.name}"`}
+                            >
+                              <Pencil className="w-2.5 h-2.5" />
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+
+                    {/* Subir Modelo / Abrir Panel (Solo Admin) */}
+                    {isAdminUser && (
+                      <button
+                        type="button"
+                        onClick={() => setIsAdminPanelOpen(true)}
+                        title="Subir nuevo archivo de modelo 3D (.glb, .gltf, .vrm)"
+                        className="relative p-2 rounded-xl border border-dashed border-cyan-500/40 hover:border-cyan-400 bg-cyan-950/20 hover:bg-cyan-950/40 text-left flex flex-col items-center justify-center gap-1 cursor-pointer transition active:scale-95"
+                      >
+                        <div className="w-10 h-10 rounded-lg border border-dashed border-cyan-500/40 flex items-center justify-center text-cyan-400 shrink-0">
+                          <Plus className="w-4 h-4" />
+                        </div>
+                        <span className="text-[9px] font-bold text-cyan-300 text-center leading-tight">
+                          Subir 3D
+                        </span>
+                        <span className="text-[8px] font-mono text-cyan-400 px-1 py-0.2 bg-cyan-950/80 rounded border border-cyan-900">
+                          Admin
+                        </span>
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Contenido Pestaña 2: Mis Avatares (Creados con 3D Masks en LocalStorage) */}
+                {avatarTab === 'custom' && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
+                      {customAvatars.map((avatar) => {
+                        const isSelected = avatar.id === selectedAvatarId;
+                        return (
+                          <div
+                            key={avatar.id}
+                            onClick={() => handleSelectAvatar(avatar.id)}
+                            className={`group relative p-2 rounded-xl border text-left flex flex-col items-center gap-1 transition cursor-pointer ${
+                              isSelected
+                                ? 'bg-cyan-950/80 border-cyan-400 ring-2 ring-cyan-400/40 shadow-md shadow-cyan-500/20 scale-[1.02]'
+                                : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
+                            }`}
+                          >
+                            {/* Botón X de eliminación rápida para cualquier usuario o admin */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteCustomAvatar(avatar.id, avatar.name);
+                              }}
+                              className="absolute top-1 right-1 w-5 h-5 rounded-full bg-slate-900/90 hover:bg-rose-600 text-slate-400 hover:text-white border border-slate-700 hover:border-rose-500 flex items-center justify-center transition shadow-md z-10 cursor-pointer"
+                              title={`Eliminar avatar "${avatar.name}"`}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+
+                            {/* Botón Admin: Renombrar Modelo */}
+                            {isAdminUser && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRenameAvatar(avatar.id, avatar.name);
+                                }}
+                                className="absolute top-1 right-7 w-5 h-5 rounded-full bg-slate-900/90 hover:bg-cyan-600 text-slate-400 hover:text-white border border-slate-700 hover:border-cyan-400 flex items-center justify-center transition shadow-md z-10 cursor-pointer"
+                                title={`Cambiar nombre de "${avatar.name}"`}
+                              >
+                                <Pencil className="w-2.5 h-2.5" />
+                              </button>
+                            )}
+
+                            <div
+                              className="w-10 h-10 rounded-lg border flex items-center justify-center text-xl shadow-inner shrink-0"
+                              style={{
+                                background: `linear-gradient(135deg, ${avatar.themeColor}22, ${avatar.accentColor}33)`,
+                                borderColor: `${avatar.themeColor}55`,
+                              }}
+                            >
+                              {avatar.emoji || '🎭'}
+                            </div>
+                            <span className="text-[10px] font-bold text-slate-200 truncate w-full text-center">
+                              {avatar.name}
+                            </span>
+
+                            {/* Selected Indicator Check */}
+                            {isSelected && (
+                              <div className="absolute top-1 left-1 w-3.5 h-3.5 rounded-full bg-cyan-400 flex items-center justify-center shadow">
+                                <Check className="w-2.5 h-2.5 text-slate-950" />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {/* Botón + Crear con 3D Masks (Siempre visible en Mis Avatares) */}
+                      <button
+                        type="button"
+                        onClick={() => setIsFaceStudioOpen(true)}
+                        title="Crear nuevo avatar 3D facial con 52 blendshapes desde foto"
+                        className="relative p-2 rounded-xl border border-dashed border-cyan-500/50 hover:border-cyan-400 bg-gradient-to-b from-cyan-950/30 to-indigo-950/30 hover:from-cyan-950/50 hover:to-indigo-950/50 text-left flex flex-col items-center justify-center gap-1 cursor-pointer transition active:scale-95 shadow-md shadow-cyan-950/20 min-h-[86px]"
+                      >
+                        <div className="w-10 h-10 rounded-lg bg-gradient-to-tr from-cyan-500 to-indigo-600 text-white flex items-center justify-center text-sm shadow-md shrink-0">
+                          <Sparkles className="w-5 h-5" />
+                        </div>
+                        <span className="text-[9px] font-bold text-cyan-200 text-center leading-tight">
+                          + Crear Avatar
+                        </span>
+                        <span className="text-[8px] font-mono text-cyan-300 px-1 py-0.2 bg-cyan-900/60 rounded border border-cyan-600/50">
+                          3D Masks
+                        </span>
+                      </button>
+                    </div>
+
+                    {/* Estado vacío si no hay avatares personalizados */}
+                    {customAvatars.length === 0 && (
+                      <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 text-center">
+                        <p className="text-xs text-neutral-300 font-semibold mb-1">
+                          No tienes avatares 3D creados aún
+                        </p>
+                        <p className="text-[11px] text-neutral-400">
+                          Haz clic en <strong className="text-cyan-300">&ldquo;+ Crear Avatar&rdquo;</strong> o en <strong className="text-cyan-300">&ldquo;3D Masks&rdquo;</strong> para generar tu modelo 3D con blendshapes desde una foto. Se guardará únicamente en tu navegador.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Paso 2: Nombre o Alias */}
@@ -1241,6 +1426,7 @@ export const Lobby: React.FC<LobbyProps> = ({
         isAdmin={isAdminUser}
         onSelectAvatar={(avatarId: AvatarId) => {
           handleSelectAvatar(avatarId);
+          setAvatarTab('custom');
           setIsFaceStudioOpen(false);
         }}
       />

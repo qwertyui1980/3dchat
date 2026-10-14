@@ -20,6 +20,8 @@ import {
   Users,
   Settings,
   Plus,
+  Pencil,
+  Check,
 } from 'lucide-react';
 import { RoomInfo, User, AvatarDefinition } from '../../types';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
@@ -89,6 +91,23 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
     if (confirm('¿Eliminar este modelo 3D de la plataforma?')) {
       avatarModelServiceSingleton.deleteModel(avatarId);
     }
+  };
+
+  // Inline rename state for admin
+  const [editingAvatarId, setEditingAvatarId] = useState<string | null>(null);
+  const [editingAvatarName, setEditingAvatarName] = useState<string>('');
+
+  const handleStartRename = (av: AvatarDefinition) => {
+    setEditingAvatarId(av.id);
+    setEditingAvatarName(av.name);
+  };
+
+  const handleSaveRename = (avatarId: string) => {
+    if (editingAvatarName.trim()) {
+      avatarModelServiceSingleton.renameModel(avatarId, editingAvatarName.trim());
+    }
+    setEditingAvatarId(null);
+    setEditingAvatarName('');
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -368,7 +387,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                             : 'bg-[#0f1322] border-white/[0.08] hover:border-cyan-500/40'
                         }`}
                       >
-                        <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
                           <div
                             className="w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0 border"
                             style={{
@@ -378,23 +397,67 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                           >
                             {av.emoji || '🤖'}
                           </div>
-                          <div className="truncate">
-                            <p className="text-xs font-bold text-white truncate flex items-center gap-1.5">
-                              <span>{av.name}</span>
-                              {av.isCustom && (
-                                <span className="px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 text-[9px] font-mono">
-                                  CUSTOM
-                                </span>
-                              )}
-                            </p>
-                            <p className="text-[10px] text-neutral-400 truncate">
-                              {av.category} • {av.badge}
-                            </p>
-                          </div>
+
+                          {editingAvatarId === av.id ? (
+                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                              <input
+                                type="text"
+                                value={editingAvatarName}
+                                onChange={(e) => setEditingAvatarName(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleSaveRename(av.id);
+                                  if (e.key === 'Escape') setEditingAvatarId(null);
+                                }}
+                                autoFocus
+                                className="bg-black/60 border border-cyan-400 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-400 w-full font-bold"
+                                placeholder="Nombre del modelo..."
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleSaveRename(av.id)}
+                                className="p-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition cursor-pointer shrink-0"
+                                title="Guardar nombre"
+                              >
+                                <Check className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setEditingAvatarId(null)}
+                                className="p-1 rounded-lg bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition cursor-pointer shrink-0"
+                                title="Cancelar"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="truncate">
+                              <p className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+                                <span>{av.name}</span>
+                                {av.isCustom && (
+                                  <span className="px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 text-[9px] font-mono">
+                                    CUSTOM
+                                  </span>
+                                )}
+                              </p>
+                              <p className="text-[10px] text-neutral-400 truncate">
+                                {av.category} • {av.badge}
+                              </p>
+                            </div>
+                          )}
                         </div>
 
-                        {/* Actions: Toggle Active / 1-Click Delete */}
-                        <div className="flex items-center gap-2 shrink-0">
+                        {/* Actions: Rename / Toggle Active / 1-Click Delete */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {/* Rename Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleStartRename(av)}
+                            className="p-1.5 rounded-lg bg-cyan-950/40 hover:bg-cyan-900 border border-cyan-500/30 hover:border-cyan-400 text-cyan-300 transition active:scale-90 cursor-pointer"
+                            title="Cambiar nombre de este modelo"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+
                           {/* Toggle Active */}
                           <button
                             type="button"

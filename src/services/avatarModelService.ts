@@ -5,6 +5,7 @@ import { getAvatarTrackingProfile } from '../components/avatars/avatarTrackingPr
 const STORAGE_CUSTOM_AVATARS = 'xstreamx_custom_avatars_v1';
 const STORAGE_DISABLED_AVATARS = 'xstreamx_disabled_avatars_v1';
 const STORAGE_DELETED_AVATARS = 'xstreamx_deleted_avatars_v1';
+const STORAGE_RENAMED_AVATARS = 'xstreamx_renamed_avatars_v1';
 
 type Listener = () => void;
 
@@ -12,6 +13,7 @@ class AvatarModelService {
   private customAvatars: AvatarDefinition[] = [];
   private disabledIds: Set<string> = new Set();
   private deletedIds: Set<string> = new Set();
+  private renamedNames: Record<string, string> = {};
   private listeners: Set<Listener> = new Set();
 
   constructor() {
@@ -36,6 +38,11 @@ class AvatarModelService {
       if (storedDeleted) {
         this.deletedIds = new Set(JSON.parse(storedDeleted));
       }
+
+      const storedRenamed = localStorage.getItem(STORAGE_RENAMED_AVATARS);
+      if (storedRenamed) {
+        this.renamedNames = JSON.parse(storedRenamed);
+      }
     } catch (e) {
       console.warn('[AvatarModelService] Error loading stored avatar state:', e);
     }
@@ -53,6 +60,10 @@ class AvatarModelService {
       localStorage.setItem(
         STORAGE_DELETED_AVATARS,
         JSON.stringify(Array.from(this.deletedIds))
+      );
+      localStorage.setItem(
+        STORAGE_RENAMED_AVATARS,
+        JSON.stringify(this.renamedNames)
       );
     } catch (e) {
       console.warn('[AvatarModelService] Error saving avatar state:', e);
@@ -78,12 +89,13 @@ class AvatarModelService {
 
   /**
    * Returns all registered avatars (both default and custom) that have not been deleted.
-   * Includes metadata on whether they are disabled.
+   * Includes metadata on whether they are disabled and reflects custom renamed names.
    */
   getAllAvatars(): AvatarDefinition[] {
     const defaultFiltered = DEFAULT_AVATARS.filter((a) => !this.deletedIds.has(a.id)).map(
       (a) => ({
         ...a,
+        name: this.renamedNames[a.id] || a.name,
         disabled: this.disabledIds.has(a.id),
       })
     );
@@ -92,6 +104,7 @@ class AvatarModelService {
       .filter((a) => !this.deletedIds.has(a.id))
       .map((a) => ({
         ...a,
+        name: this.renamedNames[a.id] || a.name,
         disabled: this.disabledIds.has(a.id),
       }));
 
@@ -126,23 +139,45 @@ class AvatarModelService {
   }
 
   /**
-   * Delete a model from the platform (1-click Admin action)
+   * Rename any model (predefined or custom) with permanent LocalStorage persistence
    */
-  deleteModel(avatarId: string): boolean {
-    this.deletedIds.add(avatarId);
-    // If it was custom, also remove from custom list
-    this.customAvatars = this.customAvatars.filter((a) => a.id !== avatarId);
+  renameModel(avatarId: string, newName: string): boolean {
+    const trimmed = newName.trim();
+    if (!trimmed) return false;
+
+    this.renamedNames[avatarId] = trimmed;
+
+    // Also sync inside customAvatars in memory if present
+    const custom = this.customAvatars.find((a) => a.id === avatarId);
+    if (custom) {
+      custom.name = trimmed;
+    }
+
     this.saveToStorage();
     this.notify();
     return true;
   }
 
   /**
-   * Restore all default models
+   * Delete a model from the platform (1-click Admin action)
+   */
+  deleteModel(avatarId: string): boolean {
+    this.deletedIds.add(avatarId);
+    // If it was custom, also remove from custom list
+    this.customAvatars = this.customAvatars.filter((a) => a.id !== avatarId);
+    delete this.renamedNames[avatarId];
+    this.saveToStorage();
+    this.notify();
+    return true;
+  }
+
+  /**
+   * Restore all default models and reset renamed names
    */
   restoreDefaultModels() {
     this.deletedIds.clear();
     this.disabledIds.clear();
+    this.renamedNames = {};
     this.saveToStorage();
     this.notify();
   }

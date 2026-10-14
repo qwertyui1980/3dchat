@@ -46,14 +46,14 @@ import { avatarModelServiceSingleton } from '../../services/avatarModelService';
 interface FaceBlendshapeStudioModalProps {
   isOpen: boolean;
   onClose: () => void;
-  isAdmin: boolean;
+  isAdmin?: boolean;
   onSelectAvatar?: (avatarId: string) => void;
 }
 
 export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps> = ({
   isOpen,
   onClose,
-  isAdmin,
+  isAdmin = true,
   onSelectAvatar,
 }) => {
   // Tabs
@@ -1217,7 +1217,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     }
   };
 
-  if (!isOpen || !isAdmin) return null;
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-1 sm:p-2 md:p-3 bg-black/90 backdrop-blur-md animate-fade-in select-none">
@@ -1233,8 +1233,8 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                 <h2 className="text-sm sm:text-base font-black text-white tracking-wide">
                   3D Masks
                 </h2>
-                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase tracking-wider">
-                  ADMIN ONLY
+                <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-black uppercase tracking-wider">
+                  3D STUDIO
                 </span>
               </div>
               <p className="text-[11px] text-neutral-400">
