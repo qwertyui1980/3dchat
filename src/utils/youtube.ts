@@ -1,6 +1,29 @@
+import { VideoQueueItem, RoomMediaState } from '../types';
+
 /**
- * Utility functions for YouTube URL parsing, validation and metadata fetching
+ * Initial default YouTube video (Nas - Dead president)
+ * Always seeded initially in room queue and player
  */
+export const DEFAULT_INITIAL_YOUTUBE_VIDEO: VideoQueueItem = {
+  id: 'v_init_dead_president',
+  url: 'https://www.youtube.com/watch?v=SGvxjfK1t9A',
+  videoId: 'SGvxjfK1t9A',
+  title: 'Nas - Dead president',
+  thumbnailUrl: 'https://i.ytimg.com/vi/SGvxjfK1t9A/hqdefault.jpg',
+  durationSec: 284,
+  addedByUserId: 'system',
+  addedByUserName: 'XStreamX',
+  addedAt: 1700000000000,
+};
+
+export const INITIAL_ROOM_MEDIA_STATE: RoomMediaState = {
+  currentVideo: DEFAULT_INITIAL_YOUTUBE_VIDEO,
+  queue: [DEFAULT_INITIAL_YOUTUBE_VIDEO],
+  isPlaying: false,
+  playbackTime: 0,
+  lastSyncTimestamp: 0,
+  syncedByUserId: 'system',
+};
 
 export function extractYouTubeVideoId(urlOrId: string): string | null {
   if (!urlOrId || typeof urlOrId !== 'string') return null;

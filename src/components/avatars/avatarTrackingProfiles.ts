@@ -771,6 +771,18 @@ export function transformAvatarLandmark(
   return { x, y, z };
 }
 
+
+const customProfileRegistry: Map<string, AvatarTrackingProfile> = new Map();
+
+/**
+ * Register a custom tracking profile for any 3D Mask avatar or user model
+ */
+export function registerAvatarTrackingProfile(avatarId: string, profile: AvatarTrackingProfile): void {
+  if (avatarId && profile) {
+    customProfileRegistry.set(avatarId, profile);
+  }
+}
+
 /**
  * Gets or dynamically generates a tracking profile for any current or future avatar
  */
@@ -779,13 +791,18 @@ export function getAvatarTrackingProfile(avatarId?: AvatarId): AvatarTrackingPro
     return AVATAR_TRACKING_PROFILES[avatarId];
   }
 
-  // Dynamic extensible fallback for any new avatar added in the future
+  if (avatarId && customProfileRegistry.has(avatarId)) {
+    return customProfileRegistry.get(avatarId)!;
+  }
+
+  // Dynamic anatomical fallback for any new avatar or 3D Mask model (does NOT distort into robot)
+  const safeId = avatarId || 'face_cap';
   return {
-    avatarId: avatarId || 'three_robot',
+    avatarId: safeId,
     name: 'Avatar 3D',
     pointsCount: 30,
-    badge: '30 Pts Dinámicos',
-    description: 'Perfil de tracking facial anatómico optimizado para nuevo modelo 3D',
+    badge: '30 Pts Anatómicos',
+    description: 'Perfil de tracking facial anatómico optimizado para modelo 3D personalizado',
     color: '#06b6d4',
     dotColor: '#22d3ee',
     glowColor: 'rgba(6, 182, 212, 0.4)',

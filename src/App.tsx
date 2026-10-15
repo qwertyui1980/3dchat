@@ -27,6 +27,7 @@ import { RoomView } from './components/room/RoomView';
 import { Login, AuthenticatedUser } from './components/auth/Login';
 import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import { applyDynamicMode, normalizeTrackingMode } from './services/face3d/dynamicModeHelper';
+import { INITIAL_ROOM_MEDIA_STATE } from './utils/youtube';
 
 interface Toast {
   id: string;
@@ -35,12 +36,7 @@ interface Toast {
 }
 
 const INITIAL_MEDIA_STATE: RoomMediaState = {
-  currentVideo: null,
-  queue: [],
-  isPlaying: false,
-  playbackTime: 0,
-  lastSyncTimestamp: 0,
-  syncedByUserId: '',
+  ...INITIAL_ROOM_MEDIA_STATE,
 };
 
 export default function App() {
@@ -342,19 +338,10 @@ export default function App() {
     await startCamera(deviceId);
   }, [startCamera]);
 
-  // 1. Initialize Microphone & Audio Reactivity on mount (Camera starts ONLY on user request)
+  // 1. Hardware permissions (Microphone & Camera) are NEVER auto-requested on mount.
+  // Hardware access is strictly requested on-demand when the user presses the buttons in the Lobby.
   useEffect(() => {
-    let isMounted = true;
-
-    async function initHardwareAndAI() {
-      // Initialize Microphone (mandatory to participate in audio and lip-sync)
-      await startMic();
-    }
-
-    initHardwareAndAI();
-
     return () => {
-      isMounted = false;
       faceTrackerSingleton.stopTracking();
       audioServiceSingleton.stop();
       if (cameraStreamRef.current) {
@@ -365,7 +352,7 @@ export default function App() {
         videoRef.current.srcObject = null;
       }
     };
-  }, [startMic]);
+  }, []);
 
   // Helper to preserve subpath when hosted on GitHub Pages (e.g. /presidents or /3dchat)
   const getBasePath = useCallback(() => {
@@ -685,17 +672,18 @@ export default function App() {
     trackingSensitivity?: number;
     showTrackingPip?: boolean;
   }) => {
-    // 1. If microphone stream is not active or closed, re-acquire it before joining
-    const activeStream = audioServiceSingleton.getStream();
-    const hasLiveTracks =
-      activeStream &&
-      activeStream.getAudioTracks().some((t) => t.readyState === 'live');
+    // 1. Only acquire microphone stream if user explicitly activated it in lobby
+    if (requestedMicActive) {
+      const activeStream = audioServiceSingleton.getStream();
+      const hasLiveTracks =
+        activeStream &&
+        activeStream.getAudioTracks().some((t) => t.readyState === 'live');
 
-    if (!hasLiveTracks) {
-      const ok = await startMic();
-      if (!ok) {
-        addToast('Se requiere acceso al micrófono para ingresar al espacio.', 'warning');
-        return;
+      if (!hasLiveTracks) {
+        const ok = await startMic();
+        if (!ok) {
+          addToast('No se pudo acceder al micrófono. Ingresando en modo silenciado.', 'warning');
+        }
       }
     }
 
@@ -737,7 +725,7 @@ export default function App() {
   };
 
   // Toggle Microphone - Only user explicit click can open mic, and blocked if muted by admin
-  const handleToggleMic = () => {
+  const handleToggleMic = async () => {
     if ((isAdminMuted || room?.isAllMuted) && currentUser?.role !== 'admin') {
       addToast(
         'Has sido silenciado por el administrador. Solo el administrador puede reactivar los micrófonos de la sala.',
@@ -746,7 +734,22 @@ export default function App() {
       return;
     }
     if (!hasMicPermission) {
-      startMic();
+      const granted = await startMic();
+      if (!granted) return;
+      setIsMicActive(true);
+      audioServiceSingleton.ensureResumed();
+      audioServiceSingleton.setMute(false);
+      networkServiceSingleton.toggleMute(false);
+      setCurrentUser((prev) => (prev ? { ...prev, isMuted: false } : null));
+      setRoom((prev) => {
+        if (!prev || !currentUser) return prev;
+        return {
+          ...prev,
+          participants: prev.participants.map((p) =>
+            p.id === currentUser.id ? { ...p, isMuted: false } : p
+          ),
+        };
+      });
       return;
     }
     const nextState = !isMicActive;

@@ -34,7 +34,7 @@ import { AvatarCanvas } from '../avatars/AvatarCanvas';
 import { AudioWaveform } from '../common/AudioWaveform';
 import { AuthenticatedUser } from '../auth/Login';
 import { dbServiceSingleton, RoomRecord } from '../../services/dbService';
-import { getAvatarTrackingProfile, transformAvatarLandmark } from '../avatars/avatarTrackingProfiles';
+import { getAvatarTrackingProfile, transformAvatarLandmark, registerAvatarTrackingProfile } from '../avatars/avatarTrackingProfiles';
 import { networkServiceSingleton } from '../../services/networkService';
 import { LegalDisclaimerModal } from '../common/LegalDisclaimerModal';
 import { AdminControlPanel } from '../room/AdminControlPanel';
@@ -218,6 +218,12 @@ export const Lobby: React.FC<LobbyProps> = ({
   const [showCameraPip, setShowCameraPip] = useState(false);
   const [showAdjustments, setShowAdjustments] = useState(false);
   const [isLegalOpen, setIsLegalOpen] = useState(false);
+  const [editingAvatarForStudio, setEditingAvatarForStudio] = useState<AvatarDefinition | null>(null);
+
+  const handleEditCustomAvatar = (avatar: AvatarDefinition) => {
+    setEditingAvatarForStudio(avatar);
+    setIsFaceStudioOpen(true);
+  };
 
   // Dynamic Tracking Modes ('parafernalia' | 'gestures' | 'lipsync')
   const [trackingMode, setTrackingMode] = useState<DynamicTrackingMode>(() => {
@@ -455,6 +461,10 @@ export const Lobby: React.FC<LobbyProps> = ({
       return;
     }
 
+    const customDef = avatarModelServiceSingleton.getAvatarById(selectedAvatarId);
+    if (customDef?.trackingProfile) {
+      registerAvatarTrackingProfile(selectedAvatarId, customDef.trackingProfile);
+    }
     const profile = getAvatarTrackingProfile(selectedAvatarId);
 
     const getPt = (idx: number) => {
@@ -590,12 +600,6 @@ export const Lobby: React.FC<LobbyProps> = ({
       return;
     }
 
-    if (!hasMicPermission) {
-      setError('No es posible ingresar al espacio sin conceder permisos de micrófono.');
-      if (onRequestMic) onRequestMic();
-      return;
-    }
-
     if (isAdminUser && hasActiveAdminInRoom) {
       setError(
         `Ya hay un Administrador activo en la sala (${activeRoomRecord?.activeAdminName || 'Administrador'}). No puede haber más de un Admin al mismo tiempo en la sala. Puedes ingresar como participante.`
@@ -654,6 +658,7 @@ export const Lobby: React.FC<LobbyProps> = ({
             {/* Avatar Canvas */}
             <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-[#040406] border border-white/[0.06] flex items-center justify-center shadow-inner">
               <AvatarCanvas
+                key={`${selectedAvatarId}_${selectedAvatar?.modelUrl || selectedAvatar?.createdAt || ''}`}
                 avatarId={selectedAvatarId}
                 features={applyDynamicMode(
                   localFeatures,
@@ -670,21 +675,41 @@ export const Lobby: React.FC<LobbyProps> = ({
               />
 
               {/* Real-time Anatomical Mesh Overlay (100% Private - Zero Camera Image Rendered) */}
-              {showCameraPip && isCameraActive && (
-                <div className="absolute bottom-3 right-3 w-40 h-32 bg-slate-950/95 rounded-xl overflow-hidden border border-cyan-500/50 shadow-2xl z-30 flex flex-col">
-                  <div className="flex items-center justify-between px-2 py-1 bg-slate-900/90 border-b border-slate-800">
-                    <span className="text-[9px] font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse" />
-                      Mesh Anatómico
+              {showCameraPip && (
+                <div className="absolute bottom-3 right-3 w-44 h-36 bg-slate-950/95 rounded-xl overflow-hidden border border-cyan-500/50 shadow-2xl z-30 flex flex-col animate-in fade-in zoom-in-95">
+                  <div className="flex items-center justify-between px-2.5 py-1.5 bg-slate-900/90 border-b border-slate-800">
+                    <span className="text-[10px] font-mono font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${isCameraActive ? 'bg-cyan-400 animate-pulse' : 'bg-amber-400'}`} />
+                      Puntos Capturados
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => setShowCameraPip(false)}
+                      className="text-slate-400 hover:text-white p-0.5 cursor-pointer"
+                      title="Cerrar panel de puntos"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   </div>
-                  <div className="relative flex-1 w-full bg-slate-950">
+                  <div className="relative flex-1 w-full bg-slate-950 flex items-center justify-center">
                     <canvas
                       ref={canvasRef}
-                      width={160}
-                      height={108}
+                      width={176}
+                      height={120}
                       className="w-full h-full block"
                     />
+                    {!isCameraActive && (
+                      <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-xs flex flex-col items-center justify-center p-2 text-center z-10">
+                        <span className="text-[11px] text-slate-300 font-medium mb-1.5">Cámara inactiva</span>
+                        <button
+                          type="button"
+                          onClick={onToggleCamera}
+                          className="px-2.5 py-1 text-[10px] font-bold rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-md transition-colors cursor-pointer"
+                        >
+                          Activar Cámara
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -721,15 +746,39 @@ export const Lobby: React.FC<LobbyProps> = ({
                 </span>
               </div>
 
-              {/* Adjustments quick toggle button */}
-              <button
-                type="button"
-                onClick={() => setShowAdjustments(!showAdjustments)}
-                className="absolute top-3 left-3 p-1.5 rounded-lg bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 border border-slate-800 backdrop-blur-sm transition z-20 cursor-pointer"
-                title="Ajustar centrado y sensibilidad"
-              >
-                <Sliders className="w-3.5 h-3.5" />
-              </button>
+              {/* Top controls: Adjustments and Anatomical Mesh points quick toggle */}
+              <div className="absolute top-3 left-3 flex items-center gap-1.5 z-20">
+                <button
+                  type="button"
+                  onClick={() => setShowAdjustments(!showAdjustments)}
+                  className={`p-1.5 rounded-lg border backdrop-blur-sm transition cursor-pointer ${
+                    showAdjustments
+                      ? 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40 shadow-sm'
+                      : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 border-slate-800'
+                  }`}
+                  title="Ajustar centrado y sensibilidad"
+                >
+                  <Sliders className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!showCameraPip && !isCameraActive) {
+                      onToggleCamera();
+                    }
+                    setShowCameraPip(!showCameraPip);
+                  }}
+                  className={`p-1.5 rounded-lg border backdrop-blur-sm transition cursor-pointer ${
+                    showCameraPip
+                      ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/20 font-bold'
+                      : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 hover:text-cyan-300 border-slate-800'
+                  }`}
+                  title={showCameraPip ? 'Ocultar Puntos Capturados' : 'Ver Puntos Capturados (Mesh Anatómico)'}
+                >
+                  {showCameraPip ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
             </div>
 
             {/* Slider Adjustments Drawer */}
@@ -895,16 +944,24 @@ export const Lobby: React.FC<LobbyProps> = ({
                   {isCameraActive ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4 text-rose-400" />}
                 </button>
 
+                {/* Ver Puntos Capturados Button */}
                 <button
                   type="button"
-                  onClick={() => setShowCameraPip(!showCameraPip)}
-                  className={`p-2.5 rounded-xl border flex items-center justify-center transition cursor-pointer ${showCameraPip
-                    ? 'bg-cyan-500 text-slate-950 border-cyan-400 shadow-md shadow-cyan-500/20'
-                    : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300'
-                    }`}
-                  title="Mesh Anatómico. Sin vídeo"
+                  onClick={() => {
+                    if (!showCameraPip && !isCameraActive) {
+                      onToggleCamera();
+                    }
+                    setShowCameraPip(!showCameraPip);
+                  }}
+                  className={`p-2.5 rounded-xl border flex items-center justify-center gap-1.5 transition cursor-pointer text-xs font-semibold ${
+                    showCameraPip
+                      ? 'bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-500/50 text-cyan-300 shadow-sm'
+                      : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300 hover:text-white'
+                  }`}
+                  title={showCameraPip ? 'Ocultar Puntos Capturados' : 'Ver Puntos Capturados (Mesh Anatómico)'}
                 >
-                  {showCameraPip ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  <ScanFace className="w-4 h-4 text-cyan-400" />
+                  <span className="hidden sm:inline">Ver Puntos</span>
                 </button>
               </div>
 
@@ -936,15 +993,15 @@ export const Lobby: React.FC<LobbyProps> = ({
               </div>
             )}
 
-            {/* Camera & Microphone Notices */}
-            {!hasMicPermission && (
+            {/* Camera & Microphone Notices (Only show warning if mic permission was explicitly denied) */}
+            {!hasMicPermission && !!micError && (
               <div className="mt-3 p-3.5 bg-rose-950/80 border border-rose-600 rounded-xl text-xs text-rose-200 flex flex-col gap-2 shadow-lg shadow-rose-950/50 animate-in fade-in">
                 <div className="flex items-center gap-2 font-bold text-rose-300">
                   <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
                   <span>Permiso de micrófono no concedido</span>
                 </div>
                 <p className="text-[11px] text-rose-200/90 leading-relaxed">
-                  {micError || 'Es obligatorio conceder permisos de micrófono en tu navegador para poder ingresar y comunicarte en el espacio.'}
+                  {micError}
                 </p>
                 {onRequestMic && (
                   <button
@@ -987,15 +1044,15 @@ export const Lobby: React.FC<LobbyProps> = ({
         <div className="lg:col-span-6 flex flex-col justify-center">
           <div className="bg-[#0d0d12]/95 rounded-2xl border border-white/[0.08] p-5 md:p-7 shadow-2xl space-y-5">
 
-            {/* AVISO BLOQUEANTE: PERMISO DE MICRÓFONO REQUERIDO */}
-            {!hasMicPermission && (
+            {/* AVISO: ERROR DE MICRÓFONO EN CASO DE DENEGACIÓN */}
+            {!hasMicPermission && !!micError && (
               <div className="p-4 rounded-xl bg-rose-950/70 border border-rose-600 text-rose-200 text-xs space-y-2.5 shadow-xl shadow-rose-950/50 animate-fade-in">
                 <div className="flex items-center gap-2 font-bold text-rose-300 text-sm">
                   <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
-                  <span>Micrófono obligatorio para ingresar al espacio</span>
+                  <span>Permiso de micrófono requerido</span>
                 </div>
                 <p className="text-xs text-rose-200/90 leading-relaxed">
-                  {micError || 'No se han concedido permisos de micrófono. No es posible ingresar al espacio sin acceso a tu micrófono.'}
+                  {micError}
                 </p>
                 {onRequestMic && (
                   <button
@@ -1047,7 +1104,10 @@ export const Lobby: React.FC<LobbyProps> = ({
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={() => setIsFaceStudioOpen(true)}
+                      onClick={() => {
+                        setEditingAvatarForStudio(null);
+                        setIsFaceStudioOpen(true);
+                      }}
                       className="text-[11px] text-cyan-300 hover:text-cyan-200 font-black flex items-center gap-1 cursor-pointer bg-gradient-to-r from-cyan-500/20 to-indigo-500/20 hover:from-cyan-500/30 hover:to-indigo-500/30 px-2.5 py-1 rounded-lg border border-cyan-400/40 shadow-sm transition active:scale-95"
                       title="Crear Avatar Facial con 3D Masks"
                     >
@@ -1132,13 +1192,21 @@ export const Lobby: React.FC<LobbyProps> = ({
                           }`}
                         >
                           <div
-                            className="w-10 h-10 rounded-lg border flex items-center justify-center text-xl shadow-inner shrink-0"
+                            className="w-10 h-10 rounded-lg border flex items-center justify-center text-xl shadow-inner shrink-0 overflow-hidden"
                             style={{
                               background: `linear-gradient(135deg, ${avatar.themeColor}22, ${avatar.accentColor}33)`,
                               borderColor: `${avatar.themeColor}55`,
                             }}
                           >
-                            {avatar.emoji || '🎭'}
+                            {avatar.previewImage ? (
+                              <img
+                                src={avatar.previewImage}
+                                alt={avatar.name}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              avatar.emoji || '🎭'
+                            )}
                           </div>
                           <span className="text-[10px] font-bold text-slate-200 truncate w-full text-center">
                             {avatar.name}
@@ -1235,14 +1303,35 @@ export const Lobby: React.FC<LobbyProps> = ({
                               </button>
                             )}
 
+                            {/* Botón: Volver a Editar con 3D Mask */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditCustomAvatar(avatar);
+                              }}
+                              className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-slate-900/90 hover:bg-emerald-600 text-slate-400 hover:text-white border border-slate-700 hover:border-emerald-400 flex items-center justify-center transition shadow-md z-10 cursor-pointer"
+                              title={`Volver a editar "${avatar.name}" con 3D Mask`}
+                            >
+                              <Sliders className="w-2.5 h-2.5 text-emerald-400 group-hover:text-white" />
+                            </button>
+
                             <div
-                              className="w-10 h-10 rounded-lg border flex items-center justify-center text-xl shadow-inner shrink-0"
+                              className="w-10 h-10 rounded-lg border flex items-center justify-center text-xl shadow-inner shrink-0 overflow-hidden"
                               style={{
                                 background: `linear-gradient(135deg, ${avatar.themeColor}22, ${avatar.accentColor}33)`,
                                 borderColor: `${avatar.themeColor}55`,
                               }}
                             >
-                              {avatar.emoji || '🎭'}
+                              {avatar.previewImage ? (
+                                <img
+                                  src={avatar.previewImage}
+                                  alt={avatar.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                avatar.emoji || '🎭'
+                              )}
                             </div>
                             <span className="text-[10px] font-bold text-slate-200 truncate w-full text-center">
                               {avatar.name}
@@ -1261,7 +1350,10 @@ export const Lobby: React.FC<LobbyProps> = ({
                       {/* Botón + Crear con 3D Masks (Siempre visible en Mis Avatares) */}
                       <button
                         type="button"
-                        onClick={() => setIsFaceStudioOpen(true)}
+                        onClick={() => {
+                          setEditingAvatarForStudio(null);
+                          setIsFaceStudioOpen(true);
+                        }}
                         title="Crear nuevo avatar 3D facial con 52 blendshapes desde foto"
                         className="relative p-2 rounded-xl border border-dashed border-cyan-500/50 hover:border-cyan-400 bg-gradient-to-b from-cyan-950/30 to-indigo-950/30 hover:from-cyan-950/50 hover:to-indigo-950/50 text-left flex flex-col items-center justify-center gap-1 cursor-pointer transition active:scale-95 shadow-md shadow-cyan-950/20 min-h-[86px]"
                       >
@@ -1422,12 +1514,17 @@ export const Lobby: React.FC<LobbyProps> = ({
       {/* 3D Masks Admin Studio Modal */}
       <FaceBlendshapeStudioModal
         isOpen={isFaceStudioOpen}
-        onClose={() => setIsFaceStudioOpen(false)}
+        onClose={() => {
+          setIsFaceStudioOpen(false);
+          setEditingAvatarForStudio(null);
+        }}
         isAdmin={isAdminUser}
+        editingAvatar={editingAvatarForStudio}
         onSelectAvatar={(avatarId: AvatarId) => {
           handleSelectAvatar(avatarId);
           setAvatarTab('custom');
           setIsFaceStudioOpen(false);
+          setEditingAvatarForStudio(null);
         }}
       />
     </div>

@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Eye, EyeOff, ChevronDown, ChevronUp, ScanFace, GripHorizontal, Maximize2, Shield, Lock } from 'lucide-react';
 import { AvatarId, FaceFeatures } from '../../types';
-import { getAvatarTrackingProfile, transformAvatarLandmark } from '../avatars/avatarTrackingProfiles';
+import { getAvatarTrackingProfile, transformAvatarLandmark, registerAvatarTrackingProfile } from '../avatars/avatarTrackingProfiles';
+import { avatarModelServiceSingleton } from '../../services/avatarModelService';
 import { FaceTrackingVisionModule } from '../tracking/FaceTrackingVisionModule';
 
 interface CameraPreviewPipProps {
@@ -137,6 +138,10 @@ export const CameraPreviewPip: React.FC<CameraPreviewPipProps> = ({
     const w = canvas.width;
     const h = canvas.height;
 
+    const customDef = avatarModelServiceSingleton.getAvatarById(avatarId);
+    if (customDef?.trackingProfile) {
+      registerAvatarTrackingProfile(avatarId, customDef.trackingProfile);
+    }
     const profile = getAvatarTrackingProfile(avatarId);
 
     // Helper to get mirrored coordinate with avatar-specific anatomical morphing

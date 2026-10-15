@@ -119,15 +119,17 @@ export const RoomView: React.FC<RoomViewProps> = ({
   const [lastReadMessageCount, setLastReadMessageCount] = useState(messages.length);
 
   // Home Theater & Cue Modal States
-  const [isTheaterOpen, setIsTheaterOpen] = useState(() => !!mediaState.currentVideo);
+  const [isTheaterOpen, setIsTheaterOpen] = useState(() => !!(mediaState.currentVideo && mediaState.isPlaying));
   const [isQueueModalOpen, setIsQueueModalOpen] = useState(false);
 
   // Automatically open theater for all members whenever an active video starts or changes
+  const prevIsPlayingRef = useRef(mediaState.isPlaying);
   useEffect(() => {
-    if (mediaState.currentVideo) {
+    if (mediaState.currentVideo && mediaState.isPlaying && !prevIsPlayingRef.current) {
       setIsTheaterOpen(true);
     }
-  }, [mediaState.currentVideo?.id]);
+    prevIsPlayingRef.current = mediaState.isPlaying;
+  }, [mediaState.currentVideo?.id, mediaState.isPlaying]);
 
   const isAdmin = currentUser.role === 'admin';
   const unreadCount = Math.max(0, messages.length - lastReadMessageCount);

@@ -58,8 +58,12 @@ export interface AvatarDefinition {
   trackingProfile?: AvatarTrackingProfile;
   disabled?: boolean;
   isCustom?: boolean;
+  isPublic?: boolean;
   modelUrl?: string;
   fileData?: string;
+  previewImage?: string;
+  originalImage?: string;
+  debugParams?: any;
   createdAt?: number;
 }
 

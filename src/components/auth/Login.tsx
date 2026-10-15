@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, User, Eye, EyeOff, ArrowRight, AlertCircle, ShieldCheck, ArrowLeft, X, ChevronDown } from 'lucide-react';
 import { dbServiceSingleton } from '../../services/dbService';
+import { indexedDbService } from '../../services/db/indexedDbService';
 import { LegalDisclaimerModal } from '../common/LegalDisclaimerModal';
 import { PresidentesNeonHome } from '../home/PresidentesNeonHome';
 
@@ -101,18 +102,23 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     setIsLoading(true);
 
     try {
-      // Check admin credentials
-      const isAdmin = cleanUser === 'admin' && trimmedPass === 'pass2000';
+      // Validate credentials against IndexedDB user accounts
+      const userAccount = await indexedDbService.authenticateUser(cleanUser, trimmedPass);
 
-      // If user typed admin but wrong password
-      if (cleanUser === 'admin' && trimmedPass !== 'pass2000') {
-        setError('Contraseña incorrecta para la cuenta de Administrador.');
+      if (!userAccount) {
+        if (cleanUser === 'admin') {
+          setError('Contraseña incorrecta para la cuenta de Administrador.');
+        } else if (cleanUser.startsWith('presi')) {
+          setError(`Contraseña incorrecta para el usuario ${cleanUser}.`);
+        } else {
+          setError('Usuario o contraseña no válidos. Verifica tus credenciales.');
+        }
         setIsLoading(false);
         return;
       }
 
-      const role: 'admin' | 'participant' = isAdmin ? 'admin' : 'participant';
-      const displayName = cleanUser === 'admin' ? 'Administrador' : trimmedUser;
+      const role: 'admin' | 'participant' = userAccount.role;
+      const displayName = userAccount.name;
 
       const userRecord = await dbServiceSingleton.upsertUser({
         id: `user_${cleanUser}`,
@@ -120,7 +126,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
         name: displayName,
         role: role,
         provider: 'local',
-        avatarId: isAdmin ? 'three_robot' : 'cat_3d',
+        avatarId: (userAccount.avatarId as any) || (role === 'admin' ? 'three_robot' : 'cat_3d'),
         createdAt: Date.now(),
       });
 

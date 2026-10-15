@@ -6,7 +6,7 @@ import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.j
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { AvatarId, FaceFeatures, AvatarDefinition, DynamicTrackingMode } from '../../types';
 import { normalizeTrackingMode } from '../../services/face3d/dynamicModeHelper';
-import { getAvatarTrackingProfile } from './avatarTrackingProfiles';
+import { getAvatarTrackingProfile, registerAvatarTrackingProfile } from './avatarTrackingProfiles';
 import { AVATAR_LIST } from './avatarConfigs';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
 import {
@@ -304,12 +304,20 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
   const [isWebglAvailable, setIsWebglAvailable] = useState(true);
   const [isContextLost, setIsContextLost] = useState(false);
   const [restoreCount, setRestoreCount] = useState(0);
+  const [avatarRevision, setAvatarRevision] = useState(0);
   const [currentEmote, setCurrentEmote] = useState<string | null>(null);
   const [show3DMesh, setShow3DMesh] = useState(false);
   const show3DMeshRef = useRef(false);
   show3DMeshRef.current = show3DMesh;
   const trackingGroup3DRef = useRef<THREE.Group | null>(null);
-  const trackingProfile = getAvatarTrackingProfile(avatarId);
+
+  // Subscribe to live avatar updates so 3D Mask edits immediately update in-memory definitions
+  useEffect(() => {
+    const unsub = avatarModelServiceSingleton.subscribe(() => {
+      setAvatarRevision((r) => r + 1);
+    });
+    return unsub;
+  }, []);
 
   const avatarDef = useMemo<AvatarDefinition>(() => {
     const custom = avatarModelServiceSingleton.getAvatarById(avatarId);
@@ -326,7 +334,15 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
       tagline: 'Avatar 3D',
       category: 'Sci-Fi',
     };
-  }, [avatarId]);
+  }, [avatarId, avatarRevision]);
+
+  const trackingProfile = useMemo(() => {
+    if (avatarDef?.trackingProfile) {
+      registerAvatarTrackingProfile(avatarId, avatarDef.trackingProfile);
+      return avatarDef.trackingProfile;
+    }
+    return getAvatarTrackingProfile(avatarId);
+  }, [avatarId, avatarDef]);
 
   // References across render loop
   const sceneRef = useRef<THREE.Scene | null>(null);
@@ -1068,8 +1084,16 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           const oralCavityNode = clonedScene.getObjectByName('oralCavity');
           const eyesGroupNode = clonedScene.getObjectByName('eyesGroup');
 
-          // ── Read embedded calibration metadata ────────────────────────────
+          // ── Read embedded calibration metadata & apply avatar customizations ────────
           const metaNode = clonedScene.getObjectByName('xstreamx_meta');
+          const metaData = metaNode?.userData || {};
+          const effectiveDebugParams = avatarDef?.debugParams || metaData.debugParams || {
+            eyes: metaData.eyeOptions,
+            mouth: metaData.mouthParams,
+            face: metaData.faceParams,
+            head: metaData.headParams,
+          };
+
           if (metaNode?.userData?.version) {
             console.info(
               '[ThreeAvatarCanvas] xstreamx_meta v' + metaNode.userData.version +
@@ -1080,8 +1104,59 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             clonedScene.userData.calibrationMeta = {
               mouthParams: metaNode.userData.mouthParams ?? null,
               gestureParams: metaNode.userData.gestureParams ?? null,
+              eyeOptions: metaNode.userData.eyeOptions ?? null,
               landmarksSampled: metaNode.userData.landmarksSampled ?? null,
+              debugParams: effectiveDebugParams,
             };
+          }
+
+          // Apply Eye Customizations (Iris Color, Pupil Color, Pupil Size, Visibility)
+          if (effectiveDebugParams?.eyes) {
+            const eyeOpts = effectiveDebugParams.eyes;
+            if (eyesGroupNode && eyeOpts.enabled !== undefined) {
+              eyesGroupNode.visible = !!eyeOpts.enabled;
+            }
+            if (eyeOpts.irisColor) {
+              const irisCol = new THREE.Color(eyeOpts.irisColor);
+              clonedScene.traverse((child: any) => {
+                if (child.isMesh && child.name && child.name.includes('_iris') && child.material) {
+                  if (child.material.color) {
+                    child.material.color.copy(irisCol);
+                    child.material.needsUpdate = true;
+                  }
+                }
+              });
+            }
+            if (eyeOpts.pupilColor) {
+              const pupilCol = new THREE.Color(eyeOpts.pupilColor);
+              clonedScene.traverse((child: any) => {
+                if (child.isMesh && child.name && child.name.includes('_pupil') && child.material) {
+                  if (child.material.color) {
+                    child.material.color.copy(pupilCol);
+                    child.material.needsUpdate = true;
+                  }
+                }
+              });
+            }
+            if (eyeOpts.pupilSize !== undefined) {
+              const baseRatio = 0.32;
+              const scaleMult = Math.max(0.18, Math.min(0.55, eyeOpts.pupilSize)) / baseRatio;
+              clonedScene.traverse((child: any) => {
+                if (child.isMesh && child.name && child.name.includes('_pupil')) {
+                  child.scale.set(scaleMult, scaleMult, 1.0);
+                }
+              });
+            }
+          }
+
+          // Apply Mouth & Oral Cavity Customization Visibility
+          if (oralCavityNode && effectiveDebugParams?.mouth) {
+            oralCavityNode.visible = effectiveDebugParams.mouth.oralCavityEnabled ?? false;
+          }
+
+          // Apply Head Base Visibility
+          if (headBaseNode && effectiveDebugParams?.head) {
+            headBaseNode.visible = effectiveDebugParams.head.enabled ?? false;
           }
 
           // ── Lerp speed lookup tables (Fase 4) ────────────────────────────
@@ -1142,10 +1217,10 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
               // Facial expressions & 52 ARKit blendshapes synchronization
               const bShapes = features.blendshapes;
               const effectiveVol = Math.max(0, features.audioVolume || 0);
-              const speechJaw = effectiveVol > 0.003 ? Math.min(1, (effectiveVol - 0.003) * 5.2) : 0;
+              const speechJaw = effectiveVol > 0.005 ? Math.min(0.60, (effectiveVol - 0.005) * 2.6) : 0;
               const rawJaw = features.jawOpen || 0;
-              // Responsive, amplified mouth aperture (1.25x scaling for clear speech articulation)
-              const finalJaw = Math.min(1, Math.max(rawJaw * 1.25, speechJaw));
+              // Calibrated natural mouth articulation (animating lower lip smoothly without over-extending)
+              const finalJaw = Math.min(0.70, Math.max(rawJaw * 0.85, speechJaw));
 
               // Animate Lower Dental Arch in Oral Cavity relative to baseline
               if (lowerTeethNode) {
@@ -1906,7 +1981,7 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
         renderer.dispose();
       } catch (_) {}
     };
-  }, [avatarId, restoreCount]);
+  }, [avatarId, restoreCount, avatarRevision, avatarDef?.modelUrl]);
 
   return (
     <div

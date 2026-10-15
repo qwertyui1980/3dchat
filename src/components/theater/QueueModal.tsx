@@ -283,7 +283,7 @@ export const QueueModal: React.FC<QueueModalProps> = ({
                 {queue.map((item, index) => {
                   const isMine = item.addedByUserId === currentUser.id;
                   const isAdmin = currentUser.role === 'admin';
-                  const canDelete = isMine || isAdmin;
+                  const canDelete = isMine || isAdmin || item.addedByUserId === 'system';
                   const canReorder = isAdmin || isMine;
 
                   const handleMove = (delta: number) => {
@@ -347,13 +347,13 @@ export const QueueModal: React.FC<QueueModalProps> = ({
                       </div>
 
                       <div className="flex items-center gap-1 shrink-0">
-                        {/* Admin Action: Play/Advance this item now */}
-                        {isAdmin && onPlayNow && (
+                        {/* Action: Play/Advance this item now */}
+                        {(isAdmin || !currentVideo || !mediaState.isPlaying || isMine) && onPlayNow && (
                           <button
                             type="button"
                             onClick={() => onPlayNow(item.id)}
                             className="p-1.5 rounded-lg text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/20 border border-cyan-500/30 transition active:scale-95 cursor-pointer"
-                            title="Reproducir este video ahora (Admin)"
+                            title="Reproducir este video ahora"
                           >
                             <Play className="w-3.5 h-3.5 fill-current" />
                           </button>

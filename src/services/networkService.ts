@@ -4,6 +4,7 @@ import { Peer, DataConnection, MediaConnection } from 'peerjs';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { User, RoomInfo, FaceFeatures, ChatMessage, AvatarId, VideoQueueItem, RoomMediaState, WhiteboardStroke, DynamicTrackingMode } from '../types';
 import { getSupabaseClient } from './supabaseClient';
+import { INITIAL_ROOM_MEDIA_STATE } from '../utils/youtube';
 
 const PUBLIC_MQTT_BROKERS = [
   'wss://broker.emqx.io:8084/mqtt',
@@ -37,12 +38,8 @@ export class NetworkService {
   private lastSentTime: number = 0;
 
   public currentMediaState: RoomMediaState = {
-    currentVideo: null,
-    queue: [],
-    isPlaying: false,
-    playbackTime: 0,
-    lastSyncTimestamp: 0,
-    syncedByUserId: '',
+    ...INITIAL_ROOM_MEDIA_STATE,
+    lastSyncTimestamp: Date.now(),
   };
 
   // Event callbacks

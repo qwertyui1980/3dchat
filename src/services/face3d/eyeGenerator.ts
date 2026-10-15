@@ -186,49 +186,61 @@ export class EyeGenerator {
     const eyeGroup = new THREE.Group();
     eyeGroup.name = name;
 
-    // 1. Sclera (White sphere with slight warmth)
-    const scleraGeo = new THREE.SphereGeometry(radius, 32, 24);
+    // 1. Sclera (White sphere with slight warmth and front corneal opening)
+    // Front opening from theta = 0 to 0.48 so the white sclera never occludes the iris or pupil
+    const scleraGeo = new THREE.SphereGeometry(radius, 32, 24, 0, Math.PI * 2, 0.48, Math.PI - 0.48);
     const scleraMat = new THREE.MeshStandardMaterial({
       color: 0xfcfbfa,
       roughness: 0.18,
       metalness: 0.02,
       emissive: new THREE.Color(0x18181b),
       emissiveIntensity: 0.08,
+      side: THREE.FrontSide,
     });
     const scleraMesh = new THREE.Mesh(scleraGeo, scleraMat);
     scleraMesh.name = `${name}_sclera`;
+    scleraMesh.rotation.x = Math.PI / 2; // Point opening forward in +Z
     scleraMesh.castShadow = true;
     scleraMesh.receiveShadow = true;
+    scleraMesh.renderOrder = 1;
     eyeGroup.add(scleraMesh);
 
-    // 2. Iris disc positioned at the front (+Z) of the eyeball
-    const irisRadius = radius * 0.58;
+    // 2. Iris disc positioned at the front (+Z) of the eyeball inside the corneal opening
+    const irisRadius = radius * 0.54;
     const irisGeo = new THREE.CircleGeometry(irisRadius, 32);
     const irisTexture = this.createIrisTexture(irisColor, pupilRatio, pupilColor);
     const irisMat = new THREE.MeshStandardMaterial({
       map: irisTexture,
       roughness: 0.25,
       metalness: 0.05,
-      side: THREE.FrontSide,
+      side: THREE.DoubleSide,
+      depthTest: true,
+      depthWrite: true,
     });
     const irisMesh = new THREE.Mesh(irisGeo, irisMat);
     irisMesh.name = `${name}_iris`;
-    // Position slightly forward at the front pole of the sphere (+Z)
     irisMesh.position.z = radius * 0.88;
+    irisMesh.renderOrder = 2;
     eyeGroup.add(irisMesh);
 
     // 3. Physical Central Pupil disc (customizable color, guaranteed visible under any lighting)
-    const pRadius = irisRadius * Math.max(0.18, Math.min(0.55, pupilRatio));
+    const pRadius = irisRadius * DEFAULT_EYE_OPTIONS.pupilSize;
     const pupilGeo = new THREE.CircleGeometry(pRadius, 32);
     const pupilMat = new THREE.MeshBasicMaterial({
       color: new THREE.Color(pupilColor),
-      side: THREE.FrontSide,
+      side: THREE.DoubleSide,
       depthTest: true,
+      depthWrite: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
     });
     const pupilMesh = new THREE.Mesh(pupilGeo, pupilMat);
     pupilMesh.name = `${name}_pupil`;
-    pupilMesh.position.z = radius * 0.885; // Slightly in front of iris
-    pupilMesh.renderOrder = 2;
+    pupilMesh.position.z = radius * 0.888; // Positioned cleanly in front of iris disc
+    pupilMesh.renderOrder = 3;
+    const initialPupilScale = Math.max(0.18, Math.min(0.55, pupilRatio)) / DEFAULT_EYE_OPTIONS.pupilSize;
+    pupilMesh.scale.set(initialPupilScale, initialPupilScale, 1.0);
     eyeGroup.add(pupilMesh);
 
     // 4. Ultra-clear non-occluding Cornea Dome (depthWrite: false ensures pupil/iris are never hidden)
@@ -245,6 +257,7 @@ export class EyeGenerator {
     corneaMesh.name = `${name}_cornea`;
     corneaMesh.rotation.x = Math.PI / 2; // Point dome forward in +Z
     corneaMesh.position.z = radius * 0.85;
+    corneaMesh.renderOrder = 4;
     eyeGroup.add(corneaMesh);
 
     return { eyeGroup, irisMesh, pupilMesh, corneaMesh, baseIrisRadius: irisRadius };
@@ -288,12 +301,12 @@ export class EyeGenerator {
     const baseLeftPos = new THREE.Vector3(
       leftCenterX,
       leftCenterY,
-      leftCenterZ - baseRadius * 0.48
+      leftCenterZ - baseRadius * 0.38
     );
     const baseRightPos = new THREE.Vector3(
       rightCenterX,
       rightCenterY,
-      rightCenterZ - baseRadius * 0.48
+      rightCenterZ - baseRadius * 0.38
     );
 
     const rootGroup = new THREE.Group();
@@ -359,6 +372,7 @@ export class EyeGenerator {
     const setIrisColor = (hexColor: string) => {
       opts.irisColor = hexColor;
       const newTexture = EyeGenerator.createIrisTexture(hexColor, opts.pupilSize, opts.pupilColor);
+      newTexture.needsUpdate = true;
       if (leftEyeData.irisMesh.material instanceof THREE.MeshStandardMaterial) {
         leftEyeData.irisMesh.material.map = newTexture;
         leftEyeData.irisMesh.material.needsUpdate = true;

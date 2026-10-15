@@ -22,6 +22,9 @@ import {
   Plus,
   Pencil,
   Check,
+  Camera,
+  Image as ImageIcon,
+  Sliders,
 } from 'lucide-react';
 import { RoomInfo, User, AvatarDefinition } from '../../types';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
@@ -57,16 +60,46 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
     avatarModelServiceSingleton.getAllAvatars()
   );
   const [isFaceStudioModalOpen, setIsFaceStudioModalOpen] = useState(false);
+  const [editingAvatarForStudio, setEditingAvatarForStudio] = useState<AvatarDefinition | null>(null);
 
   // Upload Form State
   const [modelName, setModelName] = useState('');
   const [modelCategory, setModelCategory] = useState('Personalizados');
   const [modelThemeColor, setModelThemeColor] = useState('#06b6d4');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedThumbPreview, setSelectedThumbPreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadSuccess, setUploadSuccess] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const thumbInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleUploadCustomThumbnail = async (avatarId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const dataUrl = reader.result as string;
+        await avatarModelServiceSingleton.updateModelPreview(avatarId, dataUrl);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleThumbFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = () => {
+        setSelectedThumbPreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Inline rename state for admin
+  const [editingAvatarId, setEditingAvatarId] = useState<string | null>(null);
+  const [editingAvatarName, setEditingAvatarName] = useState<string>('');
 
   useEffect(() => {
     const unsub = avatarModelServiceSingleton.subscribe(() => {
@@ -92,10 +125,6 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
       avatarModelServiceSingleton.deleteModel(avatarId);
     }
   };
-
-  // Inline rename state for admin
-  const [editingAvatarId, setEditingAvatarId] = useState<string | null>(null);
-  const [editingAvatarName, setEditingAvatarName] = useState<string>('');
 
   const handleStartRename = (av: AvatarDefinition) => {
     setEditingAvatarId(av.id);
@@ -136,13 +165,16 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
         name: modelName || selectedFile.name,
         category: modelCategory,
         themeColor: modelThemeColor,
+        previewImage: selectedThumbPreview || undefined,
         file: selectedFile,
       });
 
       setUploadSuccess(`¡Modelo "${created.name}" agregado con éxito a la lista de modelos!`);
       setSelectedFile(null);
+      setSelectedThumbPreview(null);
       setModelName('');
       if (fileInputRef.current) fileInputRef.current.value = '';
+      if (thumbInputRef.current) thumbInputRef.current.value = '';
       if (onSelectAvatar) {
         onSelectAvatar(created.id);
       }
@@ -297,12 +329,12 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                     </div>
                   </div>
 
-                  {/* File Selector */}
-                  <div>
-                    <label className="block text-[11px] font-bold text-neutral-300 mb-1">
-                      Archivo 3D (.glb, .gltf, .vrm, .json, .obj)
-                    </label>
-                    <div className="flex items-center gap-3">
+                  {/* File Selector & Optional Thumbnail */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-bold text-neutral-300 mb-1">
+                        Archivo 3D (.glb, .gltf, .vrm, .json, .obj) *
+                      </label>
                       <input
                         ref={fileInputRef}
                         type="file"
@@ -313,29 +345,61 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                       />
                       <label
                         htmlFor="admin-model-file-input"
-                        className="flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border border-dashed border-cyan-500/40 hover:border-cyan-400 bg-cyan-950/20 hover:bg-cyan-950/30 text-cyan-300 text-xs font-bold cursor-pointer transition"
+                        className="flex items-center justify-center gap-2 p-2.5 rounded-xl border border-dashed border-cyan-500/40 hover:border-cyan-400 bg-cyan-950/20 hover:bg-cyan-950/30 text-cyan-300 text-xs font-bold cursor-pointer transition truncate"
                       >
-                        <FileBox className="w-4 h-4" />
-                        <span>
-                          {selectedFile ? selectedFile.name : 'Haz clic para seleccionar archivo 3D'}
+                        <FileBox className="w-4 h-4 shrink-0" />
+                        <span className="truncate">
+                          {selectedFile ? selectedFile.name : 'Seleccionar Archivo 3D'}
                         </span>
                       </label>
+                    </div>
 
-                      <button
-                        type="submit"
-                        disabled={isUploading || !selectedFile}
-                        className="px-5 py-3 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white font-bold text-xs transition active:scale-95 shadow-md shadow-cyan-900/30 cursor-pointer flex items-center gap-2"
+                    <div>
+                      <label className="block text-[11px] font-bold text-neutral-300 mb-1">
+                        Imagen de Vista Previa (Opcional)
+                      </label>
+                      <input
+                        ref={thumbInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleThumbFileChange}
+                        className="hidden"
+                        id="admin-thumb-file-input"
+                      />
+                      <label
+                        htmlFor="admin-thumb-file-input"
+                        className="flex items-center justify-center gap-2 p-2.5 rounded-xl border border-dashed border-indigo-500/40 hover:border-indigo-400 bg-indigo-950/20 hover:bg-indigo-950/30 text-indigo-300 text-xs font-bold cursor-pointer transition truncate"
                       >
-                        {isUploading ? (
-                          <span>Procesando...</span>
+                        {selectedThumbPreview ? (
+                          <div className="flex items-center gap-2">
+                            <img src={selectedThumbPreview} alt="Preview" className="w-5 h-5 rounded object-cover" />
+                            <span className="text-emerald-400 text-[11px]">Imagen cargada ✓</span>
+                          </div>
                         ) : (
                           <>
-                            <Plus className="w-4 h-4" />
-                            <span>Agregar Modelo</span>
+                            <ImageIcon className="w-4 h-4 shrink-0" />
+                            <span>Subir Miniatura PNG/JPG</span>
                           </>
                         )}
-                      </button>
+                      </label>
                     </div>
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="submit"
+                      disabled={isUploading || !selectedFile}
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white font-bold text-xs transition active:scale-95 shadow-md shadow-cyan-900/30 cursor-pointer flex items-center gap-2"
+                    >
+                      {isUploading ? (
+                        <span>Procesando modelo...</span>
+                      ) : (
+                        <>
+                          <Plus className="w-4 h-4" />
+                          <span>Guardar Modelo en Base de Datos</span>
+                        </>
+                      )}
+                    </button>
                   </div>
 
                   {uploadSuccess && (
@@ -388,14 +452,41 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                         }`}
                       >
                         <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
-                          <div
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-base shrink-0 border"
-                            style={{
-                              backgroundColor: `${av.themeColor}20`,
-                              borderColor: `${av.themeColor}50`,
-                            }}
-                          >
-                            {av.emoji || '🤖'}
+                          {/* Miniatura visual del modelo almacenada en DB */}
+                          <div className="relative group/thumb shrink-0">
+                            <div
+                              className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border overflow-hidden shadow-md transition group-hover/thumb:scale-105"
+                              style={{
+                                backgroundColor: `${av.themeColor}20`,
+                                borderColor: `${av.themeColor}60`,
+                              }}
+                            >
+                              {av.previewImage ? (
+                                <img
+                                  src={av.previewImage}
+                                  alt={av.name}
+                                  className="w-full h-full object-cover"
+                                />
+                              ) : (
+                                <span className="text-xl">{av.emoji || '🤖'}</span>
+                              )}
+                            </div>
+
+                            {/* Botón para cambiar o subir imagen de miniatura personalizada */}
+                            <label
+                              htmlFor={`change-thumb-${av.id}`}
+                              className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-cyan-600 hover:bg-cyan-500 border border-slate-950 text-white flex items-center justify-center cursor-pointer shadow opacity-0 group-hover/thumb:opacity-100 transition z-10"
+                              title="Cambiar miniatura/imagen del modelo"
+                            >
+                              <Camera className="w-2.5 h-2.5" />
+                              <input
+                                id={`change-thumb-${av.id}`}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => handleUploadCustomThumbnail(av.id, e)}
+                              />
+                            </label>
                           </div>
 
                           {editingAvatarId === av.id ? (
@@ -481,6 +572,21 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                               </>
                             )}
                           </button>
+
+                          {/* Edit with 3D Masks Button (if custom model) */}
+                          {av.isCustom && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingAvatarForStudio(av);
+                                setIsFaceStudioModalOpen(true);
+                              }}
+                              className="p-1.5 rounded-lg bg-emerald-950/40 hover:bg-emerald-900 border border-emerald-500/30 hover:border-emerald-400 text-emerald-300 transition active:scale-90 cursor-pointer"
+                              title="Volver a editar este modelo en 3D Masks Studio"
+                            >
+                              <Sliders className="w-3.5 h-3.5" />
+                            </button>
+                          )}
 
                           {/* 1-Click Delete Button ('X') */}
                           <button
@@ -651,11 +757,16 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
       {/* Face to Blendshape 3D Admin Studio Modal */}
       <FaceBlendshapeStudioModal
         isOpen={isFaceStudioModalOpen}
-        onClose={() => setIsFaceStudioModalOpen(false)}
+        onClose={() => {
+          setIsFaceStudioModalOpen(false);
+          setEditingAvatarForStudio(null);
+        }}
         isAdmin={true}
+        editingAvatar={editingAvatarForStudio}
         onSelectAvatar={(avatarId) => {
           if (onSelectAvatar) onSelectAvatar(avatarId);
           setIsFaceStudioModalOpen(false);
+          setEditingAvatarForStudio(null);
         }}
       />
     </div>

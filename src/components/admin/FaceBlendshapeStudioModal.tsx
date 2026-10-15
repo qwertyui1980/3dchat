@@ -22,13 +22,13 @@ import {
   Minimize2,
   Box,
   Image as ImageIcon,
-  Video,
-  VideoOff,
   Palette,
   Wand2,
   Volume2,
   VolumeX,
   ScanFace,
+  User,
+  Globe,
 } from 'lucide-react';
 import {
   faceToBlendshapeServiceSingleton,
@@ -39,15 +39,24 @@ import {
   DEFAULT_GESTURE_PARAMS,
 } from '../../services/face3d/faceToBlendshapeService';
 import { EyePairResult, IRIS_COLOR_PRESETS, PUPIL_COLOR_PRESETS } from '../../services/face3d/eyeGenerator';
-import { ARKIT_BLENDSHAPE_NAMES, ARKitBlendshapeName, ARKitBlendshapeMapper } from '../../services/face3d/arkitMapper';
-import { faceTrackerSingleton } from '../../services/mediapipeService';
+import { ARKIT_BLENDSHAPE_NAMES, ARKitBlendshapeName } from '../../services/face3d/arkitMapper';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
+import { AvatarDefinition } from '../../types';
+import { LandmarkCalibrationModal } from './LandmarkCalibrationModal';
+import {
+  LandmarkDensity,
+  LandmarkMicroAdjustments,
+  DEFAULT_MICRO_ADJUSTMENTS,
+  Point3D,
+  DENSITY_INDICES,
+} from '../../services/face3d/landmarkCalibrationService';
 
 interface FaceBlendshapeStudioModalProps {
   isOpen: boolean;
   onClose: () => void;
   isAdmin?: boolean;
   onSelectAvatar?: (avatarId: string) => void;
+  editingAvatar?: AvatarDefinition | null;
 }
 
 export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps> = ({
@@ -55,6 +64,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   onClose,
   isAdmin = true,
   onSelectAvatar,
+  editingAvatar,
 }) => {
   // Tabs
   const [activeTab, setActiveTab] = useState<'morphs' | 'tuning' | 'export'>('morphs');
@@ -66,18 +76,14 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   const [statusMessage, setStatusMessage] = useState<{ text: string; type: 'info' | 'success' | 'error' } | null>(null);
   const [hasGeneratedModel, setHasGeneratedModel] = useState(false);
 
-  // Webcam capture state
-  const [isWebcamActive, setIsWebcamActive] = useState(false);
-  const webcamVideoRef = useRef<HTMLVideoElement | null>(null);
-  const webcamStreamRef = useRef<MediaStream | null>(null);
-
-  // Live Webcam Real-time Tracking state
-  const [isLiveTracking, setIsLiveTracking] = useState(false);
-  const liveVideoRef = useRef<HTMLVideoElement | null>(null);
-  const liveStreamRef = useRef<MediaStream | null>(null);
-  const arkitMapperRef = useRef<ARKitBlendshapeMapper>(new ARKitBlendshapeMapper());
-  const lastUiUpdateRef = useRef<number>(0);
-
+  // Landmark Manual Calibration & Point Density state
+  const [isCalibrationModalOpen, setIsCalibrationModalOpen] = useState(false);
+  const [rawDetectedLandmarks, setRawDetectedLandmarks] = useState<Point3D[]>([]);
+  const rawDetectedLandmarksRef = useRef<Point3D[]>([]);
+  const [customLandmarks, setCustomLandmarks] = useState<Point3D[] | null>(null);
+  const [calibratedDensity, setCalibratedDensity] = useState<LandmarkDensity>(32);
+  const [pinDeltas, setPinDeltas] = useState<Record<number, { dx: number; dy: number }>>({});
+  const [microAdjustments, setMicroAdjustments] = useState<LandmarkMicroAdjustments>(DEFAULT_MICRO_ADJUSTMENTS);
   // Speech Simulation Preview state (dividing from lower lip down, closing with upper lip)
   const [isSimulatingSpeech, setIsSimulatingSpeech] = useState(false);
   const isSimulatingSpeechRef = useRef(false);
@@ -105,7 +111,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   // Display toggles
   const [showFaceMesh, setShowFaceMesh] = useState(true);
   const [showWireframe, setShowWireframe] = useState(false);
-  const [showHeadBase, setShowHeadBase] = useState(true);
+  const [showHeadBase, setShowHeadBase] = useState(false);
   const [showTrackingPoints, setShowTrackingPoints] = useState(false);
   const [showPhotoPlane, setShowPhotoPlane] = useState(false);
   const [photoPlaneOpacity, setPhotoPlaneOpacity] = useState(0.7);
@@ -130,6 +136,15 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   const [isExporting, setIsExporting] = useState(false);
   const [isSavingAvatar, setIsSavingAvatar] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // Edit Existing Model tracking
+  const [currentEditingAvatarId, setCurrentEditingAvatarId] = useState<string | null>(
+    editingAvatar?.id || null
+  );
+  const autoProcessedAvatarIdRef = useRef<string | null>(null);
+
+  // Target Collection: Personal ('Mis Avatares') vs Public ('Modelos Predefinidos')
+  const [targetCollection, setTargetCollection] = useState<'personal' | 'public'>('personal');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -158,6 +173,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     sceneRef.current = scene;
 
     if (photoPlaneRef.current) {
+      photoPlaneRef.current.visible = showPhotoPlane;
       scene.add(photoPlaneRef.current);
     }
 
@@ -223,9 +239,9 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
 
       if (isSimulatingSpeechRef.current && faceMeshRef.current) {
         const t = performance.now() * 0.0055;
-        // Natural speech syllabic envelope (cadence between 0 and 0.70)
-        const wave = Math.sin(t * 1.9) * 0.38 + Math.sin(t * 3.7) * 0.22 + Math.sin(t * 0.8) * 0.15;
-        const speechOpen = Math.max(0, Math.min(0.75, wave));
+        // Natural speech syllabic envelope (cadence between 0 and 0.50)
+        const wave = Math.sin(t * 1.9) * 0.28 + Math.sin(t * 3.7) * 0.16 + Math.sin(t * 0.8) * 0.10;
+        const speechOpen = Math.max(0, Math.min(0.50, wave));
 
         const mesh = faceMeshRef.current;
         const jawIdx = mesh.morphTargetDictionary ? mesh.morphTargetDictionary['jawOpen'] : undefined;
@@ -277,52 +293,82 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     animate();
   }, []);
 
-  // Stop Live Webcam Tracking
-  const stopLiveWebcamTracking = useCallback(() => {
-    faceTrackerSingleton.stopTracking();
-    if (liveStreamRef.current) {
-      liveStreamRef.current.getTracks().forEach((t) => t.stop());
-      liveStreamRef.current = null;
-    }
-    if (liveVideoRef.current) {
-      liveVideoRef.current.srcObject = null;
-    }
-    setIsLiveTracking(false);
 
-    const currentParams = debugParamsRef.current;
-    // Reset rotation to neutral
-    if (faceMeshRef.current) {
-      faceMeshRef.current.rotation.set(
-        THREE.MathUtils.degToRad(currentParams.face.rotationX),
-        THREE.MathUtils.degToRad(currentParams.face.rotationY),
-        THREE.MathUtils.degToRad(currentParams.face.rotationZ)
-      );
-    }
-    if (headModelRef.current) {
-      headModelRef.current.rotation.set(
-        THREE.MathUtils.degToRad(currentParams.head.rotationX),
-        THREE.MathUtils.degToRad(currentParams.head.rotationY),
-        THREE.MathUtils.degToRad(currentParams.head.rotationZ)
-      );
-    }
-    if (eyePairResultRef.current) {
-      eyePairResultRef.current.updateGaze(
-        currentParams.eyes?.manualGazeX || 0,
-        currentParams.eyes?.manualGazeY || 0
-      );
-    }
-    if (oralCavityRef.current) {
-      const lowerTeeth = oralCavityRef.current.getObjectByName('lowerTeeth');
-      if (lowerTeeth) {
-        lowerTeeth.position.y = -0.038;
-        lowerTeeth.position.z = -0.065;
-      }
-    }
-  }, []);
 
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
     if (isOpen && isAdmin) {
+      if (editingAvatar) {
+        setCurrentEditingAvatarId(editingAvatar.id);
+        setExportAvatarName(editingAvatar.name);
+        setExportThemeColor(editingAvatar.themeColor || '#06b6d4');
+        setTargetCollection(editingAvatar.isPublic || !editingAvatar.isCustom ? 'public' : 'personal');
+        const initialParams = editingAvatar.debugParams
+          ? { ...DEFAULT_DEBUG_PARAMS, ...editingAvatar.debugParams }
+          : DEFAULT_DEBUG_PARAMS;
+        setDebugParams(initialParams);
+        debugParamsRef.current = initialParams;
+        setShowHeadBase(false);
+        setShowPhotoPlane(false);
+        showPhotoPlaneRef.current = false;
+        setTestBlendshapes({});
+
+        if (initialParams.calibration) {
+          const cal = initialParams.calibration;
+          setCalibratedDensity(cal.density || 32);
+          setPinDeltas(cal.pinDeltas || {});
+          setMicroAdjustments(cal.microAdjustments || DEFAULT_MICRO_ADJUSTMENTS);
+          if (cal.customLandmarks && Array.isArray(cal.customLandmarks)) {
+            const parsed = cal.customLandmarks.map((pt: any) => {
+              if (Array.isArray(pt)) {
+                return { x: Number(pt[0]) || 0, y: Number(pt[1]) || 0, z: Number(pt[2]) || 0 };
+              }
+              return { x: Number(pt?.x) || 0, y: Number(pt?.y) || 0, z: Number(pt?.z) || 0 };
+            });
+            setCustomLandmarks(parsed);
+          } else {
+            setCustomLandmarks(null);
+          }
+        } else {
+          setCalibratedDensity(32);
+          setPinDeltas({});
+          setMicroAdjustments(DEFAULT_MICRO_ADJUSTMENTS);
+          setCustomLandmarks(null);
+        }
+
+        const imageSrc = editingAvatar.originalImage || editingAvatar.previewImage;
+        if (imageSrc) {
+          setPreviewUrl(imageSrc);
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            setSelectedImageElement(img);
+            setStatus(`Modelo "${editingAvatar.name}" cargado para edición. Genera el modelo o ajusta los parámetros y guarda tus cambios.`, 'info');
+          };
+          img.src = imageSrc;
+        }
+      } else {
+        setCurrentEditingAvatarId(null);
+        setExportAvatarName('');
+        setExportThemeColor('#06b6d4');
+        setTargetCollection('personal');
+        setPreviewUrl(null);
+        setSelectedImageElement(null);
+        setHasGeneratedModel(false);
+        // Por defecto no tendrá base cabeza, plano foto, ni boca
+        setShowHeadBase(false);
+        setShowPhotoPlane(false);
+        showPhotoPlaneRef.current = false;
+        setTestBlendshapes({});
+        setDebugParams(DEFAULT_DEBUG_PARAMS);
+        setCalibratedDensity(32);
+        setPinDeltas({});
+        setMicroAdjustments(DEFAULT_MICRO_ADJUSTMENTS);
+        setCustomLandmarks(null);
+        setRawDetectedLandmarks([]);
+        rawDetectedLandmarksRef.current = [];
+      }
+
       timer = setTimeout(() => {
         initThreeScene();
       }, 100);
@@ -332,10 +378,26 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       if (animationFrameIdRef.current) {
         cancelAnimationFrame(animationFrameIdRef.current);
       }
-      stopWebcam();
-      stopLiveWebcamTracking();
     };
-  }, [isOpen, isAdmin, initThreeScene, stopLiveWebcamTracking]);
+  }, [isOpen, isAdmin, editingAvatar, initThreeScene]);
+
+  // Auto-generate 3D Model when editing existing avatar once image & ThreeJS scene are ready
+  useEffect(() => {
+    if (
+      isOpen &&
+      editingAvatar &&
+      selectedImageElement &&
+      sceneRef.current &&
+      autoProcessedAvatarIdRef.current !== editingAvatar.id &&
+      !isProcessing
+    ) {
+      autoProcessedAvatarIdRef.current = editingAvatar.id;
+      const t = setTimeout(() => {
+        processImage();
+      }, 250);
+      return () => clearTimeout(t);
+    }
+  }, [isOpen, editingAvatar, selectedImageElement, isProcessing]);
 
   // Handle Responsive Resize
   useEffect(() => {
@@ -370,154 +432,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     };
   }, [isOpen]);
 
-  // Stop Webcam
-  const stopWebcam = () => {
-    if (webcamStreamRef.current) {
-      webcamStreamRef.current.getTracks().forEach((t) => t.stop());
-      webcamStreamRef.current = null;
-    }
-    setIsWebcamActive(false);
-  };
 
-  // Start Webcam
-  const startWebcam = async () => {
-    try {
-      stopWebcam();
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-        audio: false,
-      });
-      webcamStreamRef.current = stream;
-      setIsWebcamActive(true);
-      if (webcamVideoRef.current) {
-        webcamVideoRef.current.srcObject = stream;
-        webcamVideoRef.current.play();
-      }
-    } catch (err: any) {
-      setStatus(`Error accediendo a la cámara: ${err?.message || err}`, 'error');
-    }
-  };
-
-  // Take snapshot from Webcam
-  const captureWebcamSnapshot = () => {
-    if (!webcamVideoRef.current) return;
-    const video = webcamVideoRef.current;
-    const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const dataUrl = canvas.toDataURL('image/png');
-
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      setSelectedImageElement(img);
-      setPreviewUrl(dataUrl);
-      setShowPhotoPlane(true);
-      stopWebcam();
-      setStatus('Foto capturada con éxito. Haz clic en "Generar Modelo 3D".', 'info');
-    };
-    img.src = dataUrl;
-  };
-
-  // Start Live Webcam Tracking
-  const startLiveWebcamTracking = async () => {
-    try {
-      if (!faceMeshRef.current) {
-        setStatus('Genera el modelo 3D primero para animar los blendshapes en vivo.', 'error');
-        return;
-      }
-
-      stopLiveWebcamTracking();
-
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
-        audio: false,
-      });
-      liveStreamRef.current = stream;
-      setIsLiveTracking(true);
-
-      if (liveVideoRef.current) {
-        liveVideoRef.current.srcObject = stream;
-        await liveVideoRef.current.play();
-
-        faceTrackerSingleton.startTracking(
-          liveVideoRef.current,
-          (features) => {
-            // Live head pose orientation (lerped)
-            if (faceMeshRef.current) {
-              const baseY = THREE.MathUtils.degToRad(debugParams.face.rotationY);
-              const baseX = THREE.MathUtils.degToRad(debugParams.face.rotationX);
-              const baseZ = THREE.MathUtils.degToRad(debugParams.face.rotationZ);
-
-              faceMeshRef.current.rotation.y = THREE.MathUtils.lerp(faceMeshRef.current.rotation.y, baseY + features.yaw * 0.75, 0.3);
-              faceMeshRef.current.rotation.x = THREE.MathUtils.lerp(faceMeshRef.current.rotation.x, baseX + features.pitch * 0.75, 0.3);
-              faceMeshRef.current.rotation.z = THREE.MathUtils.lerp(faceMeshRef.current.rotation.z, baseZ + features.roll * 0.75, 0.3);
-            }
-            if (headModelRef.current) {
-              const baseY = THREE.MathUtils.degToRad(debugParams.head.rotationY);
-              const baseX = THREE.MathUtils.degToRad(debugParams.head.rotationX);
-              const baseZ = THREE.MathUtils.degToRad(debugParams.head.rotationZ);
-
-              headModelRef.current.rotation.y = THREE.MathUtils.lerp(headModelRef.current.rotation.y, baseY + features.yaw * 0.75, 0.3);
-              headModelRef.current.rotation.x = THREE.MathUtils.lerp(headModelRef.current.rotation.x, baseX + features.pitch * 0.75, 0.3);
-              headModelRef.current.rotation.z = THREE.MathUtils.lerp(headModelRef.current.rotation.z, baseZ + features.roll * 0.75, 0.3);
-            }
-
-            // Real-time 3D Eyeball Gaze Tracking from Webcam
-            if (
-              eyePairResultRef.current &&
-              debugParams.eyes?.enabled &&
-              (debugParams.eyes?.gazeTracking ?? true)
-            ) {
-              eyePairResultRef.current.updateGaze(features.gazeX || 0, features.gazeY || 0);
-            }
-          },
-          undefined,
-          (categories, landmarks) => {
-            // Live ARKit blendshapes mapping
-            const mapped = arkitMapperRef.current.mapMediaPipeToARKit(categories, landmarks);
-            const mesh = faceMeshRef.current;
-            if (!mesh || !mesh.morphTargetDictionary || !mesh.morphTargetInfluences) return;
-
-            Object.entries(mapped).forEach(([name, val]) => {
-              const idx = mesh.morphTargetDictionary![name];
-              if (idx !== undefined && mesh.morphTargetInfluences) {
-                mesh.morphTargetInfluences[idx] = val;
-              }
-            });
-
-            // Live Oral Cavity Lower Dental Arch Kinematics
-            if (oralCavityRef.current && debugParams.mouth?.oralCavityEnabled) {
-              const lowerTeeth = oralCavityRef.current.getObjectByName('lowerTeeth');
-              if (lowerTeeth) {
-                if (!lowerTeeth.userData.basePos) lowerTeeth.userData.basePos = lowerTeeth.position.clone();
-                const base = lowerTeeth.userData.basePos as THREE.Vector3;
-                const jawOpenVal = mapped['jawOpen'] || 0;
-                const jawIntensity = debugParams.mouth?.jawOpenScale ?? 1.0;
-                lowerTeeth.position.y = base.y - jawOpenVal * 0.18 * jawIntensity;
-                lowerTeeth.position.z = base.z - jawOpenVal * 0.08 * jawIntensity;
-              }
-            }
-
-            // Throttle UI slider updates to every 60ms for silky 60 FPS ThreeJS + smooth React
-            const now = performance.now();
-            if (now - lastUiUpdateRef.current > 60) {
-              lastUiUpdateRef.current = now;
-              setTestBlendshapes({ ...mapped });
-            }
-          }
-        );
-      }
-      setStatus('¡Espejo facial activo! Mueve tu rostro o habla frente a la cámara.', 'success');
-    } catch (err: any) {
-      console.error('[FaceBlendshapeStudio] Live tracking error:', err);
-      setStatus(`Error al iniciar tracking en vivo: ${err?.message || err}`, 'error');
-      stopLiveWebcamTracking();
-    }
-  };
 
   // Load Image File
   const handleFileSelect = (file: File) => {
@@ -534,7 +449,6 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       img.onload = () => {
         setSelectedImageElement(img);
         setPreviewUrl(dataUrl);
-        setShowPhotoPlane(true);
         const nameClean = file.name.replace(/\.[^/.]+$/, '').replace(/[_-]/g, ' ');
         setExportAvatarName(nameClean.charAt(0).toUpperCase() + nameClean.slice(1));
         setStatus('Imagen cargada. Lista para procesar.', 'info');
@@ -615,25 +529,91 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     }
   }, [showPhotoPlane, photoPlaneOpacity]);
 
+  // Open manual landmark calibration modal (detects points if not yet detected)
+  const openCalibrationModal = async () => {
+    if (!selectedImageElement) {
+      setStatus('Por favor sube o toma una foto primero para calibrar los puntos.', 'error');
+      return;
+    }
+
+    if (rawDetectedLandmarksRef.current.length > 0) {
+      setIsCalibrationModalOpen(true);
+      return;
+    }
+
+    setIsProcessing(true);
+    setStatus('Detectando puntos faciales con MediaPipe para calibración interactiva...', 'info');
+    try {
+      const landmarker = await faceToBlendshapeServiceSingleton.initLandmarker();
+      const results = landmarker.detect(selectedImageElement);
+      if (results.faceLandmarks && results.faceLandmarks.length > 0) {
+        const detected = results.faceLandmarks[0].map((lm) => ({ x: lm.x, y: lm.y, z: lm.z }));
+        setRawDetectedLandmarks(detected);
+        rawDetectedLandmarksRef.current = detected;
+        setIsCalibrationModalOpen(true);
+      } else {
+        setStatus('No se detectó ningún rostro en la foto. Prueba con otra imagen frontal.', 'error');
+      }
+    } catch (e: any) {
+      setStatus(`Error detectando puntos: ${e?.message || e}`, 'error');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // Apply user manual landmark calibration
+  const handleApplyCalibration = (params: {
+    calibratedLandmarks: Point3D[];
+    density: LandmarkDensity;
+    pinDeltas: Record<number, { dx: number; dy: number }>;
+    microAdjustments: LandmarkMicroAdjustments;
+    activeIndices: number[];
+  }) => {
+    setCustomLandmarks(params.calibratedLandmarks);
+    setCalibratedDensity(params.density);
+    setPinDeltas(params.pinDeltas);
+    setMicroAdjustments(params.microAdjustments);
+
+    setDebugParams((prev) => ({
+      ...prev,
+      calibration: {
+        density: params.density,
+        pinDeltas: params.pinDeltas,
+        microAdjustments: params.microAdjustments,
+        activeIndices: params.activeIndices,
+      },
+    }));
+
+    setStatus(`¡Calibración manual aplicada (${params.density} puntos)! Re-generando modelo 3D...`, 'info');
+    processImage(params.calibratedLandmarks);
+  };
+
   // Process image with MediaPipe Face Landmarker & Generate 3D Model
-  const processImage = async () => {
+  const processImage = async (overrideLandmarks?: Point3D[]) => {
     if (!selectedImageElement) {
       setStatus('Por favor sube o toma una foto primero.', 'error');
       return;
     }
 
     setIsProcessing(true);
-    setStatus('Detectando 478 puntos faciales y blendshapes ARKit con MediaPipe...', 'info');
+    setStatus('Detectando puntos faciales y blendshapes ARKit con MediaPipe...', 'info');
 
     try {
+      const activeCustomLandmarks = overrideLandmarks || customLandmarks;
       const result = await faceToBlendshapeServiceSingleton.processFaceImage(
         selectedImageElement,
         {
           mouthParams: debugParams.mouth,
           eyeOptions: debugParams.eyes,
+          customLandmarks: activeCustomLandmarks || undefined,
         }
       );
       currentResultRef.current = result;
+
+      if (result.rawDetectedLandmarks && result.rawDetectedLandmarks.length > 0) {
+        setRawDetectedLandmarks(result.rawDetectedLandmarks);
+        rawDetectedLandmarksRef.current = result.rawDetectedLandmarks;
+      }
 
       const scene = sceneRef.current;
       if (!scene) throw new Error('Scene not initialized');
@@ -665,7 +645,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         scene.add(result.eyesGroup);
       }
       if (result.oralCavity) {
-        result.oralCavity.visible = debugParams.mouth?.oralCavityEnabled ?? true;
+        result.oralCavity.visible = debugParams.mouth?.oralCavityEnabled ?? false;
         scene.add(result.oralCavity);
       }
       if (result.headModel) {
@@ -692,6 +672,19 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         result.eyePairResult,
         trackingPointsRef.current
       );
+
+      // Ensure eye colors and pupil customizations from debugParams are immediately active on generated 3D eyes
+      if (result.eyePairResult && debugParams.eyes) {
+        if (debugParams.eyes.irisColor) {
+          result.eyePairResult.setIrisColor(debugParams.eyes.irisColor);
+        }
+        if (debugParams.eyes.pupilColor) {
+          result.eyePairResult.setPupilColor(debugParams.eyes.pupilColor);
+        }
+        if (debugParams.eyes.pupilSize !== undefined) {
+          result.eyePairResult.setPupilSize(debugParams.eyes.pupilSize);
+        }
+      }
 
       // Initialize blendshapes map to 0 (neutral rest pose)
       const initialBlendshapes: Record<string, number> = {};
@@ -807,17 +800,42 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       };
 
       // Real-time Eyeball Appearance / Manual Gaze / Pupil Size & Color Update
-      if (category === 'eyes' && eyePairResultRef.current) {
-        if (key === 'irisColor') {
-          eyePairResultRef.current.setIrisColor(value);
-        } else if (key === 'pupilColor') {
-          eyePairResultRef.current.setPupilColor(value);
-        } else if (key === 'pupilSize') {
-          eyePairResultRef.current.setPupilSize(value);
-        } else if (key === 'manualGazeX' || key === 'manualGazeY') {
-          const gx = key === 'manualGazeX' ? value : updated.eyes.manualGazeX;
-          const gy = key === 'manualGazeY' ? value : updated.eyes.manualGazeY;
-          eyePairResultRef.current.updateGaze(gx, gy);
+      if (category === 'eyes') {
+        if (eyePairResultRef.current) {
+          if (key === 'irisColor') {
+            eyePairResultRef.current.setIrisColor(value);
+          } else if (key === 'pupilColor') {
+            eyePairResultRef.current.setPupilColor(value);
+          } else if (key === 'pupilSize') {
+            eyePairResultRef.current.setPupilSize(value);
+          } else if (key === 'manualGazeX' || key === 'manualGazeY') {
+            const gx = key === 'manualGazeX' ? value : updated.eyes.manualGazeX;
+            const gy = key === 'manualGazeY' ? value : updated.eyes.manualGazeY;
+            eyePairResultRef.current.updateGaze(gx, gy);
+          }
+        }
+
+        // Direct mesh color / size update traversal to ensure immediate live preview in Three.js scene
+        if (key === 'pupilColor' && (eyesGroupRef.current || sceneRef.current)) {
+          const root = eyesGroupRef.current || sceneRef.current;
+          const col = new THREE.Color(value);
+          root?.traverse((child: any) => {
+            if (child.isMesh && (child.name?.includes('pupil') || child.name?.includes('Pupil'))) {
+              if (child.material) {
+                if (Array.isArray(child.material)) {
+                  child.material.forEach((m: any) => {
+                    if (m && m.color) {
+                      m.color.copy(col);
+                      m.needsUpdate = true;
+                    }
+                  });
+                } else if (child.material.color) {
+                  child.material.color.copy(col);
+                  child.material.needsUpdate = true;
+                }
+              }
+            }
+          });
         }
       }
 
@@ -974,6 +992,8 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     setDebugParams(DEFAULT_DEBUG_PARAMS);
     if (eyePairResultRef.current) {
       eyePairResultRef.current.setIrisColor(DEFAULT_DEBUG_PARAMS.eyes.irisColor);
+      eyePairResultRef.current.setPupilColor(DEFAULT_DEBUG_PARAMS.eyes.pupilColor);
+      eyePairResultRef.current.setPupilSize(DEFAULT_DEBUG_PARAMS.eyes.pupilSize);
       eyePairResultRef.current.updateGaze(0, 0);
     }
     if (faceMeshRef.current) {
@@ -1042,6 +1062,8 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       };
       if (eyePairResultRef.current) {
         eyePairResultRef.current.setIrisColor(DEFAULT_DEBUG_PARAMS.eyes.irisColor);
+        eyePairResultRef.current.setPupilColor(DEFAULT_DEBUG_PARAMS.eyes.pupilColor);
+        eyePairResultRef.current.setPupilSize(DEFAULT_DEBUG_PARAMS.eyes.pupilSize);
         eyePairResultRef.current.updateGaze(0, 0);
       }
       if (faceMeshRef.current) {
@@ -1145,7 +1167,18 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         showHeadBase,
         false,
         debugParams.eyes?.enabled ?? true,
-        debugParams.mouth?.oralCavityEnabled ?? true
+        debugParams.mouth?.oralCavityEnabled ?? false,
+        {
+          mouthParams: debugParams.mouth,
+          eyeOptions: debugParams.eyes,
+          faceParams: debugParams.face,
+          headParams: debugParams.head,
+          debugParams: debugParams,
+          canonicalLandmarks: faceMeshRef.current.userData.canonicalPoints,
+          landmarkDensity: calibratedDensity,
+          pinDeltas: pinDeltas,
+          customLandmarks: customLandmarks || undefined,
+        } as any
       );
 
       const blob = new Blob([buffer], { type: 'model/gltf-binary' });
@@ -1168,14 +1201,16 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     }
   };
 
-  // Save directly as XStreamX Custom Avatar
-  const handleSaveToXStreamX = async () => {
+  // Save directly as XStreamX Custom Avatar (or update existing)
+  const handleSaveToXStreamX = async (forceNew: boolean = false) => {
     if (!faceMeshRef.current) {
       setStatus('No hay ningún modelo 3D generado.', 'error');
       return;
     }
 
     const avatarName = exportAvatarName.trim() || 'Mi Avatar 3D Facial';
+    const isUpdate = !forceNew && !!currentEditingAvatarId;
+    const isPublic = isAdmin && targetCollection === 'public';
 
     setIsSavingAvatar(true);
     try {
@@ -1188,26 +1223,102 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         showHeadBase,
         false,
         debugParams.eyes?.enabled ?? true,
-        debugParams.mouth?.oralCavityEnabled ?? true
+        debugParams.mouth?.oralCavityEnabled ?? false,
+        {
+          mouthParams: debugParams.mouth,
+          eyeOptions: debugParams.eyes,
+          faceParams: debugParams.face,
+          headParams: debugParams.head,
+          debugParams: debugParams,
+          canonicalLandmarks: faceMeshRef.current.userData.canonicalPoints,
+          landmarkDensity: calibratedDensity,
+          pinDeltas: pinDeltas,
+          customLandmarks: customLandmarks || undefined,
+        } as any
       );
 
       const file = new File([buffer], `${avatarName.toLowerCase().replace(/\s+/g, '_')}.glb`, {
         type: 'model/gltf-binary',
       });
 
-      const newAvatar = await avatarModelServiceSingleton.addCustomModel({
-        name: avatarName,
-        tagline: 'Avatar 3D generado desde foto con MediaPipe y ARKit Blendshapes',
-        category: 'Creados con IA',
-        themeColor: exportThemeColor,
-        badge: 'ARKit 3D Face',
-        file,
-      });
-
-      setSaveSuccessMsg(`¡Avatar "${newAvatar.name}" guardado exitosamente en tu catálogo 3D de XStreamX!`);
-      if (onSelectAvatar) {
-        onSelectAvatar(newAvatar.id);
+      // Capture high-quality preview snapshot of the 3D model
+      let previewImage: string | undefined;
+      if (rendererRef.current && sceneRef.current && cameraRef.current) {
+        try {
+          rendererRef.current.render(sceneRef.current, cameraRef.current);
+          previewImage = rendererRef.current.domElement.toDataURL('image/jpeg', 0.85);
+        } catch (_) {}
       }
+      if (!previewImage && selectedImageElement) {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 160;
+          canvas.height = 160;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(selectedImageElement, 0, 0, 160, 160);
+            previewImage = canvas.toDataURL('image/jpeg', 0.85);
+          }
+        } catch (_) {}
+      }
+
+      const finalDebugParams = {
+        ...debugParams,
+        calibration: {
+          density: calibratedDensity,
+          pinDeltas,
+          microAdjustments,
+          customLandmarks: customLandmarks || undefined,
+          activeIndices: DENSITY_INDICES[calibratedDensity] || DENSITY_INDICES[32],
+        },
+      };
+
+      if (isUpdate && currentEditingAvatarId) {
+        const updatedAvatar = await avatarModelServiceSingleton.updateCustomModel({
+          id: currentEditingAvatarId,
+          name: avatarName,
+          tagline: isPublic
+            ? 'Avatar 3D del Catálogo Público con seguimiento facial'
+            : 'Avatar 3D biomimético actualizado en 3D Studio con seguimiento facial',
+          category: isPublic ? 'Catálogo Público' : 'Creados con IA',
+          themeColor: exportThemeColor,
+          badge: isPublic ? 'PÚBLICO' : '3D MASK',
+          previewImage,
+          originalImage: previewUrl || undefined,
+          debugParams: finalDebugParams,
+          isPublic,
+          file,
+        });
+
+        setSaveSuccessMsg(`¡Cambios guardados exitosamente en "${updatedAvatar.name}" (${isPublic ? 'Colección Pública' : 'Mi Colección'})!`);
+        if (onSelectAvatar) {
+          onSelectAvatar(updatedAvatar.id);
+        }
+      } else {
+        const newAvatar = await avatarModelServiceSingleton.addCustomModel({
+          name: avatarName,
+          tagline: isPublic
+            ? 'Avatar 3D del Catálogo Público con seguimiento facial'
+            : 'Avatar 3D generado desde foto con MediaPipe y ARKit Blendshapes',
+          category: isPublic ? 'Catálogo Público' : 'Creados con IA',
+          themeColor: exportThemeColor,
+          badge: isPublic ? 'PÚBLICO' : '3D MASK',
+          previewImage,
+          originalImage: previewUrl || undefined,
+          debugParams: finalDebugParams,
+          isPublic,
+          file,
+        });
+
+        setCurrentEditingAvatarId(newAvatar.id);
+        setSaveSuccessMsg(
+          `¡Avatar "${newAvatar.name}" guardado exitosamente en ${isPublic ? 'la Colección Pública' : 'tu catálogo personal'} de XStreamX!`
+        );
+        if (onSelectAvatar) {
+          onSelectAvatar(newAvatar.id);
+        }
+      }
+
       setTimeout(() => setSaveSuccessMsg(null), 5000);
     } catch (err: any) {
       console.error('[FaceBlendshapeStudio] Save avatar error:', err);
@@ -1236,6 +1347,12 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                 <span className="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-black uppercase tracking-wider">
                   3D STUDIO
                 </span>
+                {currentEditingAvatarId && (
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-black uppercase tracking-wider flex items-center gap-1">
+                    <Sliders className="w-3 h-3 text-emerald-400" />
+                    Editando: {exportAvatarName || 'Modelo'}
+                  </span>
+                )}
               </div>
               <p className="text-[11px] text-neutral-400">
                 Genera modelos 3D con 52 morph targets ARKit y texturizado UV desde una sola foto
@@ -1269,7 +1386,6 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                     onClick={() => {
                       setPreviewUrl(null);
                       setSelectedImageElement(null);
-                      stopWebcam();
                     }}
                     className="text-[11px] text-rose-400 hover:underline cursor-pointer"
                   >
@@ -1278,38 +1394,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                 )}
               </div>
 
-              {/* Webcam Live Capture View */}
-              {isWebcamActive ? (
-                <div className="flex flex-col gap-2">
-                  <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-black border border-cyan-500/50">
-                    <video
-                      ref={webcamVideoRef}
-                      autoPlay
-                      playsInline
-                      muted
-                      className="w-full h-full object-cover scale-x-[-1]"
-                    />
-                    <div className="absolute inset-0 border-2 border-dashed border-cyan-400/40 pointer-events-none rounded-xl" />
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={captureWebcamSnapshot}
-                      className="flex-1 py-2 px-3 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-black flex items-center justify-center gap-1.5 transition cursor-pointer shadow-lg shadow-cyan-500/20"
-                    >
-                      <Camera className="w-3.5 h-3.5" />
-                      Capturar Foto
-                    </button>
-                    <button
-                      type="button"
-                      onClick={stopWebcam}
-                      className="py-2 px-3 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 text-xs font-bold transition cursor-pointer"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              ) : previewUrl ? (
+              {previewUrl ? (
                 /* Image Preview */
                 <div className="relative aspect-square w-full rounded-xl overflow-hidden bg-black/60 border border-white/[0.1] group">
                   <img
@@ -1358,25 +1443,31 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                 }}
               />
 
-              {/* Action Buttons for Source */}
-              <div className="flex gap-2">
+              {/* Action Button for Source */}
+              <div>
                 <button
                   type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  className="flex-1 py-2 px-2.5 rounded-xl bg-[#151928] hover:bg-[#1f253d] text-neutral-200 border border-white/[0.08] text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  className="w-full py-2.5 px-3 rounded-xl bg-[#151928] hover:bg-[#1f253d] text-neutral-200 border border-white/[0.08] text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-sm"
                 >
                   <Upload className="w-3.5 h-3.5 text-cyan-400" />
-                  Subir Archivo
-                </button>
-                <button
-                  type="button"
-                  onClick={startWebcam}
-                  className="flex-1 py-2 px-2.5 rounded-xl bg-[#151928] hover:bg-[#1f253d] text-neutral-200 border border-white/[0.08] text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
-                >
-                  <Camera className="w-3.5 h-3.5 text-indigo-400" />
-                  Tomar Selfie
+                  Subir Archivo de Foto
                 </button>
               </div>
+
+              {/* Manual Landmark Calibration Trigger */}
+              {selectedImageElement && (
+                <button
+                  type="button"
+                  onClick={openCalibrationModal}
+                  disabled={isProcessing}
+                  className="w-full py-2.5 px-3 rounded-xl bg-cyan-950/40 hover:bg-cyan-900/50 text-cyan-300 border border-cyan-500/40 hover:border-cyan-400 text-xs font-bold flex items-center justify-center gap-2 transition shadow-md shadow-cyan-950/30 cursor-pointer disabled:opacity-40"
+                  title="Ajustar manualmente los puntos de detección y densidad de animación sobre la foto"
+                >
+                  <Sliders className="w-4 h-4 text-cyan-400" />
+                  <span>Calibrar Puntos Manualmente ({calibratedDensity} pts)</span>
+                </button>
+              )}
 
               {/* Process Button */}
               <button
@@ -1451,17 +1542,6 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                 </button>
                 <button
                   type="button"
-                  onClick={handleToggleHeadBase}
-                  className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                    showHeadBase ? 'bg-indigo-500 text-white' : 'text-neutral-300 hover:bg-white/10'
-                  }`}
-                  title="Mostrar/Ocultar Base de Cabeza 3D"
-                >
-                  <Layers className="w-3.5 h-3.5" />
-                  Base Cabeza
-                </button>
-                <button
-                  type="button"
                   onClick={() => {
                     const next = !debugParams.eyes?.enabled;
                     handleDebugParamChange('eyes', 'enabled', next);
@@ -1474,31 +1554,17 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   <Eye className="w-3.5 h-3.5" />
                   Ojos 3D
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = !debugParams.mouth?.oralCavityEnabled;
-                    handleDebugParamChange('mouth', 'oralCavityEnabled', next);
-                  }}
-                  className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                    debugParams.mouth?.oralCavityEnabled ? 'bg-rose-500 text-white font-black' : 'text-neutral-400 hover:bg-white/10'
-                  }`}
-                  title="Mostrar/Ocultar Cavidad Oral y Dientes 3D"
-                >
-                  <Sliders className="w-3.5 h-3.5" />
-                  Boca
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowTrackingPoints(!showTrackingPoints)}
-                  className={`shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold transition flex items-center gap-1 cursor-pointer ${
-                    showTrackingPoints ? 'bg-amber-400 text-slate-950 font-black shadow-md shadow-amber-400/30' : 'text-neutral-400 hover:bg-white/10'
-                  }`}
-                  title="Mostrar/Ocultar Nube 3D de 478 Puntos Faciales MediaPipe"
-                >
-                  <ScanFace className="w-3.5 h-3.5" />
-                  478 Puntos
-                </button>
+                {selectedImageElement && (
+                  <button
+                    type="button"
+                    onClick={openCalibrationModal}
+                    className="shrink-0 px-2 py-1 rounded-lg text-[11px] font-black transition flex items-center gap-1 cursor-pointer bg-gradient-to-r from-cyan-500/25 to-blue-500/25 hover:from-cyan-500/40 hover:to-blue-500/40 text-cyan-200 border border-cyan-500/50 hover:border-cyan-400 shadow-md shadow-cyan-950/40"
+                    title="Calibrar Posición y Densidad de Puntos Manualmente"
+                  >
+                    <Sliders className="w-3.5 h-3.5 text-cyan-400" />
+                    Calibrar ({calibratedDensity} pts)
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => setShowPhotoPlane(!showPhotoPlane)}
@@ -1533,29 +1599,10 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   </div>
                   <h4 className="text-sm font-bold text-neutral-300">Visor 3D en Espera</h4>
                   <p className="text-xs text-neutral-500 max-w-xs mt-1">
-                    Sube una foto o toma una captura y pulsa &ldquo;Generar Modelo 3D&rdquo; para ver el render interactivo con morph targets.
+                    Sube una foto y pulsa &ldquo;Generar Modelo 3D&rdquo; para ver el render interactivo con morph targets.
                   </p>
                 </div>
               )}
-
-              {/* Live Tracking PiP Webcam Box */}
-              <div
-                className={`absolute bottom-3 left-3 z-20 w-32 aspect-square rounded-2xl overflow-hidden border border-cyan-500/50 shadow-2xl bg-black/90 backdrop-blur-md transition-all duration-300 ${
-                  isLiveTracking ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-90 pointer-events-none'
-                }`}
-              >
-                <video
-                  ref={liveVideoRef}
-                  playsInline
-                  autoPlay
-                  muted
-                  className="w-full h-full object-cover scale-x-[-1]"
-                />
-                <div className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded-md bg-black/80 backdrop-blur-md border border-rose-500/40 text-[9px] font-black text-rose-300 flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping" />
-                  EN VIVO
-                </div>
-              </div>
             </div>
 
             {/* Viewport Bottom Hint */}
@@ -1630,53 +1677,6 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   </button>
                 </div>
 
-                {/* Live Webcam Mirror Control Card */}
-                <div className="p-3 rounded-2xl bg-gradient-to-r from-cyan-950/40 via-indigo-950/30 to-purple-950/40 border border-cyan-500/30 flex items-center justify-between gap-3 shadow-lg shrink-0">
-                  <div className="flex items-center gap-2.5">
-                    <div
-                      className={`w-9 h-9 rounded-xl flex items-center justify-center transition ${
-                        isLiveTracking
-                          ? 'bg-rose-500 text-white animate-pulse shadow-lg shadow-rose-500/40'
-                          : 'bg-cyan-500/20 text-cyan-400'
-                      }`}
-                    >
-                      {isLiveTracking ? <Video className="w-5 h-5" /> : <Camera className="w-5 h-5" />}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-white">Espejo Webcam en Vivo</span>
-                        {isLiveTracking && (
-                          <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[9px] font-black uppercase tracking-wider animate-pulse">
-                            <span className="w-1.5 h-1.5 rounded-full bg-rose-400 animate-ping" />
-                            EN VIVO
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-neutral-400">
-                        {isLiveTracking
-                          ? 'Modificando 52 blendshapes en vivo con tu cámara'
-                          : 'Anima el modelo en tiempo real con tu rostro'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={isLiveTracking ? stopLiveWebcamTracking : startLiveWebcamTracking}
-                    disabled={!hasGeneratedModel}
-                    className={`px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition cursor-pointer shadow-md ${
-                      !hasGeneratedModel
-                        ? 'opacity-40 cursor-not-allowed bg-neutral-800 text-neutral-500'
-                        : isLiveTracking
-                        ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/30'
-                        : 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-cyan-500/30'
-                    }`}
-                  >
-                    {isLiveTracking ? <VideoOff className="w-3.5 h-3.5" /> : <Video className="w-3.5 h-3.5" />}
-                    {isLiveTracking ? 'Detener' : 'Activar Webcam'}
-                  </button>
-                </div>
-
                 {/* Speech Animation Preview Card (Divides from lower lip, closes with upper lip) */}
                 <div className="p-3 rounded-2xl bg-gradient-to-r from-emerald-950/40 via-teal-950/30 to-cyan-950/40 border border-emerald-500/30 flex items-center justify-between gap-3 shadow-lg shrink-0">
                   <div className="flex items-center gap-2.5">
@@ -1709,9 +1709,9 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   <button
                     type="button"
                     onClick={toggleSpeechSimulation}
-                    disabled={!hasGeneratedModel || isLiveTracking}
+                    disabled={!hasGeneratedModel}
                     className={`px-3 py-2 rounded-xl text-xs font-black flex items-center gap-1.5 transition cursor-pointer shadow-md ${
-                      !hasGeneratedModel || isLiveTracking
+                      !hasGeneratedModel
                         ? 'opacity-40 cursor-not-allowed bg-neutral-800 text-neutral-500'
                         : isSimulatingSpeech
                         ? 'bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/30'
@@ -2180,12 +2180,12 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                               min="0"
                               max="0.35"
                               step="0.005"
-                              value={debugParams.mouth?.mouthDepthPush ?? 0.12}
+                              value={debugParams.mouth?.mouthDepthPush ?? 0.0}
                               onChange={(e) => handleDebugParamChange('mouth', 'mouthDepthPush', parseFloat(e.target.value))}
                               className="w-24 sm:w-32 accent-rose-400 cursor-pointer"
                             />
                             <span className="w-10 text-right font-mono text-[10px] text-rose-300 font-bold">
-                              {(debugParams.mouth?.mouthDepthPush ?? 0.12).toFixed(3)}
+                              {(debugParams.mouth?.mouthDepthPush ?? 0.0).toFixed(3)}
                             </span>
                           </div>
                         </div>
@@ -2243,12 +2243,12 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                               min="-0.1"
                               max="0.15"
                               step="0.005"
-                              value={debugParams.mouth?.smileOffset ?? 0.02}
+                              value={debugParams.mouth?.smileOffset ?? 0.0}
                               onChange={(e) => handleDebugParamChange('mouth', 'smileOffset', parseFloat(e.target.value))}
                               className="w-24 sm:w-32 accent-rose-400 cursor-pointer"
                             />
                             <span className="w-10 text-right font-mono text-[10px] text-rose-300 font-bold">
-                              {(debugParams.mouth?.smileOffset ?? 0.02).toFixed(3)}
+                              {(debugParams.mouth?.smileOffset ?? 0.0).toFixed(3)}
                             </span>
                           </div>
                         </div>
@@ -2292,7 +2292,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                           </div>
                           <input
                             type="checkbox"
-                            checked={debugParams.mouth?.oralCavityEnabled ?? true}
+                            checked={debugParams.mouth?.oralCavityEnabled ?? false}
                             onChange={(e) => handleDebugParamChange('mouth', 'oralCavityEnabled', e.target.checked)}
                             className="w-4 h-4 accent-rose-400 rounded cursor-pointer"
                           />
@@ -2306,7 +2306,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                 {tuningTarget === 'eyes' && (
                   <div className="space-y-3">
                     <div className="p-2.5 rounded-xl bg-emerald-950/20 border border-emerald-500/20 text-[11px] text-emerald-300 flex items-center justify-between">
-                      <span>Ojos 3D biomiméticos con <strong>seguimiento ocular por webcam</strong>.</span>
+                      <span>Ojos 3D biomiméticos con <strong>seguimiento ocular ARKit</strong>.</span>
                       <button
                         type="button"
                         onClick={handleResetEyeParams}
@@ -2334,12 +2334,9 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                       <div className="flex items-center justify-between pt-2.5 border-t border-white/[0.04]">
                         <div>
                           <span className="text-xs font-bold text-neutral-200 flex items-center gap-1.5">
-                            Seguimiento con Cámara Web
-                            {isLiveTracking && (
-                              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse inline-block" />
-                            )}
+                            Seguimiento de Mirada (Gaze)
                           </span>
-                          <span className="text-[10px] text-neutral-400">Los ojos 3D giran en tiempo real siguiendo tus pupilas</span>
+                          <span className="text-[10px] text-neutral-400">Los ojos 3D giran en tiempo real siguiendo la mirada del avatar</span>
                         </div>
                         <input
                           type="checkbox"
@@ -3180,25 +3177,114 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   </div>
                 </div>
 
-                {/* Direct Save into App */}
-                <button
-                  type="button"
-                  disabled={!hasGeneratedModel || isSavingAvatar}
-                  onClick={handleSaveToXStreamX}
-                  className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs tracking-wider shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {isSavingAvatar ? (
-                    <>
-                      <span className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                      <span>GUARDANDO EN XSTREAMX...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" />
-                      <span>GUARDAR COMO AVATAR EN XSTREAMX</span>
-                    </>
-                  )}
-                </button>
+                {/* Admin Option: Add to Personal Collection vs Public Collection */}
+                {isAdmin && (
+                  <div className="p-3.5 rounded-xl bg-[#121626] border border-cyan-500/30 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-neutral-200 flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                        Colección de Destino
+                      </span>
+                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800">
+                        Admin
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setTargetCollection('personal')}
+                        className={`p-2.5 rounded-xl border text-left transition flex flex-col gap-1 cursor-pointer ${
+                          targetCollection === 'personal'
+                            ? 'bg-cyan-950/80 border-cyan-400 text-white ring-1 ring-cyan-400/40 shadow-sm'
+                            : 'bg-[#0a0d18] hover:bg-[#151a2e] text-neutral-400 border-white/[0.08]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold text-xs">
+                          <User className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Mi Colección</span>
+                        </div>
+                        <p className="text-[10px] text-neutral-400 leading-tight">
+                          Pestaña personal "Mis Avatares".
+                        </p>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setTargetCollection('public')}
+                        className={`p-2.5 rounded-xl border text-left transition flex flex-col gap-1 cursor-pointer ${
+                          targetCollection === 'public'
+                            ? 'bg-indigo-950/80 border-indigo-400 text-white ring-1 ring-indigo-400/40 shadow-sm'
+                            : 'bg-[#0a0d18] hover:bg-[#151a2e] text-neutral-400 border-white/[0.08]'
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 font-bold text-xs">
+                          <Globe className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>Colección Pública</span>
+                        </div>
+                        <p className="text-[10px] text-neutral-400 leading-tight">
+                          Catálogo general para todos.
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Direct Save into App (Update existing or Save as new) */}
+                {currentEditingAvatarId ? (
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      disabled={!hasGeneratedModel || isSavingAvatar}
+                      onClick={() => handleSaveToXStreamX(false)}
+                      className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-black text-xs tracking-wider shadow-lg shadow-emerald-500/25 flex items-center justify-center gap-2 transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      {isSavingAvatar ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                          <span>GUARDANDO CAMBIOS...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span>
+                            GUARDAR CAMBIOS ({isAdmin && targetCollection === 'public' ? 'COLECCIÓN PÚBLICA' : 'MI COLECCIÓN'})
+                          </span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!hasGeneratedModel || isSavingAvatar}
+                      onClick={() => handleSaveToXStreamX(true)}
+                      className="w-full py-2.5 px-4 rounded-xl bg-white/[0.06] hover:bg-white/[0.12] text-neutral-200 border border-white/10 hover:border-white/20 text-xs font-bold tracking-wide flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>Guardar como copia nueva</span>
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!hasGeneratedModel || isSavingAvatar}
+                    onClick={() => handleSaveToXStreamX(false)}
+                    className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-slate-950 font-black text-xs tracking-wider shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {isSavingAvatar ? (
+                      <>
+                        <span className="w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                        <span>GUARDANDO EN XSTREAMX...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" />
+                        <span>
+                          GUARDAR EN {isAdmin && targetCollection === 'public' ? 'COLECCIÓN PÚBLICA' : 'MI COLECCIÓN'}
+                        </span>
+                      </>
+                    )}
+                  </button>
+                )}
 
                 {/* Download Universal GLB */}
                 <button
@@ -3227,6 +3313,21 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
             )}
           </div>
         </div>
+
+        {/* Manual Landmark Calibration Modal */}
+        {previewUrl && (
+          <LandmarkCalibrationModal
+            isOpen={isCalibrationModalOpen}
+            onClose={() => setIsCalibrationModalOpen(false)}
+            imageUrl={previewUrl}
+            baseLandmarks={rawDetectedLandmarks.length > 0 ? rawDetectedLandmarks : (currentResultRef.current?.landmarks || [])}
+            initialDensity={calibratedDensity}
+            initialPinDeltas={pinDeltas}
+            initialAdjustments={microAdjustments}
+            themeColor={exportThemeColor}
+            onApply={handleApplyCalibration}
+          />
+        )}
       </div>
     </div>
   );

@@ -41,6 +41,7 @@ export interface Face3DGenerationResult {
   blendshapes: Record<string, number>;
   textureCanvas: HTMLCanvasElement;
   landmarks: Array<{ x: number; y: number; z: number }>;
+  rawDetectedLandmarks?: Array<{ x: number; y: number; z: number }>;
   skinColor: { r: number; g: number; b: number };
 }
 
@@ -142,9 +143,15 @@ export class FaceToBlendshapeService {
 
     this.isInitializing = true;
     try {
-      const vision = await FilesetResolver.forVisionTasks(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
-      );
+      let vision;
+      try {
+        vision = await FilesetResolver.forVisionTasks('/wasm');
+      } catch (localWasmErr) {
+        console.warn('[FaceToBlendshapeService] Failed to load local /wasm, falling back to CDN:', localWasmErr);
+        vision = await FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm'
+        );
+      }
       this.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
         baseOptions: {
           modelAssetPath:
@@ -216,17 +223,42 @@ export class FaceToBlendshapeService {
       bustOptions?: Partial<BustOptions>;
       mouthParams?: Partial<MouthCustomizationParams>;
       eyeOptions?: Partial<EyeCustomizationOptions>;
+      customLandmarks?: Array<{ x: number; y: number; z: number }>;
     }
   ): Promise<Face3DGenerationResult> {
     const landmarker = await this.initLandmarker();
+    // Robust normalization for customLandmarks (handles Array of objects, Array of [x,y,z] tuples, or JSON strings)
+    let normalizedCustomLandmarks: Array<{ x: number; y: number; z: number }> | null = null;
+    if (options?.customLandmarks) {
+      let rawList: any = options.customLandmarks;
+      if (typeof rawList === 'string') {
+        try {
+          rawList = JSON.parse(rawList);
+        } catch (_) {
+          rawList = null;
+        }
+      }
+      if (Array.isArray(rawList) && rawList.length > 0) {
+        normalizedCustomLandmarks = rawList.map((pt: any) => {
+          if (Array.isArray(pt)) {
+            return { x: Number(pt[0]) || 0, y: Number(pt[1]) || 0, z: Number(pt[2]) || 0 };
+          }
+          return { x: Number(pt?.x) || 0, y: Number(pt?.y) || 0, z: Number(pt?.z) || 0 };
+        });
+      }
+    }
+
     const results = landmarker.detect(imageElement);
 
-    if (!results.faceLandmarks || results.faceLandmarks.length === 0) {
+    if ((!results.faceLandmarks || results.faceLandmarks.length === 0) && !normalizedCustomLandmarks) {
       throw new Error('No se detectó ningún rostro en la imagen. Intenta con una foto frontal clara y bien iluminada.');
     }
 
-    const rawLandmarks = results.faceLandmarks[0];
-    const landmarks = rawLandmarks.map((lm) => ({ x: lm.x, y: lm.y, z: lm.z }));
+    const rawLandmarks = results.faceLandmarks?.[0];
+    const detectedLandmarks = rawLandmarks
+      ? rawLandmarks.map((lm) => ({ x: lm.x, y: lm.y, z: lm.z }))
+      : normalizedCustomLandmarks!;
+    const landmarks = normalizedCustomLandmarks || detectedLandmarks;
     const rawBlendshapes = results.faceBlendshapes?.[0]?.categories || [];
     const transformMatrix = results.facialTransformationMatrixes?.[0];
 
@@ -299,6 +331,7 @@ export class FaceToBlendshapeService {
       blendshapes,
       textureCanvas,
       landmarks,
+      rawDetectedLandmarks: detectedLandmarks,
       skinColor,
     };
   }
@@ -368,7 +401,7 @@ export class FaceToBlendshapeService {
       oralCavity.scale.copy(faceMesh.scale);
       oralCavity.rotation.copy(faceMesh.rotation);
       oralCavity.position.copy(faceMesh.position);
-      oralCavity.visible = params.mouth?.oralCavityEnabled ?? true;
+      oralCavity.visible = params.mouth?.oralCavityEnabled ?? false;
       oralCavity.renderOrder = 8;
     }
 
@@ -483,14 +516,18 @@ export class FaceToBlendshapeService {
     bustModel: THREE.Group | null = null,
     eyesGroup: THREE.Group | null = null,
     oralCavity: THREE.Group | null = null,
-    includeHead: boolean = true,
+    includeHead: boolean = false,
     includeBust: boolean = false,
     includeEyes: boolean = true,
-    includeOralCavity: boolean = true,
+    includeOralCavity: boolean = false,
     calibrationMeta?: {
       mouthParams?: MouthCustomizationParams;
       gestureParams?: GestureCalibrationParams;
+      eyeOptions?: EyeCustomizationOptions;
       canonicalLandmarks?: Array<{ x: number; y: number; z: number }>;
+      landmarkDensity?: number;
+      pinDeltas?: Record<number, { dx: number; dy: number }>;
+      customLandmarks?: Array<{ x: number; y: number; z: number }>;
     }
   ): Promise<ArrayBuffer> {
     return new Promise((resolve, reject) => {
@@ -533,7 +570,7 @@ export class FaceToBlendshapeService {
 
       // ── Calibration metadata node ─────────────────────────────────────────
       // Embeds all studio parameters so avatars can be re-edited with the exact
-      // same calibration point they were created with.
+      // same calibration point they were created with, and so viewers can render them with fidelity.
       if (calibrationMeta) {
         const metaNode = new THREE.Object3D();
         metaNode.name = 'xstreamx_meta';
@@ -543,6 +580,31 @@ export class FaceToBlendshapeService {
         }
         if (calibrationMeta.gestureParams) {
           metaNode.userData.gestureParams = JSON.parse(JSON.stringify(calibrationMeta.gestureParams));
+        }
+        if (calibrationMeta.eyeOptions) {
+          metaNode.userData.eyeOptions = JSON.parse(JSON.stringify(calibrationMeta.eyeOptions));
+        }
+        if ((calibrationMeta as any).faceParams) {
+          metaNode.userData.faceParams = JSON.parse(JSON.stringify((calibrationMeta as any).faceParams));
+        }
+        if ((calibrationMeta as any).headParams) {
+          metaNode.userData.headParams = JSON.parse(JSON.stringify((calibrationMeta as any).headParams));
+        }
+        if ((calibrationMeta as any).debugParams) {
+          metaNode.userData.debugParams = JSON.parse(JSON.stringify((calibrationMeta as any).debugParams));
+        }
+        if (calibrationMeta.landmarkDensity) {
+          metaNode.userData.landmarkDensity = calibrationMeta.landmarkDensity;
+        }
+        if (calibrationMeta.pinDeltas) {
+          metaNode.userData.pinDeltas = JSON.parse(JSON.stringify(calibrationMeta.pinDeltas));
+        }
+        if (calibrationMeta.customLandmarks) {
+          metaNode.userData.customLandmarks = calibrationMeta.customLandmarks.map((p) => [
+            +p.x.toFixed(5),
+            +p.y.toFixed(5),
+            +p.z.toFixed(5),
+          ]);
         }
         if (calibrationMeta.canonicalLandmarks) {
           // Store every 4th landmark (every 4 = 120 points, ~1.4 KB) to save GLB space.

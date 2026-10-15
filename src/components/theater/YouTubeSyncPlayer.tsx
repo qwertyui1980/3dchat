@@ -459,18 +459,18 @@ export const YouTubeSyncPlayer: React.FC<YouTubeSyncPlayerProps> = ({
               <button
                 type="button"
                 onClick={handleTogglePlayPause}
-                disabled={!isAdmin}
+                disabled={!isAdmin && mediaState.isPlaying}
                 className={`p-2 rounded-xl border transition active:scale-95 flex items-center justify-center ${
-                  isAdmin
+                  isAdmin || !mediaState.isPlaying
                     ? 'bg-cyan-500 hover:bg-cyan-400 text-slate-950 border-cyan-400 cursor-pointer shadow-md shadow-cyan-500/20'
                     : 'bg-white/10 text-neutral-400 border-white/10 cursor-not-allowed opacity-60'
                 }`}
                 title={
-                  isAdmin
-                    ? mediaState.isPlaying
+                  mediaState.isPlaying
+                    ? isAdmin
                       ? 'Pausar video (Admin)'
-                      : 'Reanudar video (Admin)'
-                    : 'Solo el administrador puede pausar/reproducir'
+                      : 'Solo el administrador puede pausar la transmisión'
+                    : 'Iniciar reproducción'
                 }
               >
                 {mediaState.isPlaying ? (

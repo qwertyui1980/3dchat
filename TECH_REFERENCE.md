@@ -248,6 +248,15 @@ Implementado en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/component
 * Los sliders manuales de blendshapes `eyeLook*` ahora llaman directamente a `eyePairResultRef.current.updateGaze`, moviendo las pupilas y globos oculares 3D en tiempo real.
 * La posición de `lowerTeeth` en la prueba de habla, en el tracking en vivo y en los sliders se sincroniza congruentemente con `lowerTeeth.userData.basePos`.
 
+### Fase 10 — Persistencia Integral de Ajustes de Máscara 3D y Sincronización en Vivo
+* **Persistencia Completa de `debugParams` en GLB:** `exportGLB()` en [`faceToBlendshapeService.ts`](file:///d:/Apps/xstreamx/src/services/face3d/faceToBlendshapeService.ts) serializa todos los parámetros de transformación facial (`faceParams`), cabeza (`headParams`), ojos 3D (`eyeOptions`), cavidad oral (`mouthParams`) y calibración (`pinDeltas`, `customLandmarks`) dentro de `xstreamx_meta.userData`.
+* **Aplicación de Parámetros en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/components/avatars/ThreeAvatarCanvas.tsx):**
+  * Al cargar el modelo 3D del avatar personalizado, extrae los parámetros efectivos de `avatarDef.debugParams` o del nodo `xstreamx_meta`.
+  * Aplica dinámicamente el color del iris (`irisColor`), el color de pupila (`pupilColor`), la escala de la pupila (`pupilSize`) y las visibilidades correspondientes de ojos 3D (`eyesGroup`), cavidad bucal (`oralCavity`) y base craneal (`headBaseMesh`).
+* **Suscripción Reactiva y Recarga Inmediata:**
+  * `ThreeAvatarCanvas` se suscribe a los eventos de `avatarModelServiceSingleton`, manteniendo un estado de revisión reactivo (`avatarRevision`) e incluyendo `[avatarId, restoreCount, avatarRevision, avatarDef?.modelUrl]` en el hook de carga del WebGL.
+  * En [`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx), `AvatarCanvas` cuenta con una `key` dinámica basada en el ID y la versión del modelo (`${selectedAvatarId}_${selectedAvatar?.modelUrl || selectedAvatar?.createdAt || ''}`), garantizando que al pulsar "Guardar Cambios" en el editor 3D Mask, el visor del personaje se actualice instantáneamente sin recargar la página.
+
 ---
 
 ## 6. Estudio de Generación de Avatares 3D Masks (Face to Blendshape Studio)
@@ -256,7 +265,7 @@ Ubicado en [`src/components/admin/FaceBlendshapeStudioModal.tsx`](file:///d:/App
 
 ```mermaid
 flowchart LR
-    Photo[Fotografía Facial / Webcam] --> Detect[MediaPipe 478 Landmarks]
+    Photo[Fotografía Facial Subida] --> Detect[MediaPipe 478 Landmarks]
     Detect --> MeshGen[FaceMeshGenerator\nTriangulación Canónica]
     Photo --> TexMap[TextureMapper\nProyección UV 1024x1024]
     Detect --> BlendGen[Generación de 52 Morph Targets]
@@ -267,18 +276,41 @@ flowchart LR
 ```
 
 ### Características Técnicas del Estudio:
-* **Generación a partir de Foto Única:** Genera una malla de 478 vértices y ~900 triángulos texturizada por coordenadas UV calculadas sobre el rostro con normalización ortonormal frontal canónica.
-* **Sistema de Ojos 3D Biomiméticos con Seguimiento por Webcam (`EyeGenerator`):**
-  * Genera esferas oculares tridimensionales con esclera PBR cálida, estroma de iris procedural multiradial de 512x512 y **pupila física 3D independiente con color personalizable** (`${name}_pupil`) con contraste absoluto, calibración de escala (`pupilSize`) y color libre/presets (`pupilColor`), eliminando cataratas o reflejos blanquecinos y garantizando visibilidad 100% nítida bajo cualquier ángulo o iluminación.
-  * Córnea vítrea sutil no oclusiva con `depthWrite: false` orientada frontalmente en +Z para preservar el relieve del iris y la pupila.
-  * **Seguimiento Ocular en Tiempo Real:** Las esferas rotan dinámicamente en Yaw (±26°) y Pitch (±20°) acopladas a la mirada del usuario capturada por la webcam mediante los puntos de iris MediaPipe (468 y 473) y blendshapes ARKit (`eyeLook*`), tanto en el visor de administración como en todas las salas de videoconferencia a través de [`threeCharacterBuilder.ts`](file:///d:/Apps/xstreamx/src/components/avatars/threeCharacterBuilder.ts).
+* **Generación a partir de Foto Única (100% Sin Acceso a Webcam):** En estricto apego al principio de seguridad y privacidad, el editor 3D Masks opera exclusivamente a través de la subida de archivos de imagen (JPG, PNG, WebP). La opción de capturar fotografías o activar espejo de video en vivo por webcam dentro del estudio ha sido eliminada por completo. Genera una malla de 478 vértices y ~900 triángulos texturizada por coordenadas UV calculadas sobre el rostro con normalización ortonormal frontal canónica.
+* **Sistema de Ojos 3D Biomiméticos con Seguimiento de Mirada (`EyeGenerator`):**
+  * Genera esferas oculares tridimensionales con esclera PBR cálida provista de una **apertura corneal anatómica frontal** (`thetaStart: 0.48`, `rotation.x = Math.PI / 2`) para erradicar la oclusión del casquete escleral sobre el iris y la pupila.
+  * Incorpora un estroma de iris procedural multiradial de 512x512 y **pupila física 3D frontal independiente con color personalizable** (`${name}_pupil`) renderizada en $Z = 0.888 \times radius$ con `renderOrder: 3` y `polygonOffset` activo (`factor: -2, units: -2`) para eliminar z-fighting y garantizar contraste y visibilidad 100% nítidos en cualquier condición lumínica.
+  * Córnea vítrea sutil no oclusiva con `depthWrite: false` orientada frontalmente en +Z para preservar el relieve del iris y la pupila sin tapar su coloración.
+  * **Sincronización Inmediata en el Visor y Exportación:**
+    * Actualización en vivo de color de pupila e iris en tiempo real en la escena Three.js (`handleDebugParamChange`), sincronizando tanto el gestor `eyePairResult` como el recorrido directo de nodos en `sceneRef.current` y `eyesGroupRef.current`.
+    * Inclusión de `eyeOptions` (`pupilColor`, `irisColor`, `pupilSize`) en los metadatos de calibración persistente (`calibrationMeta` / `xstreamx_meta`) tanto al exportar archivos `.glb` como al guardar avatares directamente en XStreamX.
+  * **Seguimiento Ocular en Tiempo Real:** En la sala de videollamada, las esferas rotan dinámicamente en Yaw (±26°) y Pitch (±20°) acopladas a la mirada del usuario capturada mediante los puntos de iris MediaPipe (468 y 473) y blendshapes ARKit (`eyeLook*`), tanto en el visor como en todas las salas de videoconferencia a través de [`threeCharacterBuilder.ts`](file:///d:/Apps/xstreamx/src/components/avatars/threeCharacterBuilder.ts).
   * **Paletas de Color y Presets:**
     * 8 presets de Iris (`IRIS_COLOR_PRESETS`) y selector libre RGB.
     * 8 presets de Pupila (`PUPIL_COLOR_PRESETS`: Negro Obsidiana, Rojo Carmesí, Púrpura Místico, Azul Abisal, Ámbar Felino, Verde Esmeralda, Gris Grafito, Blanco Fantasma) y selector libre RGB.
-    * Slider de **Tamaño de Pupila** (18% a 55% del radio de iris) con actualización sincronizada en la textura y el disco 3D físico.
+    * Slider de **Tamaño de Pupila** (18% a 55% del radio de iris) con actualización sincronizada en la textura procedural del iris y el disco 3D físico.
 * **Eliminación del Torso / Busto en Máscaras 3D (Clean Facial Mask Architecture):**
-  * El pipeline de generación y exportación de 3D Masks se enfoca exclusivamente en la anatomía craneofacial pura: Malla facial 3D + Cráneo base + Ojos biomiméticos 3D + Cavidad oral y dientes.
+  * El pipeline de generación y exportación de 3D Masks se enfoca exclusivamente en la anatomía craneofacial pura: Malla facial 3D + Ojos biomiméticos 3D.
   * El busto y vestimenta ejecutiva (`BustGenerator`) han sido completamente eliminados de la generación y exportación de máscaras, optimizando la ligereza del archivo `.glb`, mejorando el encuadre vertical de retrato en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/components/avatars/ThreeAvatarCanvas.tsx) y eliminando oclusiones innecesarias.
+* **Calibración de Apertura Ocular y Cejas Despejadas en Reposo:**
+  * Para erradicar la apariencia caída, dormida o entrecerrada proveniente de fotos 2D, [`faceMeshGenerator.ts`](file:///d:/Apps/xstreamx/src/services/face3d/faceMeshGenerator.ts) aplica una elevación anatómica a los párpados superiores (`+0.052` en Y, `+0.016` en Z), descenso suave a los párpados inferiores (`-0.022` en Y) y elevación natural del arco ciliar de las cejas (`+0.045` en Y).
+  * Los globos oculares 3D en [`eyeGenerator.ts`](file:///d:/Apps/xstreamx/src/services/face3d/eyeGenerator.ts) se sitúan a $Z = \text{leftCenterZ} - \text{baseRadius} \times 0.38$, ubicando la córnea vítrea y la pupila 3D en el plano focal de la apertura palpebral para máxima claridad y vivacidad.
+* **Sellado Hermético de Labios en Reposo y Cinemática Aislada de Habla:**
+  * **Sellado Automático de Reposo:** Erradica cualquier hendidura o boca entreabierta presente en la foto original convergiendo las líneas del bermellón superior e inferior hacia el plano interlabial neutral (`normMouthCenter.y`). Los valores por defecto de `mouthDepthPush` y `smileOffset` inician en `0.0`.
+  * **Aislamiento Estricto a Labios Inferiores (`jawOpen`):**
+    * Comisuras (`MOUTH_CORNER_SET`) y labio superior (`UPPER_LIP_SET`): 100% inmóviles (delta = 0).
+    * Eliminación total de desplazamiento mandibular o mentoniano que distorsione el rostro al hablar (`JAW_MANDIBLE_INDICES` delta = 0).
+    * El movimiento se concentra exclusivamente en el bermellón del labio inferior (`LOWER_LIP_SET`) con amplitud calibrada (0.16 unidades máx) y atenuación radial suave antes de alcanzar las comisuras.
+  * **Calibración de Ganancia de Habla:**
+    * En [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/components/avatars/ThreeAvatarCanvas.tsx), la apertura bucal por audio se modula suavemente (`speechJaw` con factor 2.6x y tope en 0.60; `finalJaw` máx 0.70).
+    * En [`mediapipeService.ts`](file:///d:/Apps/xstreamx/src/services/mediapipeService.ts), se suprimió la inyección forzada de `mouthLowerDown` y `mouthUpperUp` para evitar sobre-aperturas exageradas.
+* **Estado por Defecto Limpio en el Estudio 3D Masks:**
+  * Al ingresar al estudio de generación de máscaras 3D ([`FaceBlendshapeStudioModal.tsx`](file:///d:/Apps/xstreamx/src/components/admin/FaceBlendshapeStudioModal.tsx)), se aplican valores por defecto limpios:
+    * **Base Cabeza (`showHeadBase: false`):** Desactivada por defecto para visualizar la máscara pura sin el cráneo de fondo.
+    * **Plano Foto (`showPhotoPlane: false`):** Desactivado por defecto tras cargar imagen para evitar oclusiones contra la malla 3D.
+    * **Boca / Cavidad Oral (`oralCavityEnabled: false`):** Desactivada por defecto tanto en el visor como en [`faceMeshGenerator.ts`](file:///d:/Apps/xstreamx/src/services/face3d/faceMeshGenerator.ts) y [`faceToBlendshapeService.ts`](file:///d:/Apps/xstreamx/src/services/face3d/faceToBlendshapeService.ts).
+    * Cualquiera de los tres componentes puede ser activado o desactivado bajo demanda con un solo clic desde los botones de la barra superior del visor 3D (*Base Cabeza*, *Boca*, *Plano Foto*).
+    * Al abrir el modal o pulsar *Reset*, todos los controles se restablecen a estos parámetros óptimos calibrados.
 * **Plano de Foto de Referencia Estabilizado en el Visor 3D (`referencePhotoPlane`):**
   * Posicionado de forma segura detrás del cráneo a $Z = -1.60$ con `renderOrder: -1` y `depthWrite: false`, eliminando z-clipping y oclusiones contra la cabeza o la malla facial.
   * Ciclo de vida desacoplado: La geometría y la textura WebGL se crean una sola vez al cargar la imagen y persisten de forma estable. Los cambios de opacidad (`photoPlaneOpacity`) y visibilidad (`showPhotoPlane`) se aplican directamente en las propiedades del material sin recrear mallas ni desechar texturas en GPU.
@@ -287,35 +319,105 @@ flowchart LR
   * Configurado con `transparent: false` y `depthWrite: true`, asegurando que el exportador Three.js `GLTFExporter` no asigne `alphaMode: BLEND` al exportar, erradicando transparencias accidentales o pérdida de la textura facial contra planos de fondo.
 * **Diseño 100% Responsive al Ancho del Navegador:**
   * El modal del estudio (`FaceBlendshapeStudioModal.tsx`) elimina las restricciones estáticas (`max-w-6xl`) y se expande fluidamente cubriendo hasta el `99vw` (con límite de confort en `2400px` para monitores ultra-wide y 4K).
-  * Arquitectura Flexbox adaptable: La columna central del visor 3D Three.js se define con `flex-1 min-w-0`, consumiendo dinámicamente todo el ancho disponible del navegador mientras los paneles laterales (panel de carga de foto/webcam y panel de sliders/blendshapes) mantienen proporciones optimizadas y confortables.
+  * Arquitectura Flexbox adaptable: La columna central del visor 3D Three.js se define con `flex-1 min-w-0`, consumiendo dinámicamente todo el ancho disponible del navegador mientras los paneles laterales (panel de carga de foto y panel de sliders/blendshapes) mantienen proporciones optimizadas y confortables.
   * Sincronización continua mediante `ResizeObserver`: El viewport WebGL y la cámara de perspectiva Three.js recalculan al vuelo el `aspect ratio` y el `setSize(w, h, false)` ante cualquier cambio en el ancho o alto de la ventana del navegador, sin saltos visuales ni deformaciones de perspectiva.
 * **Alineación Desacoplada en 5 Vías:** Panel de calibración con selectores dedicados para *Malla Facial*, *Boca y Labios*, *Ojos 3D*, *Base de Cabeza* y *Gestos 478*.
-* **Espejo Webcam en Vivo (Live Mirror):** Prueba interactiva en tiempo real donde la cara, ojos y cabeza del usuario animan el avatar antes de guardarlo.
+* **Simulador de Efecto Habla y Sliders ARKit:** Control interactivo con modulación sinusoidal silábica y sliders individuales para verificar la cinemática de los 52 blendshapes en tiempo real sin requerir cámara.
 * **Exportación Estándar GLB:** Genera archivos `.glb` con textura UV sólida de 1024x1024, materiales físicos PBR, clonación aislada de materiales para evitar mutaciones en el visor, ojos 3D, cavidad oral y los 52 morph targets listos para su uso en Unity, Unreal Engine, Blender o la propia plataforma.
 
-### 6.1. Selector de Avatares en el Lobby (`Lobby.tsx`):
+### 6.1. Calibración Manual de Puntos Facial & Selección de Densidad (3D Masks Calibration Studio)
+* **Resolución del Desfase de Puntos en Lobby y Sala:**
+  * Anteriormente, los modelos personalizados creados en 3D Masks adoptaban por defecto el perfil `'three_robot'`, forzando los puntos de seguimiento hacia un visor ocular plano horizontal y la boca hacia una barra rectilínea de LEDs.
+  * Se implementó el motor desacoplado [`landmarkCalibrationService.ts`](file:///d:/Apps/xstreamx/src/services/face3d/landmarkCalibrationService.ts) y el modal interactivo [`LandmarkCalibrationModal.tsx`](file:///d:/Apps/xstreamx/src/components/admin/LandmarkCalibrationModal.tsx), erradicando las deformaciones robóticas y alineando 1:1 los puntos de detección con la foto original.
+* **Asignación de Cantidad de Puntos y Configuración Anatómica Ocular de 5 Puntos:**
+  * Cada ojo cuenta ahora con **5 puntos anatómicos de control interactivo**:
+    1. **Pupila (Centro):** Landmarks 468 (izq) y 473 (der) para centrado de mirada.
+    2. **Párpado Superior:** Landmarks 159 (izq) y 386 (der) para el arco palpebral superior.
+    3. **Párpado Inferior:** Landmarks 145 (izq) y 374 (der) para el surco palpebral inferior.
+    4. **Comisura Lateral Externa:** Landmarks 33 (izq) y 263 (der).
+    5. **Comisura Lateral Interna:** Landmarks 133 (izq) y 362 (der).
+  * El usuario o administrador puede seleccionar entre 3 niveles de densidad según la fidelidad deseada:
+    1. **16 Puntos Clave:** Aperturas y centros esenciales con los 10 puntos de ojos (5 por ojo), 4 de boca, cejas, nariz y silueta facial.
+    2. **32 Puntos Expresivos (Recomendado):** Contorno labial ampliado, ojos con sus 5 puntos completos, arco ciliar, tabique nasal y silueta mandibular.
+    3. **68 Puntos Estándar:** Norma internacional de referencia facial (Dlib / FACS Facial Action Coding System).
+* **Posicionamiento Manual Interactivo (Marcadores Draggable sobre Foto):**
+  * Vista SVG/Canvas interactiva sobre la foto del usuario con herramientas de Zoom (0.6x a 3.0x), Paneo y visualización de contornos anatómicos.
+  * Marcadores arrastrables (*pins*) con respuesta táctil/ratón y etiquetas emergentes para cada rasgo facial (comisuras, bermellón, pupilas y párpados superior/inferior, aletas nasales, cejas, pómulos y barbilla).
+  * **Micro-Calibradores Simétricos en Tiempo Real:** Sliders continuos para *Separación Interpupilar*, *Altura Vertical de Ojos*, **Apertura de Ojos (Párpados)**, *Elevación de Cejas*, *Ancho de Boca*, *Posición Vertical de Labios* y *Largo de Mentón*.
+* **Deformación Elástica Radial (Gaussian RBF Warping):**
+  * Al desplazar cualquier marcador o mover un slider, una función de base radial gaussiana $w_i = \exp(-\frac{d_i^2}{2\sigma^2})$ deforma suavemente los vértices circundantes dentro de un radio anatómico calibrado (0.07 a 0.12 unidades normalizadas).
+  * Garantiza que la malla 3D completa de 478 vértices, los 52 blendshapes ARKit y el mapeo de texturas UV se adapten orgánicamente sin pliegues abruptos ni roturas de geometría.
+* **Perfiles de Seguimiento Anatómicos y Registro en Runtime:**
+  * `buildCustomAvatarTrackingProfile`: Genera automáticamente perfiles de seguimiento biomiméticos con los índices activos, colores temáticos y contornos adaptados a la densidad elegida.
+  * `registerAvatarTrackingProfile`: Registra en caliente el perfil del modelo en el mapa de ejecución para que [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/components/avatars/ThreeAvatarCanvas.tsx), [`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx) y [`CameraPreviewPip.tsx`](file:///d:/Apps/xstreamx/src/components/room/CameraPreviewPip.tsx) rendericen los puntos exactamente donde el usuario los calibró.
+* **Persistencia Integral en GLB e IndexedDB:**
+  * Al guardar o exportar, los metadatos de calibración (`landmarkDensity`, `pinDeltas`, `customLandmarks`, `microAdjustments`) se almacenan en `debugParams.calibration` en IndexedDB (`xstreamx_db`) y se embeben en el nodo `xstreamx_meta` del archivo `.glb`.
+  * Al volver a editar el avatar con el botón de lápiz, el estudio restaura automáticamente los puntos y posiciones calibradas previamente.
+
+---
+
+### 6.2. Selector de Avatares en el Lobby (`Lobby.tsx`):
 * **Pestañas Duales en "Elige tu Avatar 3D":**
   * **Modelos Predefinidos:** Presenta el catálogo nativo del sistema (robots, animales, anime, esculturas, neon holo).
   * **Mis Avatares (3D Masks):** Aloja los avatares faciales personalizados creados por el usuario mediante el estudio *3D Masks*.
-* **Persistencia Exclusiva en LocalStorage:**
-  * Los avatares generados con 3D Masks se almacenan localmente en el navegador (`xstreamx_custom_avatars_v1`), garantizando privacidad absoluta por diseño sin subir geometría ni fotos biométricas a ningún servidor central.
+* **Base de Datos Local de Alto Rendimiento en IndexedDB (`xstreamx_db` v2):**
+  * Los avatares generados con 3D Masks, el catálogo completo de modelos predefinidos y las cuentas de usuario se almacenan en una base de datos local **IndexedDB** (`xstreamx_db` v2) administrada por [`indexedDbService.ts`](file:///d:/Apps/xstreamx/src/services/db/indexedDbService.ts), superando el límite de 5 MB de LocalStorage.
+  * **Estructura de Object Stores:**
+    * `custom_models`: Almacena registros de modelos 3D y avatares con índices por fecha, nombre y categoría, conteniendo tanto el catálogo base del sistema como modelos creados por el usuario con archivos binarios nativos en formato `Blob`/`ArrayBuffer`.
+    * `users`: Almacena cuentas de usuarios con autenticación local (`username`, `name`, `role`, `password`, `avatarId`, `createdAt`). Incluye cuentas pre-sembradas para el Administrador (`admin` / `Pr3siZ2027`) y los 6 participantes presidenciales (`presi1` a `presi6` / `Avatar1` a `Avatar6`).
+    * `elements`: Almacén genérico clave-valor con marca temporal (`updatedAt`) para elementos varios de la aplicación (presets, configuraciones, estados del lienzo).
+    * `metadata`: Claves del sistema para persistencia de modelos renombrados, deshabilitados y eliminados.
+  * **Migración Automática y Retrocompatibilidad:** Al iniciar, [`avatarModelService.ts`](file:///d:/Apps/xstreamx/src/services/avatarModelService.ts) detecta y migra automáticamente cualquier modelo antiguo existente en `localStorage` hacia IndexedDB y purga las cadenas Base64 pesadas para erradicar errores de cuota (`QuotaExceededError`).
 * **Eliminación con Botón "X" para Cualquier Usuario o Administrador:**
   * Cada tarjeta de la pestaña *Mis Avatares* incorpora un botón de eliminación circular con ícono "X" en la esquina superior derecha (`top-1 right-1`).
-  * Al hacer clic, se confirma la acción y se invoca `avatarModelServiceSingleton.deleteModel(avatarId)`, purjando el modelo de la memoria y del LocalStorage de forma inmediata.
+  * Al hacer clic, se confirma la acción y se invoca `avatarModelServiceSingleton.deleteModel(avatarId)`, purjando el modelo de la memoria y de IndexedDB de forma inmediata.
   * Si el avatar eliminado estaba activo, el sistema conmuta automáticamente a un modelo predefinido seguro como fallback.
 * **Renombrado Universal de Modelos por el Administrador:**
   * El administrador tiene potestad de cambiar el nombre visible de **cualquier modelo** (tanto modelos predefinidos del sistema como avatares creados con 3D Masks).
   * **Puntos de Entrada:**
     * Directamente desde las tarjetas del Lobby ([`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx)) mediante el botón de edición (ícono de lápiz `Pencil`) visible exclusivamente para administradores.
     * Desde el Panel de Control del Administrador ([`AdminControlPanel.tsx`](file:///d:/Apps/xstreamx/src/components/room/AdminControlPanel.tsx)) con edición en línea (`inline input`), atajos de teclado (`Enter` para guardar, `Escape` para cancelar) y botones de confirmación rápida.
-  * **Persistencia en LocalStorage (`xstreamx_renamed_avatars_v1`):**
-    * Los nombres modificados se almacenan bajo la clave `xstreamx_renamed_avatars_v1` (`avatarModelService.ts`).
+  * **Persistencia en Base de Datos e In-Memory Cache:**
+    * Los nombres modificados se sincronizan en `metadata` / `localStorage` (`xstreamx_renamed_avatars_v1`) y se actualizan directamente en la entidad del modelo en IndexedDB.
     * Se aplican de forma reactiva e inmediata a todas las listas y componentes suscriptores sin requerir recargar la página.
     * Al restablecer los modelos por defecto o eliminar un modelo personalizado, los nombres personalizados se sincronizan o limpian correspondientemente.
 * **Acceso y Gestión por Roles:**
   * La subida de archivos crudos externos 3D (`Subir 3D` / `.glb` / `.obj` / `.stl`) y la desactivación global de modelos de plataforma continúan reservadas al panel del administrador (`AdminControlPanel`).
+* **Identificación Visual de Modelos y Miniaturas en Base de Datos (`previewImage`):**
+  * Para erradicar la ambigüedad de los emojis genéricos, cada avatar 3D ahora posee un campo visual `previewImage?: string;` persistente en IndexedDB (`xstreamx_db` v2, almacén `custom_models`).
+  * **Retratos Vectoriales Predefinidos (`avatarThumbnails.ts`):** Todos los modelos nativos (Lincoln, Biden, Obama, Trump, Robot Expressive, Michi, Shiba Inu, Cyber Nova, etc.) cuentan con retratos vectoriales SVG embebidos de alta definición y contraste, cargándose instantáneamente sin peticiones de red externas y sembrados de forma atómica en IndexedDB.
+  * **Instantáneas Automáticas en 3D Masks Studio (`FaceBlendshapeStudioModal.tsx`):** Al guardar cualquier máscara facial personalizada, el renderizador WebGL de Three.js captura automáticamente una instantánea del viewport (`domElement.toDataURL('image/png')` / `canvas 160x160`) y la almacena como `previewImage` en la base de datos local.
+  * **Gestor de Miniaturas en el Panel de Administrador (`AdminControlPanel.tsx`):**
+    * Cada modelo en el administrador se visualiza con una miniatura nítida de $48 \times 48\text{ px}$ (`w-12 h-12 rounded-xl`) con borde y efecto ring.
+    * Al pasar el cursor, se activa un botón de cámara flotante (`Camera` icon) que permite al administrador cambiar o subir una nueva imagen para cualquier avatar del sistema mediante un selector de archivos rápido (`image/*`).
+    * Al subir nuevos modelos 3D externos (`.glb`, `.obj`, `.stl`), el formulario de subida incluye un selector de miniatura opcional con previsualización inmediata.
+  * **Sincronización en Lobby:** Las tarjetas de selección tanto en *Modelos Predefinidos* como en *Mis Avatares* muestran la miniatura personalizada y cuentan con fallback orgánico al emoji predeterminado.
 
-### 6.2. Bloqueo de Avatar por Sesión (Sin Hot-Swap en Sala)
+### 6.2. Re-Edición y Guardado de Cambios en Modelos Creados con 3D Mask
+* **Flujo Completo de Re-Edición y Calibración Continua:**
+  * Los avatares generados mediante *3D Masks* ([`FaceBlendshapeStudioModal.tsx`](file:///d:/Apps/xstreamx/src/components/admin/FaceBlendshapeStudioModal.tsx)) persisten en IndexedDB tanto su archivo binario `.glb` como su fotografía fuente original (`originalImage`), su miniatura de renderizado (`previewImage`), su bandera de visibilidad (`isPublic`) y el conjunto completo de parámetros de calibración facial (`debugParams`).
+  * **Puntos de Acceso:**
+    * **Pestaña Mis Avatares en el Lobby ([`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx)):** Cada tarjeta de avatar personalizado incluye un botón de edición circular con ícono de deslizadores (`Sliders` icon en `bottom-1 right-1`). Al hacer clic, se abre el modal *3D Masks* en modo edición.
+    * **Panel de Control del Administrador ([`AdminControlPanel.tsx`](file:///d:/Apps/xstreamx/src/components/room/AdminControlPanel.tsx)):** En la tabla de administración de modelos, los avatares personalizados muestran un botón de edición dedicado (`Sliders` verde) junto a los controles de estado y eliminación.
+  * **Reconstrucción Automática del Modelo:**
+    * Al abrir el estudio con un avatar existente, se cargan automáticamente el nombre original, color temático, fotografía fuente y parámetros de ajuste de boca, ojos, rotación y blendshapes.
+    * Tan pronto la escena Three.js y la imagen están listas, el motor ejecuta la inferencia de 478 puntos de MediaPipe y proyecta la malla 3D calibrada en el viewport WebGL.
+  * **Destino de Colección para el Administrador (Mi Colección vs Colección Pública):**
+    * Cuando el usuario tiene rol de Administrador (`isAdmin: true`), el estudio 3D Masks habilita un selector visual de **Colección de Destino**:
+      * **Mi Colección Personal:** El modelo se guarda exclusivamente en la pestaña *"Mis Avatares"* del usuario (`isCustom: true`, `isPublic: false`).
+      * **Colección Pública:** El modelo se publica en el catálogo general (*"Modelos Predefinidos"*, `isCustom: false`, `isPublic: true`) accesible por todos los usuarios de la sala y del Lobby.
+  * **Opciones Duales de Guardado:**
+    * **"GUARDAR CAMBIOS EN ESTE MODELO":** Invoca `avatarModelServiceSingleton.updateCustomModel({ id, ... })`, sobrescribiendo la geometría binaria y los parámetros en IndexedDB y actualizando reactivamente las listas activas sin crear duplicados.
+    * **"Guardar como copia nueva":** Permite al usuario bifurcar el modelo creando un nuevo avatar independiente con un ID único preservando el original intacto.
+
+### 6.3. Solicitud de Permisos de Hardware Estrictamente Bajo Demanda (Cero Solicitudes en Carga)
+* En cumplimiento estricto con los principios de privacidad y UX no invasiva, la aplicación jamás solicita acceso a la cámara ni al micrófono de forma automática al montar el componente raíz ([`App.tsx`](file:///d:/Apps/xstreamx/src/App.tsx)) ni al cargar el Lobby ([`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx)).
+* **Disparadores Exclusivos por Clic del Usuario:**
+  * **Micrófono:** El acceso físico al micrófono (`getUserMedia({ audio: true })`) se solicita únicamente cuando el usuario presiona el botón de micrófono en el Lobby o en los controles de llamada de la sala. Si el usuario ingresa sin activar el micrófono, entra a la sala silenciado de forma segura sin requerir permisos.
+  * **Cámara:** El acceso a la cámara (`getUserMedia({ video: ... })`) se solicita exclusivamente cuando el usuario hace clic en el botón de cámara en el Lobby o dentro de la sala. Si la cámara está inactiva, el avatar opera en modo voz/lipsync biomimético.
+* **Supresión de Banners Agresivos:** Se eliminaron avisos bloqueantes en el Lobby; los mensajes de error de hardware solo se muestran si el usuario intentó activar el dispositivo y el navegador denegó explícitamente el permiso.
+
+### 6.4. Bloqueo de Avatar por Sesión (Sin Hot-Swap en Sala)
 * El cambio de avatar **en vivo dentro de la sala ha sido eliminado** deliberadamente de [`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx) para garantizar la **consistencia de identidad** del personaje durante toda la llamada.
 * El avatar se selecciona en el Lobby antes de unirse y permanece fijo para esa sesión. Esto evita:
   * Inconsistencias visuales momentáneas durante la recarga del modelo 3D.

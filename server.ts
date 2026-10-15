@@ -31,6 +31,29 @@ interface Room {
 
 const rooms = new Map<string, Room>();
 
+const DEFAULT_INITIAL_YOUTUBE_VIDEO = {
+  id: 'v_init_dead_president',
+  url: 'https://www.youtube.com/watch?v=SGvxjfK1t9A',
+  videoId: 'SGvxjfK1t9A',
+  title: 'Nas - Dead president',
+  thumbnailUrl: 'https://i.ytimg.com/vi/SGvxjfK1t9A/hqdefault.jpg',
+  durationSec: 284,
+  addedByUserId: 'system',
+  addedByUserName: 'XStreamX',
+  addedAt: 1700000000000,
+};
+
+function createInitialMediaState() {
+  return {
+    currentVideo: DEFAULT_INITIAL_YOUTUBE_VIDEO,
+    queue: [DEFAULT_INITIAL_YOUTUBE_VIDEO],
+    isPlaying: false,
+    playbackTime: 0,
+    lastSyncTimestamp: Date.now(),
+    syncedByUserId: 'system',
+  };
+}
+
 // Helper to determine the single active admin in a room
 function getRoomActiveAdmin(room: Room, io?: Server): { user: User; socketId: string } | undefined {
   for (const [sId, u] of room.users.entries()) {
@@ -207,6 +230,7 @@ async function startServer() {
           isLocked: false,
           users: new Map(),
           createdAt: Date.now(),
+          mediaState: createInitialMediaState(),
         };
         rooms.set(cleanId, room);
       }
@@ -244,6 +268,7 @@ async function startServer() {
           isLocked: false,
           users: new Map(),
           createdAt: Date.now(),
+          mediaState: createInitialMediaState(),
         };
         rooms.set(trimmedRoomId, room);
       }
@@ -536,7 +561,10 @@ async function startServer() {
     socket.on('request_media_sync', () => {
       if (!currentUser?.roomId) return;
       const room = rooms.get(currentUser.roomId);
-      if (room?.mediaState) {
+      if (room) {
+        if (!room.mediaState) {
+          room.mediaState = createInitialMediaState();
+        }
         socket.emit('media_state_sync', room.mediaState);
       }
     });

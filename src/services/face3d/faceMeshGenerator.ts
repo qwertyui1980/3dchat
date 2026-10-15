@@ -45,17 +45,17 @@ export interface MouthCustomizationParams extends GestureCalibrationParams {
   lipThickness: number;       // scales lip volume in Z and Y (0.5 to 2.0, default 1.0)
   mouthOffsetY: number;       // vertical shift of mouth (-0.2 to 0.2, default 0.0)
   smileOffset: number;        // corner elevation offset (-0.15 to 0.2, default 0.02)
-  oralCavityEnabled: boolean; // whether to attach an oral cavity backing mesh (default true)
+  oralCavityEnabled: boolean; // whether to attach an oral cavity backing mesh (default false)
 }
 
 export const DEFAULT_MOUTH_PARAMS: MouthCustomizationParams = {
   ...DEFAULT_GESTURE_PARAMS,
-  mouthDepthPush: 0.12,
+  mouthDepthPush: 0.0,
   lipThickness: 1.0,
   mouthOffsetY: 0.0,
-  smileOffset: 0.02,
+  smileOffset: 0.0,
   jawOpenScale: 1.0,
-  oralCavityEnabled: true,
+  oralCavityEnabled: false,
 };
 
 // --- Multi-Point Landmark Tracking Groups (MediaPipe 478) ---
@@ -106,6 +106,8 @@ export const LOWER_LIP_SET = new Set(LOWER_LIP_INDICES);
 export const MOUTH_CORNER_SET = new Set(MOUTH_CORNER_INDICES);
 export const EYEBROW_SET = new Set([...EYEBROW_LEFT_INDICES, ...EYEBROW_RIGHT_INDICES, ...GLABELLA_FOREHEAD_INDICES]);
 export const EYE_SET = new Set([...EYE_LEFT_INDICES, ...EYE_RIGHT_INDICES]);
+export const EYE_UPPER_LID_ALL = new Set([...EYE_LEFT_UPPER_LID, ...EYE_RIGHT_UPPER_LID]);
+export const EYE_LOWER_LID_ALL = new Set([...EYE_LEFT_LOWER_LID, ...EYE_RIGHT_LOWER_LID]);
 export const NOSE_SET = new Set(NOSE_INDICES);
 export const LIP_SET = new Set([...UPPER_LIP_INDICES, ...LOWER_LIP_INDICES, ...INNER_LIP_INDICES, ...OUTER_LIP_INDICES]);
 export const JAW_SET = new Set(JAW_MANDIBLE_INDICES);
@@ -415,16 +417,54 @@ export class FaceMeshGenerator {
     const uvs: number[] = [];
     const basePoints: Point3D[] = [];
 
+    // Pre-calculate initial gap between raw upper (13) and lower (14) lips to seal in resting pose
+    const rawGapY = Math.max(0, (canonicalPoints[13]?.y ?? 0) - (canonicalPoints[14]?.y ?? 0));
+
     canonicalPoints.forEach((p, index) => {
       let x = (p.x - centerX) / scaleX;
       let y = (p.y - centerY) / scaleY;
       let z = (p.z - centerZ) / scaleZ;
 
+      // 1. Initial Eye Opening & Eyebrow Clearance
+      // En reposo, eleva los párpados superiores y cejas, y desciende suavemente los párpados inferiores
+      // para que los ojos 3D y pupilas queden completamente abiertos, nítidos y visibles.
+      if (EYE_UPPER_LID_ALL.has(index)) {
+        y += 0.052;
+        z += 0.016;
+      } else if (EYE_LOWER_LID_ALL.has(index)) {
+        y -= 0.022;
+      }
+
+      if (EYEBROW_SET.has(index)) {
+        y += 0.045;
+      }
+
+      // 2. Initial Mouth Rest Pose Sealing (Labios cerrados en reposo sin hendiduras abiertas)
+      if (rawGapY > 0.005) {
+        const isInnerLip = INNER_LIP_INDICES.includes(index);
+        const isLowerLip = LOWER_LIP_SET.has(index);
+        const isUpperLip = UPPER_LIP_SET.has(index);
+
+        if (isLowerLip || isInnerLip) {
+          if (y < normMouthCenter.y) {
+            const dM = Math.hypot(x - normMouthCenter.x, y - normMouthCenter.y);
+            const sealW = smoothRadialFalloff(dM, 0.18);
+            y += Math.min(normMouthCenter.y - y, rawGapY * 0.85) * sealW;
+          }
+        } else if (isUpperLip && isInnerLip) {
+          if (y > normMouthCenter.y) {
+            const dM = Math.hypot(x - normMouthCenter.x, y - normMouthCenter.y);
+            const sealW = smoothRadialFalloff(dM, 0.18);
+            y -= Math.min(y - normMouthCenter.y, rawGapY * 0.15) * sealW;
+          }
+        }
+      }
+
       // Apply mouth calibration parameters
       const distToMouth = Math.hypot(x - normMouthCenter.x, y - normMouthCenter.y);
 
-      // A. Mouth Depth Push: curve inner lips inward in -Z into oral cavity
-      if (distToMouth < 0.28) {
+      // A. Mouth Depth Push: curve inner lips inward in -Z into oral cavity (default 0.0)
+      if (distToMouth < 0.28 && this.mouthParams.mouthDepthPush !== 0) {
         const depthW = smoothRadialFalloff(distToMouth, 0.28);
         const isInner = INNER_LIP_INDICES.includes(index);
         const pushAmt = isInner ? this.mouthParams.mouthDepthPush : this.mouthParams.mouthDepthPush * 0.45;
@@ -685,46 +725,28 @@ export class FaceMeshGenerator {
         // 1. JAW BLENDSHAPES
         // ==========================================
         case 'jawOpen': {
-          const isCorner = MOUTH_CORNER_SET.has(index);
-          const isUpper = !isCorner && (UPPER_LIP_SET.has(index) || (base.y >= pMouthCenter.y && !LOWER_LIP_SET.has(index)));
-          const isLower = !isCorner && (LOWER_LIP_SET.has(index) || base.y < pMouthCenter.y);
+          // 1. Las comisuras y el labio superior permanecen 100% inmóviles
+          if (MOUTH_CORNER_SET.has(index) || UPPER_LIP_SET.has(index) || base.y >= pMouthCenter.y) {
+            break;
+          }
 
-          if (isCorner) {
-            // Mouth corners act as bilateral hinges: subtle inward tension and tiny vertical drop
-            const dCorner = Math.min(distTo(index, 61), distTo(index, 291), distTo(index, 78), distTo(index, 308));
-            const cornerW = smoothRadialFalloff(dCorner, 0.16);
-            y -= 0.04 * jawScale * cornerW;
-            x -= Math.sign(base.x - pMouthCenter.x) * 0.02 * jawScale * cornerW;
-          } else if (isUpper) {
-            // UPPER LIP: Stays anchored to the skull, serving as the ceiling/reference that closes with the lower lip.
-            // 0 downward drop: ensures the mouth divides cleanly from the lower lip down!
-          } else if (isLower) {
-            // LOWER LIP, MANDIBLE AND CHIN: Divides cleanly from the lower lip downwards!
-            const mouthHalfWidth = Math.max(0.18, Math.abs(pMouthCornerRight.x - pMouthCornerLeft.x) * 0.5);
-            const dx = Math.abs(base.x - pMouthCenter.x);
-            // Lateral falloff from center (1.0) to mouth corners (0.0)
-            const latW = Math.max(0, 1 - Math.min(1, (dx / mouthHalfWidth) ** 1.8));
+          // 2. Se anima exclusivamente la parte de los labios inferiores (sin comisuras, sin mandíbula/barbilla)
+          const isLowerLip = LOWER_LIP_SET.has(index) || INNER_LIP_INDICES.includes(index);
+          const d14 = distTo(index, 14);
 
-            // 1. Lower lip separation and drop
-            const d14 = distTo(index, 14);
-            const isLipMargin = LOWER_LIP_SET.has(index) || d14 < 0.28;
+          if (isLowerLip || d14 < 0.20) {
+            // Factor comisuras: 0 en las comisuras y sus inmediaciones para dejarlas intactas, 1 en el centro del labio
+            const dCornerL = distTo(index, 61);
+            const dCornerR = distTo(index, 291);
+            const minCornerDist = Math.min(dCornerL, dCornerR);
+            const cornerMask = THREE.MathUtils.clamp((minCornerDist - 0.04) / 0.10, 0, 1);
 
-            if (isLipMargin) {
-              const lipDistW = Math.max(0.60, smoothRadialFalloff(d14, 0.28));
-              // Full lower lip downward drop (-Y) and slight oral cavity recession (-Z)
-              y -= 0.38 * jawScale * lipSepRatio * latW * lipDistW;
-              z -= 0.12 * jawScale * latW * lipDistW;
-            }
+            // Descenso centrado suave en el labio inferior (landmark 14)
+            const lipW = smoothRadialFalloff(d14, 0.22) * cornerMask;
 
-            // 2. Continuous anatomical mandible bone rotation down through the chin
-            if (base.y < pMouthCenter.y) {
-              const jawRange = Math.abs(pMouthCenter.y - pChin.y) || 0.6;
-              const t = THREE.MathUtils.clamp((pMouthCenter.y - base.y) / jawRange, 0, 1);
-              // Smooth sinusoidal progression down the jaw bone towards the chin
-              const jawBoneW = Math.sin(t * Math.PI * 0.5);
-              y -= 0.24 * jawScale * jawBoneW;
-              z -= 0.07 * jawScale * jawBoneW;
-            }
+            // Apertura de habla anatómica calibrada (0.16 máx, movimiento exclusivamente labial)
+            y -= 0.16 * jawScale * lipSepRatio * lipW;
+            z -= 0.03 * jawScale * lipW;
           }
           break;
         }
@@ -956,15 +978,13 @@ export class FaceMeshGenerator {
           const wUpper = smoothRadialFalloff(distToAny(index, EYE_LEFT_UPPER_LID), 0.22);
           const pLower = basePoints[145] || basePoints[159];
           const rawDy = pLower.y - (basePoints[159]?.y || pLower.y);
-          // Minimum anatomical stroke: guaranteed downward travel of at least -0.24 units
-          // so that the upper eyelid completely covers the 3D eyeball sphere (radius ~0.10)
-          const strokeDy = Math.min(rawDy * 1.15, -0.24);
+          const strokeDy = Math.min(rawDy * 1.15, -0.28);
           y += strokeDy * blinkScale * wUpper;
           z += 0.05 * blinkScale * wUpper; // covers forward surface of eyeball
 
           // Lower lid rises subtly
           const wLower = smoothRadialFalloff(distToAny(index, EYE_LEFT_LOWER_LID), 0.15);
-          y += 0.04 * blinkScale * wLower;
+          y += 0.05 * blinkScale * wLower;
           break;
         }
 
@@ -972,12 +992,12 @@ export class FaceMeshGenerator {
           const wUpper = smoothRadialFalloff(distToAny(index, EYE_RIGHT_UPPER_LID), 0.22);
           const pLower = basePoints[374] || basePoints[386];
           const rawDy = pLower.y - (basePoints[386]?.y || pLower.y);
-          const strokeDy = Math.min(rawDy * 1.15, -0.24);
+          const strokeDy = Math.min(rawDy * 1.15, -0.28);
           y += strokeDy * blinkScale * wUpper;
           z += 0.05 * blinkScale * wUpper;
 
           const wLower = smoothRadialFalloff(distToAny(index, EYE_RIGHT_LOWER_LID), 0.15);
-          y += 0.04 * blinkScale * wLower;
+          y += 0.05 * blinkScale * wLower;
           break;
         }
 

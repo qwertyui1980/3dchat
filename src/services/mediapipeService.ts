@@ -48,10 +48,16 @@ export class MediaPipeFaceTracker {
     this.loadError = null;
 
     try {
-      // Load wasm files from CDN
-      const vision = await FilesetResolver.forVisionTasks(
-        'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
-      );
+      // Load wasm files: prioritize local public /wasm (exact version matching installed package), with pinned CDN fallback
+      let vision;
+      try {
+        vision = await FilesetResolver.forVisionTasks('/wasm');
+      } catch (localWasmErr) {
+        console.warn('[MediaPipe] Failed to load local /wasm, falling back to CDN:', localWasmErr);
+        vision = await FilesetResolver.forVisionTasks(
+          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm'
+        );
+      }
 
       this.landmarker = await FaceLandmarker.createFromOptions(vision, {
         baseOptions: {
@@ -71,9 +77,14 @@ export class MediaPipeFaceTracker {
     } catch (err: any) {
       console.warn('[MediaPipe] Failed to load GPU landmarker, trying CPU fallback:', err);
       try {
-        const vision = await FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
-        );
+        let vision;
+        try {
+          vision = await FilesetResolver.forVisionTasks('/wasm');
+        } catch {
+          vision = await FilesetResolver.forVisionTasks(
+            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm'
+          );
+        }
         this.landmarker = await FaceLandmarker.createFromOptions(vision, {
           baseOptions: {
             modelAssetPath:
@@ -327,10 +338,6 @@ export class MediaPipeFaceTracker {
               if (jawOpen > 0.04) {
                 // Attenuate mouthClose when jaw opens to prevent lip-pinching conflict
                 bsMap['mouthClose'] = (bsMap['mouthClose'] ?? 0) * Math.max(0, 1 - jawOpen * 2.2);
-                bsMap['mouthLowerDownLeft'] = Math.max(bsMap['mouthLowerDownLeft'] ?? 0, jawOpen * 0.45);
-                bsMap['mouthLowerDownRight'] = Math.max(bsMap['mouthLowerDownRight'] ?? 0, jawOpen * 0.45);
-                bsMap['mouthUpperUpLeft'] = Math.max(bsMap['mouthUpperUpLeft'] ?? 0, jawOpen * 0.15);
-                bsMap['mouthUpperUpRight'] = Math.max(bsMap['mouthUpperUpRight'] ?? 0, jawOpen * 0.15);
               }
 
               // Mouth Smile: Physical left & right corner elevation + blendshapes
