@@ -48,12 +48,14 @@ export class MediaPipeFaceTracker {
     this.loadError = null;
 
     try {
-      // Load wasm files: prioritize local public /wasm (exact version matching installed package), with pinned CDN fallback
+      // Load wasm files: prioritize local public wasm relative to app base URL, with pinned CDN fallback
+      const base = import.meta.env.BASE_URL || '/';
+      const localWasmPath = base.endsWith('/') ? `${base}wasm` : `${base}/wasm`;
       let vision;
       try {
-        vision = await FilesetResolver.forVisionTasks('/wasm');
+        vision = await FilesetResolver.forVisionTasks(localWasmPath);
       } catch (localWasmErr) {
-        console.warn('[MediaPipe] Failed to load local /wasm, falling back to CDN:', localWasmErr);
+        console.warn('[MediaPipe] Failed to load local wasm at', localWasmPath, 'falling back to CDN:', localWasmErr);
         vision = await FilesetResolver.forVisionTasks(
           'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm'
         );
@@ -77,9 +79,11 @@ export class MediaPipeFaceTracker {
     } catch (err: any) {
       console.warn('[MediaPipe] Failed to load GPU landmarker, trying CPU fallback:', err);
       try {
+        const base = import.meta.env.BASE_URL || '/';
+        const localWasmPath = base.endsWith('/') ? `${base}wasm` : `${base}/wasm`;
         let vision;
         try {
-          vision = await FilesetResolver.forVisionTasks('/wasm');
+          vision = await FilesetResolver.forVisionTasks(localWasmPath);
         } catch {
           vision = await FilesetResolver.forVisionTasks(
             'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm'

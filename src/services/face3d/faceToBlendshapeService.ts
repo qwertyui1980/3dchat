@@ -144,10 +144,12 @@ export class FaceToBlendshapeService {
     this.isInitializing = true;
     try {
       let vision;
+      const base = import.meta.env.BASE_URL || '/';
+      const localWasmPath = base.endsWith('/') ? `${base}wasm` : `${base}/wasm`;
       try {
-        vision = await FilesetResolver.forVisionTasks('/wasm');
+        vision = await FilesetResolver.forVisionTasks(localWasmPath);
       } catch (localWasmErr) {
-        console.warn('[FaceToBlendshapeService] Failed to load local /wasm, falling back to CDN:', localWasmErr);
+        console.warn('[FaceToBlendshapeService] Failed to load local wasm at', localWasmPath, 'falling back to CDN:', localWasmErr);
         vision = await FilesetResolver.forVisionTasks(
           'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm'
         );
