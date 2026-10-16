@@ -160,8 +160,14 @@ export class ARKitBlendshapeMapper {
         if (arkitName.startsWith('brow')) {
           val = Math.min(1.0, Math.pow(val, 0.65) * 2.1);
         } else if (arkitName.startsWith('eyeBlink')) {
-          // Snappy eyelid closure curve
-          val = val > 0.10 ? Math.min(1.0, (val - 0.06) * 2.2) : 0;
+          // Snappy eyelid closure curve — MediaPipe reports eyeBlink > 0 even with fully
+          // open eyes (0.05–0.35 baseline). The dead zone of 0.35 ensures only genuine
+          // closures produce output; 1.8x gain maps the usable range to 0–1.
+          val = val > 0.35 ? Math.min(1.0, (val - 0.35) * 1.8) : 0;
+        } else if (arkitName.startsWith('eyeWide')) {
+          val = Math.min(1.0, Math.max(val * 1.6, 0.32));
+        } else if (arkitName.startsWith('eyeSquint')) {
+          val = val > 0.32 ? Math.min(1.0, (val - 0.32) * 1.5) : 0;
         } else if (arkitName.includes('Smile') || arkitName.includes('smile')) {
           val = Math.min(1.0, Math.pow(val, 0.70) * 1.85);
         } else if (arkitName.includes('Pucker') || arkitName.includes('pucker')) {
@@ -230,14 +236,14 @@ export class ARKitBlendshapeMapper {
 
     if (leftUpperLid && leftLowerLid) {
       const eyeLidDistL = Math.hypot(leftUpperLid.x - leftLowerLid.x, leftUpperLid.y - leftLowerLid.y);
-      if (eyeLidDistL < 0.014) {
-        // Almost closed lids
+      if (eyeLidDistL < 0.008) {
+        // Almost closed lids — threshold lowered to avoid false blink signals
         blendshapes.eyeBlinkLeft = Math.max(blendshapes.eyeBlinkLeft || 0, 0.85);
       }
     }
     if (rightUpperLid && rightLowerLid) {
       const eyeLidDistR = Math.hypot(rightUpperLid.x - rightLowerLid.x, rightUpperLid.y - rightLowerLid.y);
-      if (eyeLidDistR < 0.014) {
+      if (eyeLidDistR < 0.008) {
         blendshapes.eyeBlinkRight = Math.max(blendshapes.eyeBlinkRight || 0, 0.85);
       }
     }

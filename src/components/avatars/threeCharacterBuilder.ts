@@ -2110,7 +2110,8 @@ export function buildPCDCharacter(baseGeometry: THREE.BufferGeometry): Character
       headPivot.rotation.z = THREE.MathUtils.lerp(headPivot.rotation.z, -features.roll * 0.75, dt * 14);
 
       // 2. Jaw & Mouth deformation on point cloud points
-      const openAmount = Math.max(features.jawOpen, features.audioVolume * 1.6);
+      const audioOpen = (features.audioVolume || 0) > 0.16 ? Math.min(1.0, ((features.audioVolume || 0) - 0.16) * 1.5) : 0;
+      const openAmount = Math.max(features.jawOpen, audioOpen);
       if (openAmount > 0.04) {
         for (let i = 0; i < count; i++) {
           const origX = origPositions[i * 3];
@@ -2579,7 +2580,8 @@ export function buildLincolnCharacter(gltf: GLTF): Character3DController {
       const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
       headPivot.position.y = 3.75 + breath + voiceNod;
 
-      const mouthOpen = Math.max(features.jawOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
+      const audioOpen = (features.audioVolume || 0) > 0.16 ? Math.min(1.0, ((features.audioVolume || 0) - 0.16) * 1.5) : 0;
+      const mouthOpen = Math.max(features.jawOpen || 0, audioOpen);
       applyMorph('jaw', mouthOpen, 0.35);
       applyMorph('mouth', mouthOpen, 0.35);
       applyMorph('open', mouthOpen, 0.35);
@@ -2726,7 +2728,8 @@ export function buildBidenCharacter(gltf: GLTF): Character3DController {
       const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
       model.position.y = -0.2 + breath + voiceNod;
 
-      const mouthOpen = Math.max(features.jawOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
+      const audioOpen = (features.audioVolume || 0) > 0.16 ? Math.min(1.0, ((features.audioVolume || 0) - 0.16) * 1.5) : 0;
+      const mouthOpen = Math.max(features.jawOpen || 0, audioOpen);
       applyMorph('jaw', mouthOpen, 0.35);
       applyMorph('mouth', mouthOpen, 0.35);
       applyMorph('open', mouthOpen, 0.35);
@@ -2846,7 +2849,8 @@ export function buildObamaCharacter(gltf: GLTF): Character3DController {
       const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
       headPivot.position.y = 3.75 + breath + voiceNod;
 
-      const mouthOpen = Math.max(features.jawOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
+      const audioOpen = (features.audioVolume || 0) > 0.16 ? Math.min(1.0, ((features.audioVolume || 0) - 0.16) * 1.5) : 0;
+      const mouthOpen = Math.max(features.jawOpen || 0, audioOpen);
       applyMorph('jaw', mouthOpen, 0.35);
       applyMorph('mouth', mouthOpen, 0.35);
       applyMorph('open', mouthOpen, 0.35);
@@ -2966,7 +2970,8 @@ export function buildTrumpCharacter(gltf: GLTF): Character3DController {
       const voiceNod = Math.min((features.audioVolume || 0) * 0.035, 0.025);
       headPivot.position.y = 3.75 + breath + voiceNod;
 
-      const mouthOpen = Math.max(features.jawOpen || 0, Math.min((features.audioVolume || 0) * 2.2, 1));
+      const audioOpen = (features.audioVolume || 0) > 0.16 ? Math.min(1.0, ((features.audioVolume || 0) - 0.16) * 1.5) : 0;
+      const mouthOpen = Math.max(features.jawOpen || 0, audioOpen);
       applyMorph('jaw', mouthOpen, 0.35);
       applyMorph('mouth', mouthOpen, 0.35);
       applyMorph('open', mouthOpen, 0.35);
@@ -3084,7 +3089,8 @@ export function buildMipipiCharacter(gltf: GLTF): Character3DController {
       headPivot.position.y = 3.75 + breath + voiceNod;
 
       // Morph targets handling (jawOpen, mouthSmile, browDown, eyeBlinkLeft, eyeBlinkRight)
-      const mouthOpen = Math.max(features.jawOpen || 0, Math.min((features.audioVolume || 0) * 1.8, 1));
+      const audioOpen = (features.audioVolume || 0) > 0.16 ? Math.min(1.0, ((features.audioVolume || 0) - 0.16) * 1.5) : 0;
+      const mouthOpen = Math.max(features.jawOpen || 0, audioOpen);
       applyMorph('jawOpen', mouthOpen, 0.35);
       applyMorph('mouthSmile', features.mouthSmile || 0, 0.2);
       applyMorph('browDown', features.browFurrow || 0, 0.2);

@@ -239,11 +239,34 @@ export class MediaPipeFaceTracker {
               yaw = Math.max(-1.2, Math.min(1.2, Number.isFinite(yaw) ? yaw : 0));
               roll = Math.max(-1.0, Math.min(1.0, Number.isFinite(roll) ? roll : 0));
 
-              // Eyes
-              const eyeBlinkLeft = bsMap['eyeBlinkLeft'] ?? 0;
-              const eyeBlinkRight = bsMap['eyeBlinkRight'] ?? 0;
-              const eyeWideLeft = bsMap['eyeWideLeft'] ?? 0;
-              const eyeWideRight = bsMap['eyeWideRight'] ?? 0;
+              // Eyes — Sensitivity & Dead Zone Calibration:
+              // 1. Blinking: MediaPipe reports eyeBlink 0.05–0.35 even with fully open eyes.
+              //    Only genuine closures (>0.36) produce output; mapping [0.36..0.90] to [0..1].
+              const rawBlinkL = bsMap['eyeBlinkLeft'] ?? 0;
+              const rawBlinkR = bsMap['eyeBlinkRight'] ?? 0;
+              const BLINK_THRESH = 0.36;
+              const eyeBlinkLeft = rawBlinkL > BLINK_THRESH ? Math.min(1.0, (rawBlinkL - BLINK_THRESH) / (0.90 - BLINK_THRESH)) : 0;
+              const eyeBlinkRight = rawBlinkR > BLINK_THRESH ? Math.min(1.0, (rawBlinkR - BLINK_THRESH) / (0.90 - BLINK_THRESH)) : 0;
+              bsMap['eyeBlinkLeft'] = eyeBlinkLeft;
+              bsMap['eyeBlinkRight'] = eyeBlinkRight;
+
+              // 2. Eye Wide — Active Open-Eye Assist:
+              //    When eyes are open, maintain an active aperture lift (0.35) so 3D mask avatars
+              //    reveal clear, wide, expressive eyes without eyelid droop.
+              const rawWideL = bsMap['eyeWideLeft'] ?? 0;
+              const rawWideR = bsMap['eyeWideRight'] ?? 0;
+              const openFactorL = Math.max(0, 1 - eyeBlinkLeft * 2.8);
+              const openFactorR = Math.max(0, 1 - eyeBlinkRight * 2.8);
+              const eyeWideLeft = Math.min(1.0, Math.max(rawWideL * 1.6, 0.35 * openFactorL));
+              const eyeWideRight = Math.min(1.0, Math.max(rawWideR * 1.6, 0.35 * openFactorR));
+              bsMap['eyeWideLeft'] = eyeWideLeft;
+              bsMap['eyeWideRight'] = eyeWideRight;
+
+              // 3. Eye Squint — Suppress baseline squint noise (<0.32) that narrows eyelids
+              const rawSquintL = bsMap['eyeSquintLeft'] ?? 0;
+              const rawSquintR = bsMap['eyeSquintRight'] ?? 0;
+              bsMap['eyeSquintLeft'] = rawSquintL > 0.32 ? Math.min(1.0, (rawSquintL - 0.32) * 1.5) : 0;
+              bsMap['eyeSquintRight'] = rawSquintR > 0.32 ? Math.min(1.0, (rawSquintR - 0.32) * 1.5) : 0;
 
               // Bi-ocular Eye Gaze Tracking (Left & Right Blendshapes + Iris Landmarks)
               const lookInL = bsMap['eyeLookInLeft'] ?? 0;

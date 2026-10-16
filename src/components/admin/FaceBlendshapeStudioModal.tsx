@@ -291,6 +291,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
       renderer.render(scene, camera);
     };
     animate();
+    return scene;
   }, []);
 
 
@@ -599,7 +600,9 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     setStatus('Detectando puntos faciales y blendshapes ARKit con MediaPipe...', 'info');
 
     try {
-      const activeCustomLandmarks = overrideLandmarks || customLandmarks;
+      const activeCustomLandmarks = (Array.isArray(overrideLandmarks) && overrideLandmarks.length > 0)
+        ? overrideLandmarks
+        : customLandmarks;
       const result = await faceToBlendshapeServiceSingleton.processFaceImage(
         selectedImageElement,
         {
@@ -615,8 +618,16 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         rawDetectedLandmarksRef.current = result.rawDetectedLandmarks;
       }
 
-      const scene = sceneRef.current;
-      if (!scene) throw new Error('Scene not initialized');
+      let scene = sceneRef.current;
+      if (!scene) {
+        const inited = initThreeScene();
+        if (inited) scene = inited;
+      }
+      if (!scene) {
+        scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x0a0c16);
+        sceneRef.current = scene;
+      }
 
       // Remove existing meshes
       const oldFace = scene.getObjectByName('faceMesh');
@@ -1473,7 +1484,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
               <button
                 type="button"
                 disabled={!selectedImageElement || isProcessing}
-                onClick={processImage}
+                onClick={() => processImage()}
                 className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-500 via-indigo-500 to-purple-600 hover:from-cyan-400 hover:to-purple-500 text-white font-black text-xs tracking-wider shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {isProcessing ? (
@@ -1590,7 +1601,15 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
 
             {/* 3D Canvas */}
             <div className="flex-1 w-full h-full relative">
-              <canvas ref={canvasRef} className="w-full h-full block cursor-grab active:cursor-grabbing" />
+              <canvas
+                ref={(el) => {
+                  canvasRef.current = el;
+                  if (el && !sceneRef.current) {
+                    initThreeScene();
+                  }
+                }}
+                className="w-full h-full block cursor-grab active:cursor-grabbing"
+              />
 
               {!hasGeneratedModel && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center pointer-events-none">

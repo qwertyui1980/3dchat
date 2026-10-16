@@ -223,18 +223,20 @@ Implementado en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/component
 * Al cargar un GLB, `ThreeAvatarCanvas` busca el nodo `xstreamx_meta` y almacena sus `calibrationMeta` en `clonedScene.userData` para futuras re-ediciones en el estudio.
 * El auto-upgrade de `jawOpen` para modelos legacy ahora siempre escribe deltas relativos (`mx−bx`), marca `fGeo.morphTargetsRelative = true` post-upgrade y mejora la detección de umbrales para modelos absolutos en LocalStorage.
 
-### Fase 6 — Curvas de Sensibilidad No Lineal y Detección Geométrica Reforzada (`arkitMapper.ts`)
-* MediaPipe genera puntuaciones crudas típicamente bajas (0.05 a 0.25) para cejas y sonrisas bajo iluminación y cámaras web ordinarias.
+### Fase 6 — Curvas de Sensibilidad No Lineal y Detección Geométrica Reforzada (`arkitMapper.ts` & `mediapipeService.ts`)
+* MediaPipe genera puntuaciones crudas típicamente bajas (0.05 a 0.25) para cejas y sonrisas, e introduce ruido basal (0.10 a 0.35) en parpadeos y entrecierre de ojos debido al ángulo de cámaras web o iluminación de pantalla.
 * **Curvas de Potencia Gamma y Ganancia Acelerada:**
   * Cejas: `Math.pow(val, 0.65) * 2.1` (`browInnerUp`, `browOuterUp*`, `browDown*`).
   * Sonrisas: `Math.pow(val, 0.70) * 1.85` (`mouthSmile*`).
   * Pucker / Beso: `Math.pow(val, 0.75) * 1.7` (`mouthPucker`).
-  * Parpadeo: `val > 0.06 ? Math.min(1.0, (val - 0.06) * 2.2) : 0` (`eyeBlink*`).
-* **`enhanceBlendshapesFromLandmarks`:** Reforzado con distancias euclidianas geométricas directas entre párpados y ratios labiales (apertura bucal $ratio > 0.08$ activa `jawOpen`, altura de comisuras activa sonrisa o tristeza).
+  * Parpadeo (`eyeBlink*`): Zona muerta calibrada a umbral `0.36` en `mediapipeService.ts` (`0.35` en `arkitMapper.ts`). Evita que los párpados se entrecierren mientras el usuario mira la pantalla; solo cierres reales sobrepasan el umbral y alcanzan el cierre total 1.0.
+  * Apertura Activa de Ojos (`eyeWide*`): Asistencia de apertura activa de `0.35` cuando los ojos están abiertos, desvaneciéndose limpiamente a 0 al parpadear para permitir el cierre palpebral completo.
+  * Supresión de Entrecierre Falso (`eyeSquint*`): Zona muerta de `0.32` que elimina la elevación no deseada del párpado inferior generada por reflejos o postura habitual frente al monitor.
+* **`enhanceBlendshapesFromLandmarks`:** Reforzado con distancias euclidianas geométricas directas entre párpados (umbral de cierre geométrico 0.008 para evitar falsos positivos) y ratios labiales (apertura bucal $ratio > 0.08$ activa `jawOpen`, altura de comisuras activa sonrisa o tristeza).
 
-### Fase 7 — Garantía de Recorrido Ocular Mínimo y Desplazamiento Frontal en Párpados (`faceMeshGenerator.ts`)
-* En modelos fotogramétricos con hendidura palpebral estrecha o máscaras (e.g. Bolsonaro), el cálculo tradicional de distancia entre párpados superior e inferior arrojaba un delta ínfimo ($dy \approx -0.06$), impidiendo que el párpado superior cubriera el globo ocular.
-* **Garantía de Stroke Mínimo:** Forzado a `strokeDy = Math.min(rawDy * 1.15, -0.24)`, asegurando un descenso mínimo de $-0.24$ unidades con curvatura frontal en Z ($+0.05$) para cerrar limpiamente sobre la esfera del ojo 3D.
+### Fase 7 — Garantía de Apertura Palpebral Ampliada y Recorrido Ocular Completo (`faceMeshGenerator.ts`)
+* **Apertura Palpebral en Reposo Ampliada:** En el mallado base, elevación del párpado superior aumentada a `+0.082` (Z `+0.022`) y descenso del párpado inferior a `-0.038`, asegurando que las órbitas y globos oculares 3D luzcan completamente abiertos, nítidos y vivos.
+* **Garantía de Stroke Mínimo de Cierre:** Forzado a `strokeDy = Math.min(rawDy * 1.15, -0.32)`, asegurando un recorrido descendente completo de $-0.32$ unidades con curvatura frontal en Z ($+0.05$) para cubrir limpiamente el globo ocular 3D durante el parpadeo.
 * **Amplitud Aumentada:** Elevación central de cejas hasta 0.30, ceño fruncido hasta 0.25, sonrisa hasta 0.30, comisuras tristes hasta 0.24 y pucker hasta 0.55/0.24.
 
 ### Fase 8 — Auto-Upgrade Universal de 52 Morfos Legacy en Runtime (`ThreeAvatarCanvas.tsx`)
@@ -256,6 +258,34 @@ Implementado en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/component
 * **Suscripción Reactiva y Recarga Inmediata:**
   * `ThreeAvatarCanvas` se suscribe a los eventos de `avatarModelServiceSingleton`, manteniendo un estado de revisión reactivo (`avatarRevision`) e incluyendo `[avatarId, restoreCount, avatarRevision, avatarDef?.modelUrl]` en el hook de carga del WebGL.
   * En [`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx), `AvatarCanvas` cuenta con una `key` dinámica basada en el ID y la versión del modelo (`${selectedAvatarId}_${selectedAvatar?.modelUrl || selectedAvatar?.createdAt || ''}`), garantizando que al pulsar "Guardar Cambios" en el editor 3D Mask, el visor del personaje se actualice instantáneamente sin recargar la página.
+
+### Fase 11 — Modo Lip Sync con Compuerta Vocal Antirruido y Cierre Labial en Reposo
+* **Boca Cerrada en Reposo e Inicio:**
+  * En [`dynamicModeHelper.ts`](file:///d:/Apps/xstreamx/src/services/face3d/dynamicModeHelper.ts), el modo `lipsync` fuerza `jawOpen: 0`, `mouthSmile: 0` y `mouthPucker: 0` por defecto para que la máscara facial comience 100% con los labios sellados. La apertura labial responde única y exclusivamente al flujo de audio filtrado.
+* **Compuerta Vocal Antirruido en [`audioService.ts`](file:///d:/Apps/xstreamx/src/services/audioService.ts):**
+  * Umbral de ruido basal elevado a `NOISE_GATE = 0.032` (eliminando zumbidos de ventilador, respiración tenue, clics de ratón y ruido ambiental de sala).
+  * Curva de potencia exponencial no lineal $\text{excess}^{1.5} \times 1.25$ para suprimir sonidos menores y capturar únicamente los picos de sonido más altos y la pronunciación vocal deliberada.
+* **Filtro de Picos en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/components/avatars/ThreeAvatarCanvas.tsx) y Personajes 3D:**
+  * Umbral de compuerta en runtime `audioGate = 0.18` en modo `lipsync`. Se eliminó la inyección artificial estática (`isSpeakingRef ? 0.35 : 0`) que forzaba a la boca a quedar abierta innecesariamente.
+  * Curva de apertura suave $(\frac{\text{vol} - \text{gate}}{1 - \text{gate}})^{1.3} \times 0.75$, garantizando retorno instantáneo al reposo cerrado tan pronto cesa la voz.
+
+### Fase 12 — Sistema de Gestos Faciales Rápidos en Controles de Sala y Lobby
+* **Menú "Gestos" y Botones Rápidos:**
+  * Implementación de un menú interactivo con popover flotante denominado **"Gestos"** tanto en la barra de controles de hardware del Lobby ([`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx)) como en la barra central de mandos de la sala de videollamada ([`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx)).
+  * Incorpora los 6 botones de gestos faciales predefinidos:
+    1. `😊 Sonrisa` (`smile`): `mouthSmileLeft/Right = 0.95`, `cheekSquintLeft/Right = 0.4`
+    2. `😲 Sorpresa` (`surprise`): `jawOpen = 0.65`, `browInnerUp = 0.9`, `browOuterUpLeft/Right = 0.7`, `eyeWideLeft/Right = 0.85`
+    3. `😉 Guiño` (`wink`): `eyeBlinkLeft = 1.0`, `mouthSmileLeft = 0.7`, `browDownLeft = 0.3`
+    4. `😠 Ceño` (`furrow`): `browDownLeft/Right = 0.95`, `eyeSquintLeft/Right = 0.5`, `mouthFrownLeft/Right = 0.3`
+    5. `😗 Pucker` (`pucker`): `mouthPucker = 1.0`, `mouthFunnel = 0.6`
+    6. `😐 Neutral` (`neutral`): Resetea y desactiva cualquier override manual de expresión facial regresando al reposo o tracking natural.
+* **Superposición Arquitectónica en Pipeline y Red Cuádruple:**
+  * En [`dynamicModeHelper.ts`](file:///d:/Apps/xstreamx/src/services/face3d/dynamicModeHelper.ts), las funciones `applyQuickGesture()` y `applyDynamicMode()` superponen automáticamente los valores calculados sobre las primitivas `FaceFeatures` y sobre el diccionario ARKit `blendshapes`.
+  * Compatible universalmente con:
+    1. Avatares 3D Mask generados con morph targets ARKit 52.
+    2. Modelos GLTF con morph targets faciales (Robot GLTF).
+    3. Personajes Three.js procedurales (Cat, Dog, Female, Mipipi) a través de sus canales morfométricos en [`threeCharacterBuilder.ts`](file:///d:/Apps/xstreamx/src/components/avatars/threeCharacterBuilder.ts).
+  * En [`App.tsx`](file:///d:/Apps/xstreamx/src/App.tsx), al accionar cualquier gesto se emite de inmediato un micro-stream mediante `networkServiceSingleton.broadcastFaceData()` para que todos los pares en la sala WebRTC observen la animación instantáneamente.
 
 ---
 

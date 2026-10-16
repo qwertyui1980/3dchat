@@ -138,11 +138,11 @@ export const CameraPreviewPip: React.FC<CameraPreviewPipProps> = ({
     const w = canvas.width;
     const h = canvas.height;
 
-    const customDef = avatarModelServiceSingleton.getAvatarById(avatarId);
-    if (customDef?.trackingProfile) {
+    const customDef = avatarId ? avatarModelServiceSingleton.getAvatarById(avatarId) : null;
+    if (avatarId && customDef?.trackingProfile) {
       registerAvatarTrackingProfile(avatarId, customDef.trackingProfile);
     }
-    const profile = getAvatarTrackingProfile(avatarId);
+    const profile = getAvatarTrackingProfile(avatarId || '');
 
     // Helper to get mirrored coordinate with avatar-specific anatomical morphing
     const getPoint = (index: number) => {

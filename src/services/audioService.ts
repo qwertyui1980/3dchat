@@ -101,8 +101,16 @@ export class AudioService {
           const avgFreq = freqSum / (speechBins * 255);
 
           const rawEnergy = Math.max(rms, avgFreq * 0.45);
-          // Calibrated sensitivity: ambient noise ~0.002, human voice ~0.01 to 0.25
-          const normalized = Math.min(1, Math.max(0, (rawEnergy - 0.002) * 7.5));
+          // Noise Gate: ambient room noise, computer fans, breathing, keyboard clicks (~0.005 to 0.028)
+          // are strictly gated to 0. Only genuine human voice sounds above 0.032 pass through.
+          const NOISE_GATE = 0.032;
+          const PEAK_RANGE = 0.20;
+          let normalized = 0;
+          if (rawEnergy > NOISE_GATE) {
+            const excess = Math.min(1.0, (rawEnergy - NOISE_GATE) / PEAK_RANGE);
+            // Non-linear power curve (gamma 1.5): suppresses low sounds and captures prominent vocal peaks
+            normalized = Math.min(1.0, Math.pow(excess, 1.5) * 1.25);
+          }
 
           if (this.onVolumeChange && timestamp - lastDispatchTime >= 30) {
             lastDispatchTime = timestamp;

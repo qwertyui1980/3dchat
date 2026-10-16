@@ -17,9 +17,16 @@ import {
   Layers,
   Radio,
   Sparkles,
+  Smile,
 } from 'lucide-react';
 import { AvatarId, DynamicTrackingMode } from '../../types';
-import { TRACKING_MODES_CONFIG, normalizeTrackingMode, OFFICIAL_TRACKING_MODES } from '../../services/face3d/dynamicModeHelper';
+import {
+  TRACKING_MODES_CONFIG,
+  normalizeTrackingMode,
+  OFFICIAL_TRACKING_MODES,
+  QuickGestureType,
+  QUICK_GESTURES,
+} from '../../services/face3d/dynamicModeHelper';
 
 interface CallControlsProps {
   isMicActive: boolean;
@@ -46,6 +53,8 @@ interface CallControlsProps {
   onOpenAdminPanel?: () => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  activeGesture?: QuickGestureType | null;
+  onTriggerGesture?: (gesture: QuickGestureType) => void;
 }
 
 export const CallControls: React.FC<CallControlsProps> = ({
@@ -73,8 +82,11 @@ export const CallControls: React.FC<CallControlsProps> = ({
   onOpenAdminPanel,
   isFullscreen = false,
   onToggleFullscreen,
+  activeGesture,
+  onTriggerGesture,
 }) => {
   const [showModePicker, setShowModePicker] = React.useState(false);
+  const [showGesturesPicker, setShowGesturesPicker] = React.useState(false);
 
   return (
     <div className="h-20 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-[#08080c]/95 backdrop-blur-xl border-t border-white/[0.06] px-3 sm:px-6 flex items-center justify-between z-20 shrink-0 select-none">
@@ -217,6 +229,71 @@ export const CallControls: React.FC<CallControlsProps> = ({
                           </div>
                         </div>
                         {isSelected && <Check className="w-4 h-4 text-cyan-400 shrink-0" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Gestos Quick Menu Popover */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowGesturesPicker(!showGesturesPicker)}
+            className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-sm cursor-pointer flex items-center gap-1.5 ${
+              showGesturesPicker || activeGesture
+                ? 'bg-amber-950/70 hover:bg-amber-900/80 text-amber-300 border-amber-500/40 shadow-md shadow-amber-950/40'
+                : 'bg-[#121218] hover:bg-[#181822] text-neutral-100 border-white/[0.08]'
+            }`}
+            title="Menú de Gestos (Sonrisa, Sorpresa, Guiño, Ceño, Pucker, Neutral)"
+          >
+            <Smile className="w-5 h-5 text-amber-400" />
+            <span className="hidden xl:inline text-xs font-semibold">
+              {activeGesture ? QUICK_GESTURES.find((g) => g.id === activeGesture)?.label || 'Gestos' : 'Gestos'}
+            </span>
+          </button>
+
+          {showGesturesPicker && (
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setShowGesturesPicker(false)} />
+              <div className="absolute -translate-x-1/2 left-1/2 bottom-full mb-3 w-[calc(100vw-32px)] max-w-sm rounded-2xl bg-gradient-to-r from-amber-950/95 via-orange-950/90 to-amber-950/95 border border-amber-500/40 p-3 shadow-2xl backdrop-blur-xl z-30 space-y-2.5 animate-in fade-in zoom-in-95">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Smile className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold text-amber-200">Gestos</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onTriggerGesture) onTriggerGesture('neutral');
+                    }}
+                    className="text-[10px] text-amber-300 hover:text-white underline cursor-pointer"
+                  >
+                    Reset Neutral
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                  {QUICK_GESTURES.map((g) => {
+                    const isActive = activeGesture === g.id;
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => {
+                          if (onTriggerGesture) onTriggerGesture(g.id);
+                        }}
+                        className={`py-2 px-1 rounded-lg border text-[10px] font-bold transition flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                          isActive
+                            ? 'bg-amber-500/30 border-amber-400 text-amber-200 shadow-sm ring-1 ring-amber-400/50'
+                            : 'bg-black/40 hover:bg-amber-500/20 border-amber-500/20 text-neutral-200 hover:text-amber-200'
+                        }`}
+                      >
+                        <span className="text-sm leading-none">{g.emoji}</span>
+                        <span className="truncate max-w-full">{g.label}</span>
                       </button>
                     );
                   })}

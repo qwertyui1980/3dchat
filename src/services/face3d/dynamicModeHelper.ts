@@ -77,39 +77,163 @@ export const OFFICIAL_TRACKING_MODES: CanonicalTrackingMode[] = [
   'lipsync',
 ];
 
+export type QuickGestureType = 'smile' | 'surprise' | 'wink' | 'furrow' | 'pucker' | 'neutral';
+
+export interface QuickGestureConfig {
+  id: QuickGestureType;
+  emoji: string;
+  label: string;
+}
+
+export const QUICK_GESTURES: QuickGestureConfig[] = [
+  { id: 'smile', emoji: '😊', label: 'Sonrisa' },
+  { id: 'surprise', emoji: '😲', label: 'Sorpresa' },
+  { id: 'wink', emoji: '😉', label: 'Guiño' },
+  { id: 'furrow', emoji: '😠', label: 'Ceño' },
+  { id: 'pucker', emoji: '😗', label: 'Pucker' },
+  { id: 'neutral', emoji: '😐', label: 'Neutral' },
+];
+
 /**
- * Aplica el modo dinámico seleccionado a las características faciales (features)
- * y ajusta los desplazamientos de calibración (offsets) y sensibilidad.
+ * Superpone un gesto facial rápido sobre las características faciales (features)
+ * y su diccionario ARKit blendshapes correspondiente.
+ */
+export function applyQuickGesture(
+  features: FaceFeatures,
+  gesture?: QuickGestureType | null
+): FaceFeatures {
+  if (!gesture || gesture === 'neutral') {
+    return features;
+  }
+
+  const baseBlendshapes = { ...(features.blendshapes || {}) };
+
+  switch (gesture) {
+    case 'smile':
+      return {
+        ...features,
+        mouthSmile: 0.95,
+        mouthSmileLeft: 0.95,
+        mouthSmileRight: 0.95,
+        blendshapes: {
+          ...baseBlendshapes,
+          mouthSmileLeft: 0.95,
+          mouthSmileRight: 0.95,
+          cheekSquintLeft: 0.4,
+          cheekSquintRight: 0.4,
+        },
+      };
+
+    case 'surprise':
+      return {
+        ...features,
+        jawOpen: 0.65,
+        browRaise: 0.9,
+        eyeWideLeft: 0.85,
+        eyeWideRight: 0.85,
+        eyeBlinkLeft: 0,
+        eyeBlinkRight: 0,
+        blendshapes: {
+          ...baseBlendshapes,
+          jawOpen: 0.65,
+          browInnerUp: 0.9,
+          browOuterUpLeft: 0.7,
+          browOuterUpRight: 0.7,
+          eyeWideLeft: 0.85,
+          eyeWideRight: 0.85,
+          eyeBlinkLeft: 0,
+          eyeBlinkRight: 0,
+        },
+      };
+
+    case 'wink':
+      return {
+        ...features,
+        eyeBlinkLeft: 1.0,
+        mouthSmileLeft: 0.7,
+        mouthSmile: 0.5,
+        blendshapes: {
+          ...baseBlendshapes,
+          eyeBlinkLeft: 1.0,
+          mouthSmileLeft: 0.7,
+          browDownLeft: 0.3,
+        },
+      };
+
+    case 'furrow':
+      return {
+        ...features,
+        browFurrow: 0.95,
+        browRaise: 0,
+        mouthSmile: -0.3,
+        mouthSmileLeft: -0.3,
+        mouthSmileRight: -0.3,
+        blendshapes: {
+          ...baseBlendshapes,
+          browDownLeft: 0.95,
+          browDownRight: 0.95,
+          eyeSquintLeft: 0.5,
+          eyeSquintRight: 0.5,
+          mouthFrownLeft: 0.3,
+          mouthFrownRight: 0.3,
+        },
+      };
+
+    case 'pucker':
+      return {
+        ...features,
+        mouthPucker: 1.0,
+        blendshapes: {
+          ...baseBlendshapes,
+          mouthPucker: 1.0,
+          mouthFunnel: 0.6,
+        },
+      };
+
+    default:
+      return features;
+  }
+}
+
+/**
+ * Aplica el modo dinámico seleccionado a las características faciales (features),
+ * ajusta desplazamientos de calibración (offsets) y sensibilidad, y opcionalmente
+ * superpone un gesto facial manual activado desde la interfaz.
  */
 export function applyDynamicMode(
   rawFeatures: FaceFeatures,
   rawMode: DynamicTrackingMode = 'parafernalia',
   sensitivity: number = 1.0,
   cameraOffsetX: number = 0,
-  cameraOffsetY: number = 0
+  cameraOffsetY: number = 0,
+  gesture?: QuickGestureType | null
 ): FaceFeatures {
   const mode = normalizeTrackingMode(rawMode);
   const scaledYaw = (rawFeatures.yaw + cameraOffsetX) * sensitivity;
   const scaledPitch = (rawFeatures.pitch + cameraOffsetY) * sensitivity;
+
+  let modeFeatures: FaceFeatures;
 
   switch (mode) {
     case 'gestures':
       // Modo 2: Reconocimiento de Gestos
       // Única y exclusivamente reconoce gestos con la cámara y los iguala en el avatar.
       // El audio NO afecta la máscara (audioVolume forzado estrictamente a 0).
-      return {
+      modeFeatures = {
         ...rawFeatures,
         trackingMode: 'gestures',
         yaw: scaledYaw,
         pitch: scaledPitch,
         audioVolume: 0,
       };
+      break;
 
     case 'lipsync':
       // Modo 3: Lip Sync
       // Deja la máscara estática (cabeza fija/centrada, sin rotación ni cejas/ojos).
       // El audio anima únicamente la sección de los labios y la boca sin requerir video.
-      return {
+      // Inicia y mantiene la boca cerrada por defecto; solo sonido vocal relevante la articula.
+      modeFeatures = {
         ...rawFeatures,
         trackingMode: 'lipsync',
         isFaceDetected: false,
@@ -122,19 +246,28 @@ export function applyDynamicMode(
         eyeBlinkRight: 0,
         browRaise: 0,
         browFurrow: 0,
+        jawOpen: 0,
+        mouthSmile: 0,
+        mouthSmileLeft: 0,
+        mouthSmileRight: 0,
+        mouthPucker: 0,
         audioVolume: rawFeatures.audioVolume,
       };
+      break;
 
     case 'parafernalia':
     default:
       // Modo 1: Parafernalia (Modo divertido)
       // Mueve la máscara al ritmo de la voz con gestos faciales y zoom dinámico reactivo
-      return {
+      modeFeatures = {
         ...rawFeatures,
         trackingMode: 'parafernalia',
         yaw: scaledYaw,
         pitch: scaledPitch,
         audioVolume: rawFeatures.audioVolume,
       };
+      break;
   }
+
+  return applyQuickGesture(modeFeatures, gesture);
 }

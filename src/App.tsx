@@ -26,7 +26,7 @@ import { Lobby } from './components/lobby/Lobby';
 import { RoomView } from './components/room/RoomView';
 import { Login, AuthenticatedUser } from './components/auth/Login';
 import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
-import { applyDynamicMode, normalizeTrackingMode } from './services/face3d/dynamicModeHelper';
+import { applyDynamicMode, normalizeTrackingMode, QuickGestureType } from './services/face3d/dynamicModeHelper';
 import { INITIAL_ROOM_MEDIA_STATE } from './utils/youtube';
 
 interface Toast {
@@ -121,6 +121,11 @@ export default function App() {
   const trackingSensitivityRef = useRef<number>(trackingSensitivity);
   trackingSensitivityRef.current = trackingSensitivity;
 
+  // Active Quick Gesture state (Smile, Surprise, Wink, Furrow, Pucker, Neutral)
+  const [activeGesture, setActiveGesture] = useState<QuickGestureType | null>(null);
+  const activeGestureRef = useRef<QuickGestureType | null>(null);
+  activeGestureRef.current = activeGesture;
+
   const [isTrackingPipVisible, setIsTrackingPipVisible] = useState<boolean>(true);
 
   // Master tracking video element & camera stream
@@ -174,7 +179,8 @@ export default function App() {
               trackingModeRef.current,
               trackingSensitivityRef.current,
               cameraOffsetXRef.current,
-              cameraOffsetYRef.current
+              cameraOffsetYRef.current,
+              activeGestureRef.current
             );
             networkServiceSingleton.broadcastFaceData(active);
           }
@@ -286,7 +292,8 @@ export default function App() {
                 trackingModeRef.current,
                 trackingSensitivityRef.current,
                 cameraOffsetXRef.current,
-                cameraOffsetYRef.current
+                cameraOffsetYRef.current,
+                activeGestureRef.current
               );
               networkServiceSingleton.broadcastFaceData(active);
               return merged;
@@ -639,10 +646,32 @@ export default function App() {
         mode,
         trackingSensitivityRef.current,
         cameraOffsetXRef.current,
-        cameraOffsetYRef.current
+        cameraOffsetYRef.current,
+        activeGestureRef.current
       );
       networkServiceSingleton.broadcastFaceData(active);
       return prev;
+    });
+  }, []);
+
+  // Quick gesture trigger handler (broadcasts instant pose update to all call peers)
+  const handleTriggerGesture = useCallback((gesture: QuickGestureType) => {
+    setActiveGesture((prev) => {
+      const next = (prev === gesture || gesture === 'neutral') ? null : gesture;
+      activeGestureRef.current = next;
+      setLocalFeatures((currentFeatures) => {
+        const active = applyDynamicMode(
+          currentFeatures,
+          trackingModeRef.current,
+          trackingSensitivityRef.current,
+          cameraOffsetXRef.current,
+          cameraOffsetYRef.current,
+          next
+        );
+        networkServiceSingleton.broadcastFaceData(active);
+        return currentFeatures;
+      });
+      return next;
     });
   }, []);
 
@@ -991,6 +1020,8 @@ export default function App() {
             hasMicPermission={hasMicPermission}
             micError={micError}
             onRequestMic={startMic}
+            activeGesture={activeGesture}
+            onTriggerGesture={handleTriggerGesture}
           />
         </div>
       ) : (
@@ -1002,7 +1033,8 @@ export default function App() {
             trackingMode,
             trackingSensitivity,
             cameraOffsetX,
-            cameraOffsetY
+            cameraOffsetY,
+            activeGesture
           )}
           peerFeaturesMap={peerFeaturesMap}
           trackingMode={trackingMode}
@@ -1028,6 +1060,8 @@ export default function App() {
           onLeaveCall={handleLeaveCall}
           authUser={authenticatedUser}
           onLogout={handleLogout}
+          activeGesture={activeGesture}
+          onTriggerGesture={handleTriggerGesture}
           mediaState={mediaState}
           onAddMediaQueueItem={handleAddMediaQueueItem}
           onRemoveMediaQueueItem={handleRemoveMediaQueueItem}

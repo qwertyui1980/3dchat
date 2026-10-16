@@ -26,6 +26,7 @@ import {
   X,
   Box,
   Pencil,
+  Smile,
 } from 'lucide-react';
 import { AvatarId, FaceFeatures, AvatarDefinition, DynamicTrackingMode } from '../../types';
 import { AVATAR_LIST } from '../avatars/avatarConfigs';
@@ -39,7 +40,13 @@ import { networkServiceSingleton } from '../../services/networkService';
 import { LegalDisclaimerModal } from '../common/LegalDisclaimerModal';
 import { AdminControlPanel } from '../room/AdminControlPanel';
 import { FaceBlendshapeStudioModal } from '../admin/FaceBlendshapeStudioModal';
-import { applyDynamicMode, TRACKING_MODES_CONFIG, normalizeTrackingMode } from '../../services/face3d/dynamicModeHelper';
+import {
+  applyDynamicMode,
+  TRACKING_MODES_CONFIG,
+  normalizeTrackingMode,
+  QuickGestureType,
+  QUICK_GESTURES,
+} from '../../services/face3d/dynamicModeHelper';
 
 interface LobbyProps {
   onJoinRoom: (config: {
@@ -70,6 +77,8 @@ interface LobbyProps {
   hasMicPermission: boolean;
   micError?: string | null;
   onRequestMic?: () => void;
+  activeGesture?: QuickGestureType | null;
+  onTriggerGesture?: (gesture: QuickGestureType) => void;
 }
 
 // Random fun anonymous handles generator
@@ -138,8 +147,22 @@ export const Lobby: React.FC<LobbyProps> = ({
   hasMicPermission,
   micError,
   onRequestMic,
+  activeGesture,
+  onTriggerGesture,
 }) => {
   const isAdminUser = authUser?.role === 'admin';
+
+  const [localActiveGesture, setLocalActiveGesture] = useState<QuickGestureType | null>(null);
+  const [showGesturesMenu, setShowGesturesMenu] = useState(false);
+  const currentActiveGesture = activeGesture !== undefined ? activeGesture : localActiveGesture;
+
+  const handleGestureClick = (gesture: QuickGestureType) => {
+    if (onTriggerGesture) {
+      onTriggerGesture(gesture);
+    } else {
+      setLocalActiveGesture((prev) => (prev === gesture || gesture === 'neutral') ? null : gesture);
+    }
+  };
 
   // Generate random alias or use authenticated user name
   const [userName, setUserName] = useState<string>(() => {
@@ -638,21 +661,6 @@ export const Lobby: React.FC<LobbyProps> = ({
                   Elige tu avatar
                 </span>
               </div>
-              <div className="flex items-center gap-1.5">
-                {selectedAvatar.trackingProfile && (
-                  <span
-                    className="text-[10px] font-mono px-1.5 py-0.5 rounded font-bold border"
-                    style={{
-                      color: selectedAvatar.trackingProfile.dotColor,
-                      borderColor: `${selectedAvatar.trackingProfile.color}55`,
-                      backgroundColor: `${selectedAvatar.trackingProfile.color}15`,
-                    }}
-                    title={selectedAvatar.trackingProfile.description}
-                  >
-                    {selectedAvatar.trackingProfile.badge}
-                  </span>
-                )}
-              </div>
             </div>
 
             {/* Avatar Canvas */}
@@ -665,7 +673,8 @@ export const Lobby: React.FC<LobbyProps> = ({
                   trackingMode,
                   trackingSensitivity,
                   cameraOffsetX,
-                  cameraOffsetY
+                  cameraOffsetY,
+                  currentActiveGesture
                 )}
                 trackingMode={trackingMode}
                 isSpeaking={normalizeTrackingMode(trackingMode) !== 'gestures' && isMicActive && localFeatures.audioVolume > 0.08}
@@ -714,37 +723,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                 </div>
               )}
 
-              {/* Status Indicator */}
-              <div className="absolute bottom-3 left-3 bg-slate-900/80 backdrop-blur-sm px-2.5 py-1 rounded-md text-xs font-mono text-cyan-300 flex items-center gap-1.5 border border-slate-800 z-20">
-                <span
-                  className={`w-2 h-2 rounded-full ${
-                    normalizeTrackingMode(trackingMode) === 'lipsync'
-                      ? 'bg-amber-400 animate-pulse'
-                      : normalizeTrackingMode(trackingMode) === 'gestures'
-                      ? localFeatures.isFaceDetected
-                        ? 'bg-emerald-400 animate-pulse'
-                        : 'bg-amber-400'
-                      : localFeatures.isFaceDetected
-                      ? 'bg-cyan-400 animate-pulse'
-                      : !isCameraActive
-                      ? 'bg-cyan-400'
-                      : 'bg-amber-400'
-                  }`}
-                />
-                <span className="text-[11px]">
-                  {normalizeTrackingMode(trackingMode) === 'lipsync'
-                    ? 'Modo Lip Sync (Máscara Estática • Audio Boca)'
-                    : normalizeTrackingMode(trackingMode) === 'gestures'
-                    ? localFeatures.isFaceDetected
-                      ? 'Reconocimiento de Gestos (100% Cámara)'
-                      : 'Buscando Rostro...'
-                    : localFeatures.isFaceDetected
-                    ? 'Modo Parafernalia (Voz, Ritmo & Zoom)'
-                    : !isCameraActive
-                    ? 'Modo Parafernalia (Solo Micrófono)'
-                    : 'Buscando Rostro...'}
-                </span>
-              </div>
+
 
               {/* Top controls: Adjustments and Anatomical Mesh points quick toggle */}
               <div className="absolute top-3 left-3 flex items-center gap-1.5 z-20">
@@ -944,25 +923,71 @@ export const Lobby: React.FC<LobbyProps> = ({
                   {isCameraActive ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4 text-rose-400" />}
                 </button>
 
-                {/* Ver Puntos Capturados Button */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (!showCameraPip && !isCameraActive) {
-                      onToggleCamera();
-                    }
-                    setShowCameraPip(!showCameraPip);
-                  }}
-                  className={`p-2.5 rounded-xl border flex items-center justify-center gap-1.5 transition cursor-pointer text-xs font-semibold ${
-                    showCameraPip
-                      ? 'bg-cyan-500/20 hover:bg-cyan-500/30 border-cyan-500/50 text-cyan-300 shadow-sm'
-                      : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300 hover:text-white'
-                  }`}
-                  title={showCameraPip ? 'Ocultar Puntos Capturados' : 'Ver Puntos Capturados (Mesh Anatómico)'}
-                >
-                  <ScanFace className="w-4 h-4 text-cyan-400" />
-                  <span className="hidden sm:inline">Ver Puntos</span>
-                </button>
+                {/* Gestos Dropdown / Popover Menu */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowGesturesMenu((prev) => !prev)}
+                    className={`p-2.5 rounded-xl border flex items-center gap-1.5 transition cursor-pointer text-xs font-semibold ${
+                      showGesturesMenu || currentActiveGesture
+                        ? 'bg-amber-950/70 hover:bg-amber-900 border-amber-500/50 text-amber-300 shadow-md shadow-amber-950/30'
+                        : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
+                    }`}
+                    title="Menú de Gestos (Sonrisa, Sorpresa, Guiño, Ceño, Pucker, Neutral)"
+                  >
+                    <Smile className="w-4 h-4 text-amber-400" />
+                    <span>Gestos</span>
+                    {currentActiveGesture && (
+                      <span className="text-xs">
+                        {QUICK_GESTURES.find((g) => g.id === currentActiveGesture)?.emoji}
+                      </span>
+                    )}
+                  </button>
+
+                  {showGesturesMenu && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-30"
+                        onClick={() => setShowGesturesMenu(false)}
+                      />
+                      <div className="absolute left-0 bottom-full mb-2 w-72 sm:w-80 p-3 rounded-2xl bg-gradient-to-r from-amber-950/95 via-orange-950/90 to-amber-950/95 border border-amber-500/40 shadow-2xl backdrop-blur-xl z-40 space-y-2.5 animate-in fade-in zoom-in-95">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <Smile className="w-4 h-4 text-amber-400" />
+                            <span className="text-xs font-bold text-amber-200">Gestos</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleGestureClick('neutral')}
+                            className="text-[10px] text-amber-300 hover:text-white underline cursor-pointer"
+                          >
+                            Reset Neutral
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                          {QUICK_GESTURES.map((g) => {
+                            const isActive = currentActiveGesture === g.id;
+                            return (
+                              <button
+                                key={g.id}
+                                type="button"
+                                onClick={() => handleGestureClick(g.id)}
+                                className={`py-2 px-1 rounded-lg border text-[10px] font-bold transition flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                                  isActive
+                                    ? 'bg-amber-500/30 border-amber-400 text-amber-200 shadow-sm ring-1 ring-amber-400/50'
+                                    : 'bg-black/40 hover:bg-amber-500/20 border-amber-500/20 text-neutral-200 hover:text-amber-200'
+                                }`}
+                              >
+                                <span className="text-sm leading-none">{g.emoji}</span>
+                                <span className="truncate max-w-full">{g.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
 
               {/* Audio visualizer */}
@@ -1016,27 +1041,7 @@ export const Lobby: React.FC<LobbyProps> = ({
               </div>
             )}
 
-            {!isCameraActive && (
-              <div className="mt-3 p-3 bg-sky-950/40 border border-sky-800/60 rounded-xl text-xs text-sky-200 flex flex-col gap-1.5">
-                <div className="flex items-center gap-2 font-bold text-sky-300">
-                  <Radio className="w-4 h-4 text-cyan-400 shrink-0" />
-                  <span>Modo Solo Voz Activo</span>
-                </div>
-                <p className="text-[11px] text-sky-200/80 leading-relaxed">
-                  Puedes ingresar y participar en el espacio sin cámara. La boca de tu avatar 3D se animará automáticamente en base a tu voz al hablar.
-                </p>
-                {onRequestCamera && (
-                  <button
-                    type="button"
-                    onClick={onRequestCamera}
-                    className="self-start mt-1 px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-cyan-300 font-semibold rounded text-[11px] transition cursor-pointer flex items-center gap-1"
-                  >
-                    <Camera className="w-3 h-3" />
-                    <span>Activar Cámara</span>
-                  </button>
-                )}
-              </div>
-            )}
+
           </div>
         </div>
 
@@ -1453,23 +1458,6 @@ export const Lobby: React.FC<LobbyProps> = ({
                   <ArrowRight className="w-4 h-4" />
                 </button>
               )}
-              {/* Legal & Origin Footer */}
-              <div className="pt-2 text-center text-[10px] text-neutral-500 flex flex-col items-center gap-1">
-                <span>
-                  Software libre bajo total responsabilidad personal del usuario.
-                </span>
-                <div className="flex items-center gap-2 text-neutral-400">
-                  <span>Origen: <strong className="text-neutral-300">XStreamX</strong></span>
-                  <span>•</span>
-                  <button
-                    type="button"
-                    onClick={() => setIsLegalOpen(true)}
-                    className="text-cyan-400/80 hover:text-cyan-300 underline cursor-pointer"
-                  >
-                    Ver Licencia y Descargo Legal
-                  </button>
-                </div>
-              </div>
             </form>
           </div>
         </div>

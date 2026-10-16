@@ -429,10 +429,10 @@ export class FaceMeshGenerator {
       // En reposo, eleva los párpados superiores y cejas, y desciende suavemente los párpados inferiores
       // para que los ojos 3D y pupilas queden completamente abiertos, nítidos y visibles.
       if (EYE_UPPER_LID_ALL.has(index)) {
-        y += 0.052;
-        z += 0.016;
+        y += 0.082;
+        z += 0.022;
       } else if (EYE_LOWER_LID_ALL.has(index)) {
-        y -= 0.022;
+        y -= 0.038;
       }
 
       if (EYEBROW_SET.has(index)) {
@@ -978,7 +978,7 @@ export class FaceMeshGenerator {
           const wUpper = smoothRadialFalloff(distToAny(index, EYE_LEFT_UPPER_LID), 0.22);
           const pLower = basePoints[145] || basePoints[159];
           const rawDy = pLower.y - (basePoints[159]?.y || pLower.y);
-          const strokeDy = Math.min(rawDy * 1.15, -0.28);
+          const strokeDy = Math.min(rawDy * 1.15, -0.32);
           y += strokeDy * blinkScale * wUpper;
           z += 0.05 * blinkScale * wUpper; // covers forward surface of eyeball
 
@@ -992,7 +992,7 @@ export class FaceMeshGenerator {
           const wUpper = smoothRadialFalloff(distToAny(index, EYE_RIGHT_UPPER_LID), 0.22);
           const pLower = basePoints[374] || basePoints[386];
           const rawDy = pLower.y - (basePoints[386]?.y || pLower.y);
-          const strokeDy = Math.min(rawDy * 1.15, -0.28);
+          const strokeDy = Math.min(rawDy * 1.15, -0.32);
           y += strokeDy * blinkScale * wUpper;
           z += 0.05 * blinkScale * wUpper;
 

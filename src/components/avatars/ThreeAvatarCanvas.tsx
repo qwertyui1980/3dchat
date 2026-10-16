@@ -387,6 +387,8 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
     browFurrow: 0,
     eyeBlinkLeft: 0,
     eyeBlinkRight: 0,
+    eyeWideLeft: 0,
+    eyeWideRight: 0,
     gazeX: 0,
     gazeY: 0,
     lastValidTime: performance.now(),
@@ -1160,9 +1162,9 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           }
 
           // ── Lerp speed lookup tables (Fase 4) ────────────────────────────
-          // Fast: immediate physiological responses (blinks, jaw)
+          // Fast: immediate physiological responses (blinks, jaw, wide eyes)
           const FAST_MORPH_KEYS = new Set([
-            'jawopen', 'eyeblinkleft', 'eyeblinkright', 'mouthclose',
+            'jawopen', 'eyeblinkleft', 'eyeblinkright', 'mouthclose', 'eyewideleft', 'eyewideright',
           ]);
           // Medium: visible expressions (brows, smiles, cheeks, nose)
           const MEDIUM_MORPH_KEYS = new Set([
@@ -1173,7 +1175,6 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             'mouthpucker', 'mouthfunnel',
             'cheekpuff', 'cheeksquintleft', 'cheeksquintright',
             'nosesneerleft', 'nosesneerright',
-            'eyewideleft', 'eyewideright',
             'eyesquintleft', 'eyesquintright',
             'mouthlowerdownleft', 'mouthlowerdownright',
           ]);
@@ -1217,8 +1218,14 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
               // Facial expressions & 52 ARKit blendshapes synchronization
               const bShapes = features.blendshapes;
               const effectiveVol = Math.max(0, features.audioVolume || 0);
-              const speechJaw = effectiveVol > 0.005 ? Math.min(0.60, (effectiveVol - 0.005) * 2.6) : 0;
-              const rawJaw = features.jawOpen || 0;
+              const isLipSync = trackingModeRef.current === 'lipsync';
+              // Noise gate: ignore small ambient noises, breathing, and mouse clicks.
+              // Only prominent vocal sound peaks (> 0.18 in lipsync) articulate the mouth.
+              const audioGate = isLipSync ? 0.18 : 0.12;
+              const speechJaw = effectiveVol > audioGate
+                ? Math.min(0.65, Math.pow((effectiveVol - audioGate) / (1.0 - audioGate), 1.3) * 0.75)
+                : 0;
+              const rawJaw = isLipSync ? 0 : (features.jawOpen || 0);
               // Calibrated natural mouth articulation (animating lower lip smoothly without over-extending)
               const finalJaw = Math.min(0.70, Math.max(rawJaw * 0.85, speechJaw));
 
@@ -1469,17 +1476,41 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                     targetVal = Math.max(targetVal ?? 0, (bShapes?.['mouthFunnel'] ?? 0) * 1.5);
                   }
 
-                  // 8. Eyes Blinking
+                  // 8. Eyes Blinking & Eyelid Openness
                   if (cleanKey.includes('blink') || cleanKey.includes('eyeblink')) {
                     const isLeft = cleanKey.includes('left') || cleanKey.includes('_l');
                     const isRight = cleanKey.includes('right') || cleanKey.includes('_r');
                     if (isLeft) {
-                      targetVal = Math.max(targetVal ?? 0, (bShapes?.['eyeBlinkLeft'] ?? 0) * 2.2, features.eyeBlinkLeft ?? 0);
+                      targetVal = Math.max(targetVal ?? 0, bShapes?.['eyeBlinkLeft'] ?? 0, features.eyeBlinkLeft ?? 0);
                     } else if (isRight) {
-                      targetVal = Math.max(targetVal ?? 0, (bShapes?.['eyeBlinkRight'] ?? 0) * 2.2, features.eyeBlinkRight ?? 0);
+                      targetVal = Math.max(targetVal ?? 0, bShapes?.['eyeBlinkRight'] ?? 0, features.eyeBlinkRight ?? 0);
                     } else {
                       targetVal = Math.max(targetVal ?? 0, ((features.eyeBlinkLeft || 0) + (features.eyeBlinkRight || 0)) / 2);
                     }
+                  } else if (cleanKey.includes('eyewide') || cleanKey.includes('wide')) {
+                    const isLeft = cleanKey.includes('left') || cleanKey.includes('_l');
+                    const isRight = cleanKey.includes('right') || cleanKey.includes('_r');
+                    const blinkVal = isLeft
+                      ? (bShapes?.['eyeBlinkLeft'] ?? features.eyeBlinkLeft ?? 0)
+                      : isRight
+                      ? (bShapes?.['eyeBlinkRight'] ?? features.eyeBlinkRight ?? 0)
+                      : (((features.eyeBlinkLeft || 0) + (features.eyeBlinkRight || 0)) / 2);
+                    const wideVal = isLeft
+                      ? Math.max(bShapes?.['eyeWideLeft'] ?? 0, features.eyeWideLeft ?? 0)
+                      : isRight
+                      ? Math.max(bShapes?.['eyeWideRight'] ?? 0, features.eyeWideRight ?? 0)
+                      : (((features.eyeWideLeft || 0) + (features.eyeWideRight || 0)) / 2);
+                    // Fade wide to 0 if blinking so eyelid can close completely
+                    targetVal = Math.max(targetVal ?? 0, wideVal) * Math.max(0, 1 - blinkVal * 2.5);
+                  } else if (cleanKey.includes('squint') || cleanKey.includes('eyesquint')) {
+                    const isLeft = cleanKey.includes('left') || cleanKey.includes('_l');
+                    const isRight = cleanKey.includes('right') || cleanKey.includes('_r');
+                    const rawSquint = isLeft
+                      ? (bShapes?.['eyeSquintLeft'] ?? (features.eyeWideLeft ? 0 : (features.eyeBlinkLeft ?? 0) * 0.3))
+                      : isRight
+                      ? (bShapes?.['eyeSquintRight'] ?? (features.eyeWideRight ? 0 : (features.eyeBlinkRight ?? 0) * 0.3))
+                      : (targetVal ?? 0);
+                    targetVal = rawSquint > 0.32 ? Math.min(1.0, (rawSquint - 0.32) * 1.5) : 0;
                   }
 
                   // 9. Eyebrows
@@ -1706,14 +1737,19 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
         cur.browFurrow = THREE.MathUtils.lerp(cur.browFurrow, Number.isFinite(feat.browFurrow) ? feat.browFurrow : 0, alphaFace);
         cur.eyeBlinkLeft = THREE.MathUtils.lerp(cur.eyeBlinkLeft, Number.isFinite(feat.eyeBlinkLeft) ? feat.eyeBlinkLeft : 0, 1 - Math.exp(-dt * 35));
         cur.eyeBlinkRight = THREE.MathUtils.lerp(cur.eyeBlinkRight, Number.isFinite(feat.eyeBlinkRight) ? feat.eyeBlinkRight : 0, 1 - Math.exp(-dt * 35));
+        cur.eyeWideLeft = THREE.MathUtils.lerp(cur.eyeWideLeft, Number.isFinite(feat.eyeWideLeft) ? feat.eyeWideLeft : 0, 1 - Math.exp(-dt * 30));
+        cur.eyeWideRight = THREE.MathUtils.lerp(cur.eyeWideRight, Number.isFinite(feat.eyeWideRight) ? feat.eyeWideRight : 0, 1 - Math.exp(-dt * 30));
         cur.gazeX = THREE.MathUtils.lerp(cur.gazeX, Number.isFinite(feat.gazeX) ? feat.gazeX : 0, alphaFace);
         cur.gazeY = THREE.MathUtils.lerp(cur.gazeY, Number.isFinite(feat.gazeY) ? feat.gazeY : 0, alphaFace);
       } else {
         // No camera or face tracking off: Head stays perfectly neutral/centered, mouth animates dynamically with voice volume (Lip-Sync)
         const vol = Number.isFinite(feat.audioVolume) ? (feat.audioVolume as number) : 0;
-        const effectiveVol = vol > 0 ? vol : (isSpeakingRef.current ? 0.35 : 0);
-        const audioJaw = effectiveVol > 0.003 ? Math.min(1, Math.max(0, (effectiveVol - 0.003) * 5.2)) : 0;
-        const alphaJaw = audioJaw > cur.jawOpen ? 1 - Math.exp(-dt * 40) : 1 - Math.exp(-dt * 20);
+        // Peak-only audio mouth opening: starts strictly at 0 (closed) and only animates on prominent vocal sound peaks (> 0.18)
+        const audioGate = 0.18;
+        const audioJaw = vol > audioGate
+          ? Math.min(0.65, Math.pow((vol - audioGate) / (1.0 - audioGate), 1.3) * 0.75)
+          : 0;
+        const alphaJaw = audioJaw > cur.jawOpen ? 1 - Math.exp(-dt * 35) : 1 - Math.exp(-dt * 20);
         cur.jawOpen = THREE.MathUtils.lerp(cur.jawOpen, audioJaw, alphaJaw);
 
         // Swift, fluid return to centered resting pose for head rotation and non-mouth expressions
@@ -1727,6 +1763,8 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
         cur.browFurrow = THREE.MathUtils.lerp(cur.browFurrow, 0, alphaCenter);
         cur.eyeBlinkLeft = THREE.MathUtils.lerp(cur.eyeBlinkLeft, 0, alphaCenter);
         cur.eyeBlinkRight = THREE.MathUtils.lerp(cur.eyeBlinkRight, 0, alphaCenter);
+        cur.eyeWideLeft = THREE.MathUtils.lerp(cur.eyeWideLeft, 0, alphaCenter);
+        cur.eyeWideRight = THREE.MathUtils.lerp(cur.eyeWideRight, 0, alphaCenter);
         cur.gazeX = THREE.MathUtils.lerp(cur.gazeX, 0, alphaCenter);
         cur.gazeY = THREE.MathUtils.lerp(cur.gazeY, 0, alphaCenter);
       }
@@ -1818,6 +1856,14 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           if (blinkRIdx !== undefined) {
             influences[blinkRIdx] = THREE.MathUtils.lerp(influences[blinkRIdx], cur.eyeBlinkRight, 0.4);
           }
+          const wideLIdx = dict['eyeWideLeft'];
+          if (wideLIdx !== undefined) {
+            influences[wideLIdx] = THREE.MathUtils.lerp(influences[wideLIdx], cur.eyeWideLeft, 0.4);
+          }
+          const wideRIdx = dict['eyeWideRight'];
+          if (wideRIdx !== undefined) {
+            influences[wideRIdx] = THREE.MathUtils.lerp(influences[wideRIdx], cur.eyeWideRight, 0.4);
+          }
           const smileLIdx = dict['mouthSmileLeft'];
           if (smileLIdx !== undefined) {
             const smileVal = Math.max(0, cur.mouthSmile);
@@ -1875,6 +1921,8 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           browFurrow: cur.browFurrow,
           eyeBlinkLeft: cur.eyeBlinkLeft,
           eyeBlinkRight: cur.eyeBlinkRight,
+          eyeWideLeft: cur.eyeWideLeft,
+          eyeWideRight: cur.eyeWideRight,
           gazeX: cur.gazeX,
           gazeY: cur.gazeY,
         };

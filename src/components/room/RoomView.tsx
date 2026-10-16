@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   RoomInfo,
   User,
@@ -24,6 +24,7 @@ import { QueueModal } from '../theater/QueueModal';
 import { WhiteboardPanel } from '../whiteboard/WhiteboardPanel';
 import { AdminControlPanel } from './AdminControlPanel';
 import { Maximize2, Minimize2 } from 'lucide-react';
+import { QuickGestureType } from '../../services/face3d/dynamicModeHelper';
 
 interface RoomViewProps {
   room: RoomInfo;
@@ -66,6 +67,8 @@ interface RoomViewProps {
   onBroadcastClear?: () => void;
   remoteStroke?: WhiteboardStroke | null;
   remoteClearTimestamp?: number;
+  activeGesture?: QuickGestureType | null;
+  onTriggerGesture?: (gesture: QuickGestureType) => void;
 }
 
 export const RoomView: React.FC<RoomViewProps> = ({
@@ -109,6 +112,8 @@ export const RoomView: React.FC<RoomViewProps> = ({
   onBroadcastClear,
   remoteStroke,
   remoteClearTimestamp,
+  activeGesture,
+  onTriggerGesture,
 }) => {
   const [viewMode] = useState<ViewLayoutMode>('grid');
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -372,6 +377,8 @@ export const RoomView: React.FC<RoomViewProps> = ({
           onOpenAdminPanel={() => setIsAdminPanelOpen(true)}
           isFullscreen={isFullscreen}
           onToggleFullscreen={handleToggleFullscreen}
+          activeGesture={activeGesture}
+          onTriggerGesture={onTriggerGesture}
         />
       )}
     </div>

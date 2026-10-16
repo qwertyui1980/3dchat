@@ -75,7 +75,7 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
   };
 
   const activeMode = normalizeTrackingMode(isSelf ? (trackingMode || 'parafernalia') : (user.trackingMode || 'parafernalia'));
-  const isSpeaking = (features.audioVolume > 0.12 || false) && !user.isMuted && activeMode !== 'gestures';
+  const isSpeaking = (features.audioVolume > 0.18 || false) && !user.isMuted && activeMode !== 'gestures';
   const effectiveFeatures = React.useMemo(() => {
     if (user.isMuted || activeMode === 'gestures') {
       return { ...features, audioVolume: 0 };
