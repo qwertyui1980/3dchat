@@ -484,19 +484,19 @@ flowchart LR
   * Lienzo interactivo basado en HTML5 Canvas con soporte para trazos vectoriales, formas geométricas, texto y colores.
   * Transmisión de trazos en tiempo real vía `WhiteboardStroke` distribuidos a través del canal de red híbrido.
 
-### 7.3. Página de Inicio y Letrero Neón Oficial (`PresidentesNeonHome.tsx`)
+### 7.3. Página de Inicio y Letrero Neón Oficial Recreado (`PresidentesNeonHome.tsx`)
 * **Fondo de Pared de Ladrillos Negros a Pantalla Completa:**
-  * Toda la página de inicio ahora despliega como fondo panorámico inmersivo la textura de pared de ladrillos negros de la fotografía original (`/images/dark_brick_wall.jpg`), con sombreado de profundidad tipo viñeta y reflejos de luz ambiental neón sobre la mampostería.
-* **Arte Neón Auténtico y Aislamiento de Fondo:**
-  * La landing page monta sobre la pared el letrero neón oficial de los creadores (`/images/presidentes_neon_clean.png`), aislado quirúrgicamente de cables externos, cajas de alimentación y cortes rectangulares de la foto mediante visión por computadora.
-  * **Transparencia Alfa Perfecta:** Fondo 100% transparente con desvanecimiento de brillo suave (*unmultiplied glow*) y relleno sólido de medianoche (#070e14) para los cuerpos 3D de las letras *"PRESIDENTES MUERTOS"*.
-  * **Tres Figuras Faciales Neón Integradas:**
-    * Figura 1 (Izquierda): Neón rojo con orejas redondeadas y cabello lateral.
-    * Figura 2 (Centro): Neón blanco/hielo con cabeza calva alargada.
-    * Figura 3 (Derecha): Neón azul/cian con frente alta y orejas estilizadas.
-  * **Efectos Dinámicos de Iluminación y Glitch:**
-    * Animación de zumbido orgánico (`animate-neon-hum`) con pulso suave de brillo.
-    * Ciclos aleatorios de malfunción eléctrica (`neon-flickering`) simulando micro-cortes de voltaje realistas.
+  * Toda la página de inicio despliega como fondo panorámico inmersivo la textura de pared de ladrillos negros de la fotografía original (`/images/dark_brick_wall.jpg`), con sombreado de profundidad tipo viñeta y reflejos de luz ambiental neón sobre la mampostería.
+* **Recreación de Neón Multicapa en Alta Definición:**
+  * Recreado a partir de la ilustración vectorial original en blanco y negro, transformando los trazos en tubos de neón luminosos con núcleo incandescente, halo de color y dispersión física realista.
+  * **Estructura Multicapa con Falla/Glitch Eléctrico Independiente:**
+    * **Capa Base ([`neon_sign_base.png`](file:///d:/Apps/xstreamx/public/images/neon_sign_base.png)):** Marco exterior ondulado amarillo neón, cuerpos 3D de las letras *"PRESIDENTES MUERTOS"* en carbón noche (#070c11) con borde de neón amarillo brillante, y el texto vertical *"Y VIVOS."*.
+    * **Capa Figura 1 ([`neon_head_red.png`](file:///d:/Apps/xstreamx/public/images/neon_head_red.png)):** Neón rojo brillante (Figura izquierda con raya de cabello y orejas redondas).
+    * **Capa Figura 2 ([`neon_head_white.png`](file:///d:/Apps/xstreamx/public/images/neon_head_white.png)):** Neón blanco hielo (Figura central calva con mentón pronunciado).
+    * **Capa Figura 3 ([`neon_head_blue.png`](file:///d:/Apps/xstreamx/public/images/neon_head_blue.png)):** Neón azul cian (Figura derecha con gorro/cabello alto).
+  * **Efectos Dinámicos de Iluminación y Falla en las Luces:**
+    * Pulsación y zumbido eléctrico continuo (`animate-neon-hum`).
+    * Generador aleatorio de fallas de voltaje (`neon-flickering`): conmuta entre parpadeos independientes para la Figura 1 (rojo), Figura 2 (blanco), Figura 3 (azul), marco base o la instalación completa.
   * **Accesibilidad y SEO:** Mantiene un título semántico accesible para lectores de pantalla (`<h1 className="sr-only">Presidentes Muertos y Vivos</h1>`) y accesos directos al Salón Principal y transmisión en vivo.
 
 ---

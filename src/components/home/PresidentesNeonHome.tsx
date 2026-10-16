@@ -9,28 +9,37 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
   onEnterSalon,
   onOpenLegal,
 }) => {
-  // Glitch malfunction state for the neon sign
-  const [glitchActive, setGlitchActive] = useState<boolean>(false);
+  // Glitch malfunction state for individual neon segments
+  const [glitchTarget, setGlitchTarget] = useState<'head1' | 'head2' | 'head3' | 'base' | 'all' | null>(null);
 
-  // Random realistic neon malfunction/flicker generator
+  // Random realistic neon malfunction generator (flicker, hum, voltage drop)
   useEffect(() => {
     let isMounted = true;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const triggerGlitchCycle = () => {
-      // Random wait between 2.5s and 6.5s
-      const delay = Math.random() * 4000 + 2500;
+      // Random wait between 2.2s and 5.8s
+      const delay = Math.random() * 3600 + 2200;
 
       timeoutId = setTimeout(() => {
         if (!isMounted) return;
 
-        setGlitchActive(true);
+        // Choose which element malfunctions
+        const roll = Math.random();
+        let target: 'head1' | 'head2' | 'head3' | 'base' | 'all';
+        if (roll < 0.28) target = 'head1';        // Red head
+        else if (roll < 0.56) target = 'head2';   // White head
+        else if (roll < 0.82) target = 'head3';   // Blue head
+        else if (roll < 0.92) target = 'base';    // Yellow frame and letters
+        else target = 'all';                      // Whole neon installation
 
-        // Realistic stutter duration (between 160ms and 400ms)
-        const duration = Math.random() * 240 + 160;
+        setGlitchTarget(target);
+
+        // Realistic stutter duration (between 160ms and 420ms)
+        const duration = Math.random() * 260 + 160;
         setTimeout(() => {
           if (isMounted) {
-            setGlitchActive(false);
+            setGlitchTarget(null);
             triggerGlitchCycle();
           }
         }, duration);
@@ -45,6 +54,11 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
     };
   }, []);
 
+  const isHead1Glitched = glitchTarget === 'head1' || glitchTarget === 'all';
+  const isHead2Glitched = glitchTarget === 'head2' || glitchTarget === 'all';
+  const isHead3Glitched = glitchTarget === 'head3' || glitchTarget === 'all';
+  const isBaseGlitched = glitchTarget === 'base' || glitchTarget === 'all';
+
   return (
     <div className="relative min-h-[100dvh] w-full bg-[#080b0e] flex flex-col items-center justify-center px-4 py-8 select-none overflow-hidden">
       {/* Full-Page Authentic Black Brick Wall Background */}
@@ -57,23 +71,54 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
       <div className="absolute inset-0 bg-gradient-to-b from-black/55 via-transparent to-black/75 pointer-events-none" />
 
       {/* Ambient neon glow cast on the brick masonry */}
-      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[760px] h-[400px] bg-yellow-500/[0.07] rounded-full blur-[140px] pointer-events-none" />
-      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[680px] h-[360px] bg-cyan-500/[0.08] rounded-full blur-[120px] pointer-events-none" />
-      <div className="absolute bottom-1/3 left-1/2 -translate-x-1/2 w-[520px] h-[260px] bg-blue-600/[0.06] rounded-full blur-[100px] pointer-events-none" />
+      <div className="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[760px] h-[400px] bg-yellow-500/[0.08] rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[680px] h-[360px] bg-cyan-500/[0.09] rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-1/3 left-1/2 -translate-x-1/2 w-[520px] h-[260px] bg-blue-600/[0.07] rounded-full blur-[100px] pointer-events-none" />
 
       {/* Main Center Content */}
       <div className="relative z-10 flex flex-col items-center justify-center max-w-4xl w-full">
 
-        {/* Authentic Neon Sign — Separated from background with full transparency and neon glow */}
+        {/* Multi-Layer Authentic Neon Sign with Independent Segment Glitching */}
         <div
-          className={`relative transition-all duration-100 flex items-center justify-center max-w-[340px] sm:max-w-[500px] md:max-w-[620px] lg:max-w-[700px] w-full px-2 ${
-            glitchActive ? 'neon-flickering' : 'animate-neon-hum'
-          }`}
+          className="relative flex items-center justify-center max-w-[340px] sm:max-w-[500px] md:max-w-[620px] lg:max-w-[720px] w-full aspect-[1433/1090] px-2 filter drop-shadow-[0_0_24px_rgba(250,204,21,0.45)] drop-shadow-[0_0_48px_rgba(56,189,248,0.25)] transition-all duration-300"
         >
+          {/* Layer 1: Base Sign (Outer Yellow Frame + 3D Letter Bodies + Yellow Contour + Y VIVOS.) */}
           <img
-            src="/images/presidentes_neon_clean.png"
-            alt="Presidentes Muertos y Vivos — Letrero de Neón Oficial"
-            className="w-full h-auto object-contain select-none pointer-events-none filter drop-shadow-[0_0_20px_rgba(250,204,21,0.45)] drop-shadow-[0_0_45px_rgba(56,189,248,0.22)] hover:drop-shadow-[0_0_35px_rgba(250,204,21,0.7)] transition-all duration-300"
+            src="/images/neon_sign_base.png"
+            alt="Letrero Neón Base"
+            className={`absolute inset-0 w-full h-full object-contain pointer-events-none select-none transition-all duration-75 ${
+              isBaseGlitched ? 'neon-flickering' : 'animate-neon-hum'
+            }`}
+            draggable={false}
+          />
+
+          {/* Layer 2: Head 1 (Left - Glowing Red Neon) */}
+          <img
+            src="/images/neon_head_red.png"
+            alt="Figura 1 Neón Rojo"
+            className={`absolute inset-0 w-full h-full object-contain pointer-events-none select-none transition-all duration-75 ${
+              isHead1Glitched ? 'neon-flickering' : 'animate-neon-hum'
+            }`}
+            draggable={false}
+          />
+
+          {/* Layer 3: Head 2 (Center - Glowing White / Ice-Blue Neon) */}
+          <img
+            src="/images/neon_head_white.png"
+            alt="Figura 2 Neón Blanco"
+            className={`absolute inset-0 w-full h-full object-contain pointer-events-none select-none transition-all duration-75 ${
+              isHead2Glitched ? 'neon-flickering' : 'animate-neon-hum'
+            }`}
+            draggable={false}
+          />
+
+          {/* Layer 4: Head 3 (Right - Glowing Blue / Cyan Neon) */}
+          <img
+            src="/images/neon_head_blue.png"
+            alt="Figura 3 Neón Azul"
+            className={`absolute inset-0 w-full h-full object-contain pointer-events-none select-none transition-all duration-75 ${
+              isHead3Glitched ? 'neon-flickering' : 'animate-neon-hum'
+            }`}
             draggable={false}
           />
         </div>
