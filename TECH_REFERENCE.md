@@ -484,20 +484,22 @@ flowchart LR
   * Lienzo interactivo basado en HTML5 Canvas con soporte para trazos vectoriales, formas geométricas, texto y colores.
   * Transmisión de trazos en tiempo real vía `WhiteboardStroke` distribuidos a través del canal de red híbrido.
 
-### 7.3. Página de Inicio y Letrero Neón Oficial Recreado (`PresidentesNeonHome.tsx`)
-* **Fondo de Pared de Ladrillos Negros a Pantalla Completa:**
-  * Toda la página de inicio despliega como fondo panorámico inmersivo la textura de pared de ladrillos negros de la fotografía original (`/images/dark_brick_wall.jpg`), con sombreado de profundidad tipo viñeta y reflejos de luz ambiental neón sobre la mampostería.
-* **Recreación de Neón Multicapa en Alta Definición:**
-  * Recreado a partir de la ilustración vectorial original en blanco y negro, transformando los trazos en tubos de neón luminosos con núcleo incandescente, halo de color y dispersión física realista.
-  * **Estructura Multicapa con Falla/Glitch Eléctrico Independiente:**
-    * **Capa Base ([`neon_sign_base.png`](file:///d:/Apps/xstreamx/public/images/neon_sign_base.png)):** Marco exterior ondulado amarillo neón, cuerpos 3D de las letras *"PRESIDENTES MUERTOS"* en carbón noche (#070c11) con borde de neón amarillo brillante, y el texto vertical *"Y VIVOS."*.
-    * **Capa Figura 1 ([`neon_head_red.png`](file:///d:/Apps/xstreamx/public/images/neon_head_red.png)):** Neón rojo brillante (Figura izquierda con raya de cabello y orejas redondas).
-    * **Capa Figura 2 ([`neon_head_white.png`](file:///d:/Apps/xstreamx/public/images/neon_head_white.png)):** Neón blanco hielo (Figura central calva con mentón pronunciado).
-    * **Capa Figura 3 ([`neon_head_blue.png`](file:///d:/Apps/xstreamx/public/images/neon_head_blue.png)):** Neón azul cian (Figura derecha con gorro/cabello alto).
-  * **Efectos Dinámicos de Iluminación y Falla en las Luces:**
-    * Pulsación y zumbido eléctrico continuo (`animate-neon-hum`).
-    * Generador aleatorio de fallas de voltaje (`neon-flickering`): conmuta entre parpadeos independientes para la Figura 1 (rojo), Figura 2 (blanco), Figura 3 (azul), marco base o la instalación completa.
-  * **Accesibilidad y SEO:** Mantiene un título semántico accesible para lectores de pantalla (`<h1 className="sr-only">Presidentes Muertos y Vivos</h1>`) y accesos directos al Salón Principal y transmisión en vivo.
+### 7.3. Portada con Lámparas de Neón Fotorrealistas, Marco Abierto y Chispas (`PresidentesNeonHome.tsx`)
+* **Fondo Panorámico de Pared de Ladrillos Negros:**
+  * Pared de ladrillos oscuros ([`dark_brick_wall.jpg`](file:///d:/Apps/xstreamx/public/images/dark_brick_wall.jpg)) cubriendo todo el viewport con viñeteado ambiental y resplandor difuso reflejado sobre la mampostería.
+* **Lámparas de Neón Fotorrealistas y Trazos Gruesos:**
+  * Renderizado óptico con simulación de tubo de vidrio cilíndrico, destello especular superior, núcleo de plasma incandescente blanco caliente y difusión volumétrica gaussiana multicapa.
+  * **Líneas Más Gruesas:** Trazos de mayor calibre (8-10px) en figuras y marco para un impacto visual de lámpara de gas real.
+  * **Marco Neón Abierto (No Cerrado):** Marco de marquesina con rieles y barras abiertas con tapones de electrodos redondeados en los extremos y soportes decorativos en las esquinas, evitando siluetas cerradas monótonas.
+* **Estructura Multicapa y Fallas Eléctricas Específicas:**
+  * **Marco Abierto y Tipografía ([`photoreal_neon_base.png`](file:///d:/Apps/xstreamx/public/images/photoreal_neon_base.png)):** Rieles de neón amarillo abierto y letras blancas excepto la 'R'.
+  * **Letras 'R' con Fallas Eléctricas ([`photoreal_neon_r.png`](file:///d:/Apps/xstreamx/public/images/photoreal_neon_r.png)):** Capa independiente aislada para las letras 'R' de *"PRESIDENTES"* y *"MUERTOS"*, programada con ciclo de malfunción eléctrica y parpadeo intermitente.
+  * **Figura 1 ([`photoreal_head_red.png`](file:///d:/Apps/xstreamx/public/images/photoreal_head_red.png)):** Neón rojo brillante con fallas independientes.
+  * **Figura 2 ([`photoreal_head_white.png`](file:///d:/Apps/xstreamx/public/images/photoreal_head_white.png)):** Neón blanco hielo con fallas independientes.
+  * **Figura 3 ([`photoreal_head_blue.png`](file:///d:/Apps/xstreamx/public/images/photoreal_head_blue.png)):** Neón azul cian con fallas independientes.
+* **Física de Chispas al Clic del Ratón:**
+  * Al hacer clic en cualquier parte de la pantalla, un lienzo interactivo HTML5 Canvas (`canvasRef`) genera un estallido de 28 a 48 chispas incandescentes (oro, blanco, ámbar, rojo y azul) con aceleración por gravedad, fricción aerodinámica, estelas y micro-parpadeo reactivo en el letrero.
+* **Accesibilidad y SEO:** Mantiene un encabezado semántico `<h1 className="sr-only">Presidentes Muertos y Vivos</h1>` y botones de acceso al Salón Principal y show en vivo.
 
 ---
 
@@ -539,7 +541,7 @@ xstreamx/
 │   ├── components/
 │   │   ├── admin/                # FaceBlendshapeStudioModal (Estudio 3D de avatares)
 │   │   ├── auth/                 # Login (Controlador de acceso, modal de credenciales y privacidad)
-│   │   ├── home/                 # PresidentesNeonHome (Landing con el letrero neón oficial transparente, pulso orgánico y glitch eléctrico)
+│   │   ├── home/                 # PresidentesNeonHome (Landing con las figuras neón fotorrealistas sin marco sobre muro de ladrillo negro, fallas eléctricas independientes en letras 'R' y las 3 figuras, y chispas interactivas con física de partículas)
 │   │   ├── avatars/              # ThreeAvatarCanvas, threeCharacterBuilder, configs
 │   │   ├── common/               # Header, LegalDisclaimerModal, StarfieldBackground
 │   │   ├── lobby/                # Lobby interactivo de entrada y selección de avatar
