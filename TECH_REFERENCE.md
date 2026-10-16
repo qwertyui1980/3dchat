@@ -287,6 +287,19 @@ Implementado en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/component
     3. Personajes Three.js procedurales (Cat, Dog, Female, Mipipi) a través de sus canales morfométricos en [`threeCharacterBuilder.ts`](file:///d:/Apps/xstreamx/src/components/avatars/threeCharacterBuilder.ts).
   * En [`App.tsx`](file:///d:/Apps/xstreamx/src/App.tsx), al accionar cualquier gesto se emite de inmediato un micro-stream mediante `networkServiceSingleton.broadcastFaceData()` para que todos los pares en la sala WebRTC observen la animación instantáneamente.
 
+### Fase 13 — Edición y Guardado Directo de Modelos 3D Existentes con Persistencia en Base de Datos
+* **Acceso de Edición para Administradores:**
+  * En [`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx) y [`AdminControlPanel.tsx`](file:///d:/Apps/xstreamx/src/components/room/AdminControlPanel.tsx), los administradores disponen de un botón directo de edición (*Sliders*) tanto en la pestaña de modelos personalizados (*Mis Avatares*) como en los modelos del catálogo público (*Modelos Predefinidos*).
+  * Al pulsar sobre la herramienta de edición, el avatar se carga automáticamente en el estudio 3D Masks (`FaceBlendshapeStudioModal.tsx`) preservando su foto original, sus parámetros faciales y oculares, y regenerando la malla tridimensional.
+* **Guardado Inmediato Persistente en Base de Datos (IndexedDB):**
+  * **Botón Ubicuo en Header:** Se incorporó un botón principal de acción rápida **"Guardar Cambios"** (`Save`) en la barra superior del estudio 3D, visible y accesible en todo momento sin importar la pestaña activa (`Expresiones`, `Calibración y Ajustes` o `Exportar`).
+  * **Tarjetas de Guardado Rápido:** Tanto en la pestaña de morfología (*Expresiones*) como en la de transformación (*Calibración y Ajuste*), se integraron tarjetas de confirmación para guardar cambios inmediatamente tras mover cualquier control deslizante.
+  * **Persistencia Completa en [`AvatarModelService`](file:///d:/Apps/xstreamx/src/services/avatarModelService.ts):**
+    * Actualiza el archivo binario `.glb` con los 52 morph targets y la metadata de calibración en el almacén `STORE_MODELS` de IndexedDB (`indexedDbService.saveModel`).
+    * Captura y sincroniza en caliente una nueva captura de miniatura (`previewImage`) generada por WebGL.
+    * Sobrescribe y actualiza los metadatos en LocalStorage y notifica en vivo a través de `this.notify()`.
+    * En [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/components/avatars/ThreeAvatarCanvas.tsx), el hook de renderizado reactivo (`avatarRevision`) detecta la actualización y refresca la escena 3D instantáneamente sin recargar el navegador.
+
 ---
 
 ## 6. Estudio de Generación de Avatares 3D Masks (Face to Blendshape Studio)
@@ -471,6 +484,21 @@ flowchart LR
   * Lienzo interactivo basado en HTML5 Canvas con soporte para trazos vectoriales, formas geométricas, texto y colores.
   * Transmisión de trazos en tiempo real vía `WhiteboardStroke` distribuidos a través del canal de red híbrido.
 
+### 7.3. Página de Inicio y Letrero Neón Oficial (`PresidentesNeonHome.tsx`)
+* **Fondo de Pared de Ladrillos Negros a Pantalla Completa:**
+  * Toda la página de inicio ahora despliega como fondo panorámico inmersivo la textura de pared de ladrillos negros de la fotografía original (`/images/dark_brick_wall.jpg`), con sombreado de profundidad tipo viñeta y reflejos de luz ambiental neón sobre la mampostería.
+* **Arte Neón Auténtico y Aislamiento de Fondo:**
+  * La landing page monta sobre la pared el letrero neón oficial de los creadores (`/images/presidentes_neon_clean.png`), aislado quirúrgicamente de cables externos, cajas de alimentación y cortes rectangulares de la foto mediante visión por computadora.
+  * **Transparencia Alfa Perfecta:** Fondo 100% transparente con desvanecimiento de brillo suave (*unmultiplied glow*) y relleno sólido de medianoche (#070e14) para los cuerpos 3D de las letras *"PRESIDENTES MUERTOS"*.
+  * **Tres Figuras Faciales Neón Integradas:**
+    * Figura 1 (Izquierda): Neón rojo con orejas redondeadas y cabello lateral.
+    * Figura 2 (Centro): Neón blanco/hielo con cabeza calva alargada.
+    * Figura 3 (Derecha): Neón azul/cian con frente alta y orejas estilizadas.
+  * **Efectos Dinámicos de Iluminación y Glitch:**
+    * Animación de zumbido orgánico (`animate-neon-hum`) con pulso suave de brillo.
+    * Ciclos aleatorios de malfunción eléctrica (`neon-flickering`) simulando micro-cortes de voltaje realistas.
+  * **Accesibilidad y SEO:** Mantiene un título semántico accesible para lectores de pantalla (`<h1 className="sr-only">Presidentes Muertos y Vivos</h1>`) y accesos directos al Salón Principal y transmisión en vivo.
+
 ---
 
 ## 8. Servidor de Señalización y Ciclo de Vida de Sala (`server.ts`)
@@ -499,6 +527,7 @@ flowchart LR
 ```text
 xstreamx/
 ├── public/                       # Activos estáticos públicos
+│   ├── images/                   # Arte neón oficial transparente y texturas de fondo
 │   ├── models/                   # Modelos 3D (OBJ, STL, GLTF, GLB)
 │   ├── favicon.svg               # Identidad gráfica
 │   └── 404.html                  # Soporte SPA para GitHub Pages / subrutas
@@ -510,7 +539,7 @@ xstreamx/
 │   ├── components/
 │   │   ├── admin/                # FaceBlendshapeStudioModal (Estudio 3D de avatares)
 │   │   ├── auth/                 # Login (Controlador de acceso, modal de credenciales y privacidad)
-│   │   ├── home/                 # PresidentesNeonHome (Landing con figuras neón, glitch aleatorio por figura Y por letra individual)
+│   │   ├── home/                 # PresidentesNeonHome (Landing con el letrero neón oficial transparente, pulso orgánico y glitch eléctrico)
 │   │   ├── avatars/              # ThreeAvatarCanvas, threeCharacterBuilder, configs
 │   │   ├── common/               # Header, LegalDisclaimerModal, StarfieldBackground
 │   │   ├── lobby/                # Lobby interactivo de entrada y selección de avatar

@@ -1238,6 +1238,21 @@ export const Lobby: React.FC<LobbyProps> = ({
                               <Pencil className="w-2.5 h-2.5" />
                             </button>
                           )}
+
+                          {/* Botón Admin: Volver a Editar con 3D Mask */}
+                          {isAdminUser && (avatar.isCustom || avatar.isPublic || avatar.originalImage || avatar.debugParams) && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEditCustomAvatar(avatar);
+                              }}
+                              className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-slate-900/90 hover:bg-emerald-600 text-slate-400 hover:text-white border border-slate-700 hover:border-emerald-400 flex items-center justify-center transition shadow-md z-10 cursor-pointer"
+                              title={`Editar "${avatar.name}" en 3D Masks Studio`}
+                            >
+                              <Sliders className="w-2.5 h-2.5 text-emerald-400 group-hover:text-white" />
+                            </button>
+                          )}
                         </div>
                       );
                     })}

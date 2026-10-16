@@ -205,7 +205,8 @@ class AvatarModelService {
    * Includes metadata on whether they are disabled, custom names, and preview images.
    */
   getAllAvatars(): AvatarDefinition[] {
-    const defaultFiltered = DEFAULT_AVATARS.filter((a) => !this.deletedIds.has(a.id)).map(
+    const customIds = new Set(this.customAvatars.map((c) => c.id));
+    const defaultFiltered = DEFAULT_AVATARS.filter((a) => !this.deletedIds.has(a.id) && !customIds.has(a.id)).map(
       (a) => ({
         ...a,
         name: this.renamedNames[a.id] || a.name,

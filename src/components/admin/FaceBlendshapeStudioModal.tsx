@@ -29,6 +29,7 @@ import {
   ScanFace,
   User,
   Globe,
+  Save,
 } from 'lucide-react';
 import {
   faceToBlendshapeServiceSingleton,
@@ -1371,15 +1372,56 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-white/[0.06] hover:bg-rose-500/20 hover:text-rose-400 text-neutral-400 border border-white/[0.08] flex items-center justify-center transition cursor-pointer"
-            title="Cerrar estudio"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            {hasGeneratedModel && (
+              <button
+                type="button"
+                disabled={isSavingAvatar}
+                onClick={() => handleSaveToXStreamX(false)}
+                className="py-1.5 px-3 sm:px-4 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-black text-xs tracking-wider shadow-md shadow-emerald-500/25 flex items-center gap-1.5 transition active:scale-95 cursor-pointer disabled:opacity-50"
+                title={currentEditingAvatarId ? 'Guardar todos los cambios realizados en la base de datos' : 'Guardar modelo en la base de datos'}
+              >
+                {isSavingAvatar ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                    <span className="hidden sm:inline">Guardando...</span>
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4" />
+                    <span>{currentEditingAvatarId ? 'Guardar Cambios' : 'Guardar Avatar'}</span>
+                  </>
+                )}
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg bg-white/[0.06] hover:bg-rose-500/20 hover:text-rose-400 text-neutral-400 border border-white/[0.08] flex items-center justify-center transition cursor-pointer"
+              title="Cerrar estudio"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
+
+        {/* Global Save Success Notification Banner */}
+        {saveSuccessMsg && (
+          <div className="mx-3 mt-2.5 p-2.5 rounded-xl bg-emerald-950/90 border border-emerald-500/60 text-emerald-200 text-xs font-semibold flex items-center justify-between shadow-lg shadow-emerald-950/40 animate-in fade-in shrink-0">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>{saveSuccessMsg}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setSaveSuccessMsg(null)}
+              className="text-emerald-400 hover:text-white text-xs cursor-pointer px-1"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Main Workspace Body: Fully Responsive Layout across any browser width */}
         <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-2.5 sm:gap-3 p-2.5 sm:p-3.5 overflow-hidden">
@@ -1836,6 +1878,29 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                         </div>
                       );
                     })}
+
+                    {/* Quick Save in Morphs Tab */}
+                    <div className="mt-4 p-3 rounded-2xl bg-gradient-to-r from-emerald-950/50 via-teal-950/40 to-cyan-950/50 border border-emerald-500/40 flex items-center justify-between gap-3 shadow-lg shadow-emerald-950/30">
+                      <div>
+                        <div className="flex items-center gap-1.5">
+                          <Save className="w-3.5 h-3.5 text-emerald-400" />
+                          <p className="text-xs font-bold text-white">
+                            {currentEditingAvatarId ? 'Guardar Cambios del Modelo' : 'Guardar Modelo'}
+                          </p>
+                        </div>
+                        <p className="text-[10px] text-neutral-400 mt-0.5">
+                          Actualiza de forma permanente la base de datos de XStreamX.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={isSavingAvatar}
+                        onClick={() => handleSaveToXStreamX(false)}
+                        className="py-2 px-3.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-md shadow-emerald-500/20 flex items-center gap-1.5 transition active:scale-95 cursor-pointer disabled:opacity-40"
+                      >
+                        {isSavingAvatar ? 'Guardando...' : currentEditingAvatarId ? 'Guardar Cambios' : 'Guardar'}
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -3143,6 +3208,31 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                         </div>
                       </div>
                     </div>
+
+                    {/* Quick Save in Tuning Tab */}
+                    {hasGeneratedModel && (
+                      <div className="mt-4 p-3.5 rounded-2xl bg-gradient-to-r from-emerald-950/50 via-teal-950/40 to-cyan-950/50 border border-emerald-500/40 flex items-center justify-between gap-3 shadow-lg shadow-emerald-950/30 shrink-0">
+                        <div>
+                          <div className="flex items-center gap-1.5">
+                            <Save className="w-4 h-4 text-emerald-400" />
+                            <p className="text-xs font-bold text-white">
+                              {currentEditingAvatarId ? 'Guardar Cambios del Modelo' : 'Guardar Modelo'}
+                            </p>
+                          </div>
+                          <p className="text-[10px] text-neutral-400 mt-0.5">
+                            Guarda los ajustes de calibración, ojos 3D y morphs en la base de datos.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={isSavingAvatar}
+                          onClick={() => handleSaveToXStreamX(false)}
+                          className="py-2 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-black text-xs shadow-md shadow-emerald-500/20 flex items-center gap-1.5 transition active:scale-95 cursor-pointer disabled:opacity-40"
+                        >
+                          {isSavingAvatar ? 'Guardando...' : currentEditingAvatarId ? 'Guardar Cambios' : 'Guardar'}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -573,8 +573,8 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                             )}
                           </button>
 
-                          {/* Edit with 3D Masks Button (if custom model) */}
-                          {av.isCustom && (
+                          {/* Edit with 3D Masks Button */}
+                          {(av.isCustom || av.isPublic || av.originalImage || av.debugParams) && (
                             <button
                               type="button"
                               onClick={() => {
