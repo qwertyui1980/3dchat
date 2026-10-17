@@ -21,6 +21,7 @@ export class AudioService {
       if (this.audioContext && this.audioContext.state === 'suspended') {
         this.audioContext.resume().catch(() => {});
       }
+      this.onAudioUnlocked?.();
     };
 
     window.addEventListener('click', resumeAudio, { passive: true });
@@ -38,8 +39,19 @@ export class AudioService {
     }
   }
 
+  public onAudioUnlocked?: () => void;
+
   async start(onVolume: (volume: number) => void): Promise<MediaStream | null> {
     this.onVolumeChange = onVolume;
+
+    // Reuse existing live stream if already open and active
+    if (this.mediaStream && this.mediaStream.getAudioTracks().some((t) => t.readyState === 'live')) {
+      if (this.audioContext && this.audioContext.state === 'suspended') {
+        await this.audioContext.resume().catch(() => {});
+      }
+      this.setMute(this.isMuted);
+      return this.mediaStream;
+    }
 
     try {
       this.mediaStream = await navigator.mediaDevices.getUserMedia({

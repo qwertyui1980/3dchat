@@ -109,6 +109,10 @@ El núcleo de animación biomimética reside en [`src/services/mediapipeService.
 
 ### 4.1. Detección y Extracción de Características
 * MediaPipe procesa el feed de la cámara web a 60 FPS generando 478 puntos tridimensionales normalizados ($x, y, z$).
+* **Alojamiento Local del Modelo de Tareas (`face_landmarker.task`):**
+  * Para evitar fallos de protocolo HTTP/3 QUIC (`net::ERR_QUIC_PROTOCOL_ERROR`) provocados por proxies, cortafuegos o bloqueos UDP hacia `storage.googleapis.com`, el binario compilado de MediaPipe (`face_landmarker.task`, ~3.7 MB) se distribuye localmente en `public/wasm/` y se resuelve dinámicamente mediante `getAssetUrl('wasm/face_landmarker.task')`, garantizando carga instantánea sin dependencia de CDN externa y con fallback transparente.
+* **Resolución Universal de Activos en Subrutas (`getAssetUrl`):**
+  * Toda referencia a imágenes (`images/photoreal_...`, `images/dark_brick_wall.jpg`) y modelos 3D base (`models/head.glb`) se canaliza mediante `getAssetUrl` para garantizar compatibilidad con subdirectorios de despliegue (ej. `/3dchat/` o GitHub Pages) evitando errores 404 por rutas absolutas en raíz de dominio.
 * Se calculan automáticamente:
   * **Apertura Ocular Izquierda/Derecha:** Distancia euclidiana entre párpados superiores e inferiores normalizada frente a la escala de la órbita ocular.
   * **Orientación Cefálica (Head Pose):** Ángulos de inclinación (*Pitch*), giro (*Yaw*) y ladeo (*Roll*) deducidos del vector normal del triángulo nariz-ojos.
@@ -466,12 +470,18 @@ flowchart LR
     * **"GUARDAR CAMBIOS EN ESTE MODELO":** Invoca `avatarModelServiceSingleton.updateCustomModel({ id, ... })`, sobrescribiendo la geometría binaria y los parámetros en IndexedDB y actualizando reactivamente las listas activas sin crear duplicados.
     * **"Guardar como copia nueva":** Permite al usuario bifurcar el modelo creando un nuevo avatar independiente con un ID único preservando el original intacto.
 
-### 6.3. Solicitud de Permisos de Hardware Estrictamente Bajo Demanda (Cero Solicitudes en Carga)
-* En cumplimiento estricto con los principios de privacidad y UX no invasiva, la aplicación jamás solicita acceso a la cámara ni al micrófono de forma automática al montar el componente raíz ([`App.tsx`](file:///d:/Apps/xstreamx/src/App.tsx)) ni al cargar el Lobby ([`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx)).
-* **Disparadores Exclusivos por Clic del Usuario:**
-  * **Micrófono:** El acceso físico al micrófono (`getUserMedia({ audio: true })`) se solicita únicamente cuando el usuario presiona el botón de micrófono en el Lobby o en los controles de llamada de la sala. Si el usuario ingresa sin activar el micrófono, entra a la sala silenciado de forma segura sin requerir permisos.
-  * **Cámara:** El acceso a la cámara (`getUserMedia({ video: ... })`) se solicita exclusivamente cuando el usuario hace clic en el botón de cámara en el Lobby o dentro de la sala. Si la cámara está inactiva, el avatar opera en modo voz/lipsync biomimético.
-* **Supresión de Banners Agresivos:** Se eliminaron avisos bloqueantes en el Lobby; los mensajes de error de hardware solo se muestran si el usuario intentó activar el dispositivo y el navegador denegó explícitamente el permiso.
+### 6.3. Inicialización Proactiva del Micrófono en el Lobby y Resiliencia de Audio en Conferencia
+* **Inicialización Proactiva en el Lobby:**
+  * Al ingresar a la pantalla del Lobby ([`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx)), el sistema inicializa y verifica preventivamente el acceso al micrófono ([`audioService.ts`](file:///d:/Apps/xstreamx/src/services/audioService.ts)).
+  * **Silenciado Seguro por Defecto (`isMuted: true`):** El micrófono se inicia con los tracks de audio deshabilitados (`track.enabled = false`), garantizando privacidad y previniendo transmisiones accidentales mientras permite probar el volumen y la sincronización labial del avatar en la previsualización del Lobby.
+  * **Disponibilidad Inmediata en Conferencia:** El stream de audio ya se encuentra establecido al ingresar a la sala, erradicando retrasos en la negociación WebRTC o bloqueos de permisos al pulsar "Entrar al salón".
+* **Resiliencia de Conexión del Administrador y Supresión de Caídas Falsas:**
+  * **Heartbeats Híbridos Multicanal:** `peerHeartbeats` se alimenta de cualquier paquete recibido a través de los 4 canales de la red (PeerJS WebRTC P2P DataChannel, Socket.io, MQTT WebSockets y BroadcastChannel). Se eliminó la dependencia exclusiva del broker MQTT para determinar la presencia del administrador.
+  * **Ventana de Tolerancia Segura (35s):** Se aumentó el umbral de desconexión por inactividad a 35 segundos y se condiciona a la pérdida total de señal en Socket.io, evitando cierres espurios provocados por micro-cortes en brokers públicos de MQTT.
+  * **Período de Gracia para Reconexión de Socket (8s):** Si el socket del administrador experimenta una reconexión transitoria, el cliente activa una pausa de 8 segundos antes de considerar el abandono definitivo, previniendo la terminación abrupta de la llamada mientras WebRTC y el socket se restablecen.
+* **Manejo Dinámico de Pistas de Audio en Runtime (`setLocalAudioStream`):**
+  * Si la conexión PeerJS ya existe, se utiliza `RTCRtpSender.replaceTrack()` para conmutar la pista de audio en caliente sin renegociar ni destruir la llamada P2P.
+  * Los elementos de audio remotos se anclan al DOM de forma oculta y se desbloquean automáticamente ante interacciones del usuario en el navegador (`resumeAllRemoteAudio()`), sorteando políticas restrictivas de Autoplay.
 
 ### 6.4. Bloqueo de Avatar por Sesión (Sin Hot-Swap en Sala)
 * El cambio de avatar **en vivo dentro de la sala ha sido eliminado** deliberadamente de [`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx) para garantizar la **consistencia de identidad** del personaje durante toda la llamada.
@@ -497,21 +507,27 @@ flowchart LR
   * Lienzo interactivo basado en HTML5 Canvas con soporte para trazos vectoriales, formas geométricas, texto y colores.
   * Transmisión de trazos en tiempo real vía `WhiteboardStroke` distribuidos a través del canal de red híbrido.
 
-### 7.3. Portada con Lámparas de Neón Fotorrealistas, Marco Abierto y Chispas (`PresidentesNeonHome.tsx`)
-* **Fondo Panorámico de Pared de Ladrillos Negros:**
+### 7.3. Portada con Lámparas de Neón SVG Vectoriales y Construcción Física Realista (`PresidentesNeonHome.tsx`)
+* **Fondo Panorámico de Pared de Ladrillos Negros Preservado:**
   * Pared de ladrillos oscuros ([`dark_brick_wall.jpg`](file:///d:/Apps/xstreamx/public/images/dark_brick_wall.jpg)) cubriendo todo el viewport con viñeteado ambiental y resplandor difuso reflejado sobre la mampostería.
-* **Lámparas de Neón Fotorrealistas y Trazos Gruesos:**
-  * Renderizado óptico con simulación de tubo de vidrio cilíndrico, destello especular superior, núcleo de plasma incandescente blanco caliente y difusión volumétrica gaussiana multicapa.
-  * **Líneas Más Gruesas:** Trazos de mayor calibre (8-10px) en figuras y marco para un impacto visual de lámpara de gas real.
-  * **Marco Neón Abierto (No Cerrado):** Marco de marquesina con rieles y barras abiertas con tapones de electrodos redondeados en los extremos y soportes decorativos en las esquinas, evitando siluetas cerradas monótonas.
-* **Estructura Multicapa y Fallas Eléctricas Específicas:**
-  * **Marco Abierto y Tipografía ([`photoreal_neon_base.png`](file:///d:/Apps/xstreamx/public/images/photoreal_neon_base.png)):** Rieles de neón amarillo abierto y letras blancas excepto la 'R'.
-  * **Letras 'R' con Fallas Eléctricas ([`photoreal_neon_r.png`](file:///d:/Apps/xstreamx/public/images/photoreal_neon_r.png)):** Capa independiente aislada para las letras 'R' de *"PRESIDENTES"* y *"MUERTOS"*, programada con ciclo de malfunción eléctrica y parpadeo intermitente.
-  * **Figura 1 ([`photoreal_head_red.png`](file:///d:/Apps/xstreamx/public/images/photoreal_head_red.png)):** Neón rojo brillante con fallas independientes.
-  * **Figura 2 ([`photoreal_head_white.png`](file:///d:/Apps/xstreamx/public/images/photoreal_head_white.png)):** Neón blanco hielo con fallas independientes.
-  * **Figura 3 ([`photoreal_head_blue.png`](file:///d:/Apps/xstreamx/public/images/photoreal_head_blue.png)):** Neón azul cian con fallas independientes.
-* **Física de Chispas al Clic del Ratón:**
-  * Al hacer clic en cualquier parte de la pantalla, un lienzo interactivo HTML5 Canvas (`canvasRef`) genera un estallido de 28 a 48 chispas incandescentes (oro, blanco, ámbar, rojo y azul) con aceleración por gravedad, fricción aerodinámica, estelas y micro-parpadeo reactivo en el letrero.
+* **Arquitectura de Lámparas de Neón SVG y Elementos Físicos de Fabricación (`HomeAnima.html`):**
+  * Trazos vectoriales de precisión geométrica con estructura bicapa:
+    * **Capa Exterior de Tubo de Gas (`.tube` con `stroke-width: 4.5`):** Color saturado característico de cada figura y texto (`#ff1f35` rojo, `#dfe9ff` blanco, `#1f6bff` azul, `#ffe81a` amarillo).
+    * **Capa Interior de Núcleo Térmico (`.core` con `stroke-width: 1.6`):** Blanco caliente / pastel (`#ffffff`, `#ffd2d6`, `#c4e1ff`) simulando el plasma incandescente interior.
+    * **Filtro SVG Multicapa `#neon-glow`:** Triple difusión gaussiana (`feGaussianBlur` a stdDeviation 2.5, 8 y 20) combinada con `feMerge` para emular el halo volumétrico de gas neón.
+  * **Construcción Física Realista de Lámpara de Neón:**
+    * **Tubos de Puente Pintados de Negro (`.dead` con calibre 6px y `.dead-hi` a 1.4px):** Trazos de vidrio opacados que unen físicamente los electrodos entre cabezas y letrero con reflejo especular tenue.
+    * **Tapones de Electrodos Metálicos (`.cap`):** Tapones terminales redondeados en las entradas de corriente de los tubos.
+    * **Clips de Sujeción y Tornillería a Pared (`.clip`):** Abrazaderas de anclaje con tornillos en cruz sosteniendo los tubos sobre la pared.
+* **Luz de Neón Derramada sobre la Pared Sincronizada:**
+  * Elipses con gradientes radiales (`#spRed`, `#spWht`, `#spBlu`, `#spYel`) proyectan conos de luz volumétrica sobre la pared de ladrillos.
+  * Los resplandores de la figura roja (`#spRed`) y de la figura blanca (`#spWht`) modulan su opacidad al unísono con el parpadeo de sus respectivos tubos en el ciclo de malfunción (`neon(setOpacity(red, spRed), ...)`).
+* **Ciclo de Animación y Malfunción Eléctrica Realista:**
+  * **Ráfagas de Parpadeo (`burst`):** Micro-oscilaciones de opacidad rápida (30-150ms) entre voltaje residual (0.04 - 0.3) y encendido total (0.65 - 1.0).
+  * **Figura Azul (`figBlu`):** Encendido continuo estable (`opacity = 1.0`).
+  * **Figura Roja (`figRed` + `#spRed`):** Malfunción frecuente con intervalos de 1.5s a 4.0s y ráfagas cortas.
+  * **Figura Blanca (`figWht` + `#spWht`):** Intervalos más espaciados (3.5s a 8.0s) con apagones prolongados ocasionales (`dead = 0.3`).
+  * **Letras 'R' (`.r` en "PRESIDENTES" y "MUERTOS"):** Modulación independiente de `strokeOpacity` con fallos estocásticos individuales (`dead = 0.2`).
 * **Accesibilidad y SEO:** Mantiene un encabezado semántico `<h1 className="sr-only">Presidentes Muertos y Vivos</h1>` y botones de acceso al Salón Principal y show en vivo.
 
 ---

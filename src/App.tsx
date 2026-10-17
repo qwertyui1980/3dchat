@@ -345,8 +345,40 @@ export default function App() {
     await startCamera(deviceId);
   }, [startCamera]);
 
-  // 1. Hardware permissions (Microphone & Camera) are NEVER auto-requested on mount.
-  // Hardware access is strictly requested on-demand when the user presses the buttons in the Lobby.
+  // Connect AudioService unlock to resume remote audio streams
+  useEffect(() => {
+    audioServiceSingleton.onAudioUnlocked = () => {
+      networkServiceSingleton.resumeAllRemoteAudio();
+    };
+    return () => {
+      audioServiceSingleton.onAudioUnlocked = undefined;
+    };
+  }, []);
+
+  // Proactively initialize and verify microphone when entering the lobby
+  // Ensures microphone hardware access is tested and ready, starting in a safe MUTED state
+  useEffect(() => {
+    let isCancelled = false;
+    if (authenticatedUser && !isInRoom) {
+      const stream = audioServiceSingleton.getStream();
+      const hasLiveStream = stream && stream.getAudioTracks().some((t) => t.readyState === 'live');
+      if (!hasLiveStream) {
+        startMic()
+          .then((ok) => {
+            if (!isCancelled && ok) {
+              console.log('[Lobby] Mic auto-initialized and ready (muted).');
+            }
+          })
+          .catch((err) => {
+            console.warn('[Lobby] Mic auto-init notice:', err);
+          });
+      }
+    }
+    return () => {
+      isCancelled = true;
+    };
+  }, [authenticatedUser, isInRoom, startMic]);
+
   useEffect(() => {
     return () => {
       faceTrackerSingleton.stopTracking();

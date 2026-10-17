@@ -4,6 +4,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 import { ARKitBlendshapeMapper } from './arkitMapper';
 import { TextureMapper } from './textureMapper';
+import { getAssetUrl } from '../../utils/assetUrl';
 import {
   FaceMeshGenerator,
   MouthCustomizationParams,
@@ -154,17 +155,32 @@ export class FaceToBlendshapeService {
           'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm'
         );
       }
-      this.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath:
-            'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task',
-          delegate: 'GPU',
-        },
-        outputFaceBlendshapes: true,
-        outputFacialTransformationMatrixes: true,
-        runningMode: 'IMAGE',
-        numFaces: 1,
-      });
+      const localTaskPath = getAssetUrl('wasm/face_landmarker.task');
+      const remoteTaskPath = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task';
+
+      try {
+        this.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: localTaskPath,
+            delegate: 'GPU',
+          },
+          outputFaceBlendshapes: true,
+          outputFacialTransformationMatrixes: true,
+          runningMode: 'IMAGE',
+          numFaces: 1,
+        });
+      } catch {
+        this.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: remoteTaskPath,
+            delegate: 'GPU',
+          },
+          outputFaceBlendshapes: true,
+          outputFacialTransformationMatrixes: true,
+          runningMode: 'IMAGE',
+          numFaces: 1,
+        });
+      }
       return this.faceLandmarker;
     } finally {
       this.isInitializing = false;
@@ -178,7 +194,12 @@ export class FaceToBlendshapeService {
 
     return new Promise((resolve) => {
       const loader = new GLTFLoader();
-      const headUrls = ['/head.glb', '/models/head.glb'];
+      const headUrls = [
+        getAssetUrl('models/head.glb'),
+        getAssetUrl('head.glb'),
+        '/models/head.glb',
+        '/head.glb',
+      ];
 
       const tryLoad = (idx: number) => {
         if (idx >= headUrls.length) {

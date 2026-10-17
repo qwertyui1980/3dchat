@@ -1,5 +1,6 @@
 import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision';
 import { FaceFeatures } from '../types';
+import { getAssetUrl } from '../utils/assetUrl';
 
 export const INITIAL_FACE_FEATURES: FaceFeatures = {
   pitch: 0,
@@ -61,17 +62,33 @@ export class MediaPipeFaceTracker {
         );
       }
 
-      this.landmarker = await FaceLandmarker.createFromOptions(vision, {
-        baseOptions: {
-          modelAssetPath:
-            'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-          delegate: 'GPU',
-        },
-        outputFaceBlendshapes: true,
-        outputFacialTransformationMatrixes: true,
-        runningMode: 'VIDEO',
-        numFaces: 1,
-      });
+      const localModelPath = getAssetUrl('wasm/face_landmarker.task');
+      const remoteModelPath = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+
+      try {
+        this.landmarker = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: localModelPath,
+            delegate: 'GPU',
+          },
+          outputFaceBlendshapes: true,
+          outputFacialTransformationMatrixes: true,
+          runningMode: 'VIDEO',
+          numFaces: 1,
+        });
+      } catch (localGpuErr) {
+        console.warn('[MediaPipe] Local task GPU failed, trying remote CDN...', localGpuErr);
+        this.landmarker = await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: remoteModelPath,
+            delegate: 'GPU',
+          },
+          outputFaceBlendshapes: true,
+          outputFacialTransformationMatrixes: true,
+          runningMode: 'VIDEO',
+          numFaces: 1,
+        });
+      }
 
       this.isModelLoaded = true;
       this.isInitializing = false;
@@ -89,17 +106,32 @@ export class MediaPipeFaceTracker {
             'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm'
           );
         }
-        this.landmarker = await FaceLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath:
-              'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
-            delegate: 'CPU',
-          },
-          outputFaceBlendshapes: true,
-          outputFacialTransformationMatrixes: true,
-          runningMode: 'VIDEO',
-          numFaces: 1,
-        });
+        const localModelPath = getAssetUrl('wasm/face_landmarker.task');
+        const remoteModelPath = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
+
+        try {
+          this.landmarker = await FaceLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: localModelPath,
+              delegate: 'CPU',
+            },
+            outputFaceBlendshapes: true,
+            outputFacialTransformationMatrixes: true,
+            runningMode: 'VIDEO',
+            numFaces: 1,
+          });
+        } catch {
+          this.landmarker = await FaceLandmarker.createFromOptions(vision, {
+            baseOptions: {
+              modelAssetPath: remoteModelPath,
+              delegate: 'CPU',
+            },
+            outputFaceBlendshapes: true,
+            outputFacialTransformationMatrixes: true,
+            runningMode: 'VIDEO',
+            numFaces: 1,
+          });
+        }
         this.isModelLoaded = true;
         this.isInitializing = false;
         return true;

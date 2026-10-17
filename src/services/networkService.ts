@@ -35,6 +35,7 @@ export class NetworkService {
   private burstTimeouts: any[] = [];
   private peerHeartbeats: Map<string, number> = new Map();
   private pendingAvatarRequests: Map<string, number> = new Map();
+  private adminDisconnectGraceTimeout: any = null;
 
   public currentUser: User | null = null;
   public currentRoom: RoomInfo | null = null;
@@ -143,6 +144,11 @@ export class NetworkService {
         });
 
         this.socket.on('user_joined', ({ user, participants }: { user: User; participants: User[] }) => {
+          this.recordPeerHeartbeat(user.id);
+          if (this.adminDisconnectGraceTimeout && (user.role === 'admin' || user.id === this.currentRoom?.adminId)) {
+            clearTimeout(this.adminDisconnectGraceTimeout);
+            this.adminDisconnectGraceTimeout = null;
+          }
           this.checkAdminConflict(user);
           if (this.currentRoom) {
             this.currentRoom.participants = this.deduplicateParticipants(participants);
@@ -158,9 +164,20 @@ export class NetworkService {
               this.currentRoom.participants.some((p) => p.id === userId && p.role === 'admin');
 
             if (isAdmin && this.currentUser && this.currentUser.id !== userId) {
-              console.log('[Room Teardown] Admin left room via socket. Closing room.');
-              this.cleanup();
-              this.onRoomClosed?.('El administrador ha abandonado el espacio. La sala ha sido cerrada y la llamada ha finalizado.');
+              console.log('[Network] Admin socket disconnected. Waiting 8s grace period for reconnect before closing room...');
+              if (this.adminDisconnectGraceTimeout) {
+                clearTimeout(this.adminDisconnectGraceTimeout);
+              }
+              this.adminDisconnectGraceTimeout = setTimeout(() => {
+                const stillAdminPresent = this.currentRoom?.participants.some(
+                  (p) => (p.id === userId || p.role === 'admin')
+                );
+                if (!stillAdminPresent) {
+                  console.log('[Room Teardown] Admin did not reconnect within grace period. Closing room.');
+                  this.cleanup();
+                  this.onRoomClosed?.('El administrador ha abandonado el espacio. La sala ha sido cerrada y la llamada ha finalizado.');
+                }
+              }, 8000);
               return;
             }
 
@@ -172,11 +189,16 @@ export class NetworkService {
 
         this.socket.on('room_closed', ({ reason }: { reason?: string } = {}) => {
           console.log('[Room Teardown] Room closed via socket broadcast.');
+          if (this.adminDisconnectGraceTimeout) {
+            clearTimeout(this.adminDisconnectGraceTimeout);
+            this.adminDisconnectGraceTimeout = null;
+          }
           this.cleanup();
           this.onRoomClosed?.(reason || 'El administrador ha cerrado la sala. La llamada ha finalizado.');
         });
 
         this.socket.on('user_updated', ({ user }: { user: User }) => {
+          this.recordPeerHeartbeat(user.id);
           if (this.currentRoom) {
             this.currentRoom.participants = this.currentRoom.participants.map((p) =>
               p.id === user.id ? user : p
@@ -189,6 +211,7 @@ export class NetworkService {
         });
 
         this.socket.on('peer_face_data', ({ userId, data }: { userId: string; data: FaceFeatures }) => {
+          this.recordPeerHeartbeat(userId);
           if (this.onPeerFaceData) this.onPeerFaceData(userId, data);
         });
 
@@ -582,6 +605,17 @@ export class NetworkService {
         this.setupMediaCall(call);
       });
 
+      peer.on('disconnected', () => {
+        console.warn('[PeerJS] Notice: Disconnected from signaling server. Auto-reconnecting...');
+        if (!peer.destroyed) {
+          try {
+            peer.reconnect();
+          } catch (e) {
+            console.warn('[PeerJS] Reconnect notice:', e);
+          }
+        }
+      });
+
       peer.on('error', (err) => {
         console.warn('[PeerJS] Notice:', err.type || err.message);
       });
@@ -589,6 +623,15 @@ export class NetworkService {
       this.peer = peer;
     } catch (e) {
       console.warn('[PeerJS] Init error, continuing with WebSocket mesh:', e);
+    }
+  }
+
+  public recordPeerHeartbeat(peerOrUserId?: string) {
+    if (!peerOrUserId || !this.currentUser || peerOrUserId === this.currentUser.id) return;
+    this.peerHeartbeats.set(peerOrUserId, Date.now());
+    if (this.adminDisconnectGraceTimeout && (peerOrUserId === this.currentRoom?.adminId || peerOrUserId === 'admin')) {
+      clearTimeout(this.adminDisconnectGraceTimeout);
+      this.adminDisconnectGraceTimeout = null;
     }
   }
 
@@ -608,6 +651,9 @@ export class NetworkService {
 
     conn.on('data', (data: any) => {
       if (!data || typeof data !== 'object') return;
+      if (data.userId) {
+        this.recordPeerHeartbeat(data.userId);
+      }
       if (data.type === 'peer_face_data' && data.userId && data.features) {
         if (this.onPeerFaceData) {
           this.onPeerFaceData(data.userId, data.features);
@@ -701,7 +747,7 @@ export class NetworkService {
   private updateRemoteAudioMuteState(userId: string, isMuted: boolean) {
     if (!this.currentRoom) return;
     const peerId = this.getPeerJsId(this.currentRoom.id, userId);
-    const audioEl = this.remoteAudioElements.get(peerId);
+    const audioEl = this.remoteAudioElements.get(peerId) || this.remoteAudioElements.get(userId);
     if (audioEl) {
       audioEl.muted = isMuted;
     }
@@ -712,10 +758,18 @@ export class NetworkService {
     this.currentRoom.participants.forEach((p) => {
       if (p.id !== this.currentUser?.id && p.role !== 'admin') {
         const peerId = this.getPeerJsId(this.currentRoom!.id, p.id);
-        const audioEl = this.remoteAudioElements.get(peerId);
+        const audioEl = this.remoteAudioElements.get(peerId) || this.remoteAudioElements.get(p.id);
         if (audioEl) {
           audioEl.muted = muteState;
         }
+      }
+    });
+  }
+
+  public resumeAllRemoteAudio() {
+    this.remoteAudioElements.forEach((audioEl) => {
+      if (audioEl.srcObject && audioEl.paused) {
+        audioEl.play().catch(() => {});
       }
     });
   }
@@ -726,6 +780,11 @@ export class NetworkService {
       if (!audioEl) {
         audioEl = new Audio();
         audioEl.autoplay = true;
+        (audioEl as any).playsInline = true;
+        audioEl.style.display = 'none';
+        if (typeof document !== 'undefined' && document.body) {
+          document.body.appendChild(audioEl);
+        }
         this.remoteAudioElements.set(call.peer, audioEl);
       }
       audioEl.srcObject = remoteStream;
@@ -736,10 +795,11 @@ export class NetworkService {
         );
         if (participant) {
           audioEl.muted = !!participant.isMuted;
+          this.remoteAudioElements.set(participant.id, audioEl);
         }
       }
 
-      audioEl.play().catch((e) => console.warn('[Audio] Autoplay notice:', e));
+      audioEl.play().catch((e) => console.warn('[Audio] Autoplay notice (click anywhere to resume):', e));
     });
 
     call.on('close', () => {
@@ -853,10 +913,18 @@ export class NetworkService {
             user: this.currentUser,
           });
 
-          // Prune peers who haven't sent a heartbeat in 12 seconds
+          // Prune peers who haven't sent any heartbeat in 35 seconds across any network
           const now = Date.now();
+          const HEARTBEAT_TIMEOUT = 35000;
+
           this.peerHeartbeats.forEach((lastSeen, peerId) => {
-            if (peerId !== this.currentUser?.id && now - lastSeen > 12000) {
+            if (peerId !== this.currentUser?.id && now - lastSeen > HEARTBEAT_TIMEOUT) {
+              // If Socket.io is actively connected and confirms this participant is in the room, DO NOT prune!
+              if (this.socket?.connected && this.currentRoom?.participants.some((p) => p.id === peerId)) {
+                this.peerHeartbeats.set(peerId, now);
+                return;
+              }
+
               this.peerHeartbeats.delete(peerId);
               if (this.currentRoom) {
                 const isAdmin =
@@ -864,9 +932,13 @@ export class NetworkService {
                   this.currentRoom.participants.some((p) => p.id === peerId && p.role === 'admin');
 
                 if (isAdmin) {
-                  console.log('[Room Teardown] Admin heartbeat timed out. Closing room for all.');
-                  this.cleanup();
-                  this.onRoomClosed?.('El administrador se ha desconectado. La sala se ha cerrado y la llamada ha finalizado.');
+                  // Only teardown if socket is also disconnected
+                  if (!this.socket?.connected) {
+                    console.log('[Room Teardown] Admin heartbeat timed out across all networks. Closing room for all.');
+                    this.cleanup();
+                    this.onRoomClosed?.('El administrador se ha desconectado. La sala se ha cerrado y la llamada ha finalizado.');
+                    return;
+                  }
                   return;
                 }
 
@@ -922,7 +994,7 @@ export class NetworkService {
     if (senderId === this.currentUser.id || (senderName && senderName === selfName)) return;
 
     if (senderId) {
-      this.peerHeartbeats.set(senderId, Date.now());
+      this.recordPeerHeartbeat(senderId);
     }
 
     switch (msg.type) {
@@ -1276,6 +1348,7 @@ export class NetworkService {
       channel
         .on('broadcast', { event: 'peer_face_data' }, ({ payload }) => {
           if (payload && payload.userId && payload.userId !== this.currentUser?.id) {
+            this.recordPeerHeartbeat(payload.userId);
             if (this.onPeerFaceData) {
               this.onPeerFaceData(payload.userId, payload.features);
             }
@@ -1446,16 +1519,38 @@ export class NetworkService {
     const currentUser = this.currentUser;
 
     // Update all PeerJS audio calls
-    if (peer && room && currentUser && stream) {
+    if (peer && room && currentUser) {
       room.participants.forEach((p) => {
         if (p.id !== currentUser.id) {
           const targetPeerId = this.getPeerJsId(room.id, p.id);
-          if (!this.peerMediaCalls.has(targetPeerId)) {
-            try {
-              const call = peer.call(targetPeerId, stream);
-              this.setupMediaCall(call);
-            } catch (e) {
-              // Ignored
+          const existingCall = this.peerMediaCalls.get(targetPeerId);
+
+          if (stream) {
+            if (existingCall && (existingCall as any).peerConnection) {
+              try {
+                const pc = (existingCall as any).peerConnection as RTCPeerConnection;
+                const senders = pc.getSenders ? pc.getSenders() : [];
+                const audioSender = senders.find((s) => s.track && s.track.kind === 'audio');
+                const newTrack = stream.getAudioTracks()[0];
+                if (audioSender && newTrack) {
+                  audioSender.replaceTrack(newTrack).catch(() => {
+                    try { existingCall.close(); } catch (_) {}
+                    this.peerMediaCalls.delete(targetPeerId);
+                    const newCall = peer.call(targetPeerId, stream);
+                    this.setupMediaCall(newCall);
+                  });
+                  return;
+                }
+              } catch (_) {}
+            }
+
+            if (!existingCall || !(existingCall as any).open) {
+              try {
+                const call = peer.call(targetPeerId, stream);
+                this.setupMediaCall(call);
+              } catch (e) {
+                // Ignored
+              }
             }
           }
         }
@@ -2264,19 +2359,27 @@ export class NetworkService {
       const peerId = this.getPeerJsId(this.currentRoom.id, userId);
       const conn = this.peerDataConnections.get(peerId);
       if (conn) {
-        conn.close();
+        try { conn.close(); } catch (_) {}
         this.peerDataConnections.delete(peerId);
       }
       const call = this.peerMediaCalls.get(peerId);
       if (call) {
-        call.close();
+        try { call.close(); } catch (_) {}
         this.peerMediaCalls.delete(peerId);
       }
-    }
-    const audioEl = this.remoteAudioElements.get(userId);
-    if (audioEl) {
-      audioEl.srcObject = null;
-      this.remoteAudioElements.delete(userId);
+      [peerId, userId].forEach((id) => {
+        const audioEl = this.remoteAudioElements.get(id);
+        if (audioEl) {
+          try {
+            audioEl.pause();
+            audioEl.srcObject = null;
+            if (audioEl.parentNode) {
+              audioEl.parentNode.removeChild(audioEl);
+            }
+          } catch (_) {}
+          this.remoteAudioElements.delete(id);
+        }
+      });
     }
   }
 
@@ -2284,6 +2387,11 @@ export class NetworkService {
     if (!msg || typeof msg !== 'object') return;
     if (!this.currentRoom || !this.currentUser) return;
     if (msg.roomId && msg.roomId !== this.currentRoom.id) return;
+
+    const senderId = msg.user?.id || msg.userId || msg.fromUserId;
+    if (senderId) {
+      this.recordPeerHeartbeat(senderId);
+    }
 
     switch (msg.type) {
       case 'tab_who_is_in_room': {
