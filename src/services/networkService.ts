@@ -7,6 +7,7 @@ import { getSupabaseClient } from './supabaseClient';
 import { INITIAL_ROOM_MEDIA_STATE } from '../utils/youtube';
 import { avatarModelServiceSingleton } from './avatarModelService';
 import { AVATAR_LIST } from '../components/avatars/avatarConfigs';
+import { dbServiceSingleton } from './dbService';
 
 const PUBLIC_MQTT_BROKERS = [
   'wss://broker.emqx.io:8084/mqtt',
@@ -2868,9 +2869,9 @@ export class NetworkService {
   }
 
   /**
-   * Verifica si el avatar de un usuario remoto no está disponible localmente y lo solicita vía P2P / Relay
+   * Verifica si el avatar de un usuario remoto no está disponible localmente y lo solicita vía Supabase Cloud / P2P / Relay
    */
-  public checkAndFetchMissingAvatar(user: User) {
+  public async checkAndFetchMissingAvatar(user: User) {
     if (!user || !user.avatarId || !this.currentUser) return;
     if (user.id === this.currentUser.id) return;
 
@@ -2884,7 +2885,30 @@ export class NetworkService {
       return;
     }
 
-    // Solicitar el modelo 3D al participante
+    // 1. Intentar cargar inmediatamente desde Supabase Cloud (catálogo público o persistido)
+    try {
+      const cloudItem = await dbServiceSingleton.getAvatarByIdFromCloud(user.avatarId);
+      if (cloudItem && cloudItem.model_data) {
+        const res = await fetch(cloudItem.model_data);
+        const buffer = await res.arrayBuffer();
+        await avatarModelServiceSingleton.registerRemoteAvatar({
+          avatarId: cloudItem.id,
+          name: cloudItem.name,
+          format: cloudItem.format || 'glb',
+          themeColor: cloudItem.theme_color,
+          accentColor: cloudItem.accent_color,
+          previewImage: cloudItem.preview_image,
+          debugParams: cloudItem.debug_params,
+          buffer,
+        });
+        console.info(`[XStreamX Network] Modelo 3D (${user.avatarId}) de ${user.name} descargado exitosamente desde Supabase Cloud.`);
+        return;
+      }
+    } catch (err) {
+      console.warn('[XStreamX Network] Aviso consultando avatar en Supabase:', err);
+    }
+
+    // 2. Si no estaba en Supabase o falló, solicitar el modelo 3D al participante vía Mesh P2P
     this.requestAvatarModel(user.id, user.avatarId);
   }
 

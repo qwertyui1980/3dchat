@@ -481,31 +481,84 @@ class DatabaseService {
     format?: string;
     isPublic?: boolean;
     createdAt?: number;
+    modelData?: string;
+    debugParams?: any;
   }): Promise<void> {
     const supabase = getSupabaseClient();
     if (!supabase) return;
 
     try {
-      const { error } = await supabase.from('avatars').upsert({
+      const payload: any = {
         id: avatar.id,
         name: avatar.name,
         tagline: avatar.tagline || '',
-        category: avatar.category || 'Personalizados',
+        category: avatar.category || (avatar.isPublic ? 'Catálogo Público' : 'Personalizados'),
         theme_color: avatar.themeColor || '#06b6d4',
         accent_color: avatar.accentColor || '#3b82f6',
-        badge: avatar.badge || '3D',
-        owner_id: avatar.ownerId || '',
+        badge: avatar.badge || (avatar.isPublic ? 'PÚBLICO' : '3D'),
+        owner_id: (avatar.ownerId || '').trim().toLowerCase(),
         preview_image: avatar.previewImage || '',
         format: avatar.format || 'glb',
         is_public: !!avatar.isPublic,
         created_at: avatar.createdAt || Date.now(),
-      });
+      };
+
+      if (avatar.modelData) {
+        payload.model_data = avatar.modelData;
+      }
+      if (avatar.debugParams) {
+        payload.debug_params = avatar.debugParams;
+      }
+
+      const { error } = await supabase.from('avatars').upsert(payload);
       if (error) {
         console.warn('[Supabase] Avatar upsert warning:', error.message);
+      } else {
+        console.info(`[Supabase] Avatar ${avatar.id} (${avatar.isPublic ? 'PÚBLICO' : 'PERSONAL'}) sincronizado en la nube.`);
       }
     } catch (err) {
       console.warn('[Supabase] Error saving avatar record:', err);
     }
+  }
+
+  async getPublicAvatarsFromCloud(): Promise<any[]> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from('avatars')
+        .select('*')
+        .eq('is_public', true)
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        return data;
+      }
+    } catch (err) {
+      console.warn('[Supabase] Error fetching public avatars from cloud:', err);
+    }
+    return [];
+  }
+
+  async getAvatarByIdFromCloud(avatarId: string): Promise<any | null> {
+    const supabase = getSupabaseClient();
+    if (!supabase || !avatarId) return null;
+
+    try {
+      const { data, error } = await supabase
+        .from('avatars')
+        .select('*')
+        .eq('id', avatarId)
+        .maybeSingle();
+
+      if (!error && data) {
+        return data;
+      }
+    } catch (err) {
+      console.warn('[Supabase] Error fetching avatar by id:', err);
+    }
+    return null;
   }
 
   async getUserAvatarsFromCloud(ownerId: string): Promise<any[]> {

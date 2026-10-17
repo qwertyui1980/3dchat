@@ -21,6 +21,7 @@ import {
 } from './services/mediapipeService';
 import { audioServiceSingleton } from './services/audioService';
 import { networkServiceSingleton } from './services/networkService';
+import { avatarModelServiceSingleton } from './services/avatarModelService';
 import { Header } from './components/common/Header';
 import { Lobby } from './components/lobby/Lobby';
 import { RoomView } from './components/room/RoomView';
@@ -182,8 +183,8 @@ export default function App() {
     }
   }, []);
 
-  // Microphone start helper that verifies permissions and establishes audio analysis (starts muted by default)
-  const startMic = useCallback(async () => {
+  // Microphone start helper that verifies permissions and establishes audio analysis
+  const startMic = useCallback(async (startUnmuted: boolean = false) => {
     try {
       const audioStream = await audioServiceSingleton.start((volume) => {
         faceTrackerSingleton.setAudioVolume(volume);
@@ -215,9 +216,8 @@ export default function App() {
         networkServiceSingleton.setLocalAudioStream(audioStream);
         setHasMicPermission(true);
         setMicError(null);
-        // Default to MUTED state
-        setIsMicActive(false);
-        audioServiceSingleton.setMute(true);
+        setIsMicActive(startUnmuted);
+        audioServiceSingleton.setMute(!startUnmuted);
         return true;
       } else {
         setHasMicPermission(false);
@@ -550,25 +550,27 @@ export default function App() {
         // Admin muted the participant: turn off local mic immediately
         setIsMicActive(false);
         audioServiceSingleton.setMute(true);
+        networkServiceSingleton.toggleMute(true);
         setCurrentUser((prev) => (prev ? { ...prev, isMuted: true } : null));
         setRoom((prev) => {
           if (!prev) return prev;
           return {
             ...prev,
+            isAllMuted: true,
             participants: prev.participants.map((p) =>
               p.id === networkServiceSingleton.currentUser?.id ? { ...p, isMuted: true } : p
             ),
           };
         });
         addToast(
-          'El administrador ha silenciado tu micrófono. No puedes desmutearte hasta que el administrador lo autorice.',
+          'El administrador ha silenciado los micrófonos de la sala. Tu micrófono ha sido cerrado y bloqueado.',
           'warning'
         );
       } else {
-        // Admin granted permission to talk: DO NOT automatically enable physical microphone!
-        // The user must voluntarily click unmute when ready.
+        setIsAdminMuted(false);
+        setRoom((prev) => (prev ? { ...prev, isAllMuted: false } : prev));
         addToast(
-          'El administrador te ha concedido la palabra. Puedes activar tu micrófono cuando desees.',
+          'El administrador ha desbloqueado los micrófonos. Ya puedes activar tu micrófono cuando lo desees.',
           'info'
         );
       }
@@ -672,6 +674,9 @@ export default function App() {
       const basePath = getBasePath();
       window.history.replaceState({ screen: 'lobby' }, '', `${basePath}/#lobby`);
     }
+    if (user.username) {
+      avatarModelServiceSingleton.syncUserCloudAvatars(user.username).catch(() => {});
+    }
     addToast(`Sesión iniciada como ${user.name} (${user.role === 'admin' ? 'Admin' : 'Participante'})`, 'success');
   };
 
@@ -756,7 +761,7 @@ export default function App() {
     trackingSensitivity?: number;
     showTrackingPip?: boolean;
   }) => {
-    // 1. Only acquire microphone stream if user explicitly activated it in lobby
+    // 1. Apply and respect selected microphone state from lobby
     if (requestedMicActive) {
       const activeStream = audioServiceSingleton.getStream();
       const hasLiveTracks =
@@ -764,32 +769,42 @@ export default function App() {
         activeStream.getAudioTracks().some((t) => t.readyState === 'live');
 
       if (!hasLiveTracks) {
-        const ok = await startMic();
+        const ok = await startMic(true);
         if (!ok) {
           addToast('No se pudo acceder al micrófono. Ingresando en modo silenciado.', 'warning');
         }
       }
-    }
-
-    // 2. Apply and respect selected microphone state from lobby
-    setIsMicActive(requestedMicActive);
-    audioServiceSingleton.setMute(!requestedMicActive);
-    if (requestedMicActive) {
+      setIsMicActive(true);
+      audioServiceSingleton.setMute(false);
       audioServiceSingleton.ensureResumed();
+      networkServiceSingleton.toggleMute(false);
+    } else {
+      setIsMicActive(false);
+      audioServiceSingleton.setMute(true);
+      networkServiceSingleton.toggleMute(true);
     }
 
-    // 3. Apply and respect selected camera state from lobby
-    if (requestedCameraActive && !cameraStreamRef.current) {
-      await startCamera();
+    // 2. Apply and respect selected camera state from lobby
+    if (requestedCameraActive) {
+      if (!cameraStreamRef.current || !cameraStreamRef.current.active) {
+        await startCamera();
+      } else {
+        setIsCameraActive(true);
+        networkServiceSingleton.toggleCamera(true);
+        if (videoRef.current && videoRef.current.paused) {
+          videoRef.current.play().catch(() => {});
+        }
+      }
     } else if (!requestedCameraActive && cameraStreamRef.current) {
       cameraStreamRef.current.getTracks().forEach((track) => track.stop());
       cameraStreamRef.current = null;
       setCameraStream(null);
       setIsCameraActive(false);
       faceTrackerSingleton.stopTracking();
+      networkServiceSingleton.toggleCamera(false);
     }
 
-    // 4. Save tracking parameters & calibration preferences
+    // 3. Save tracking parameters & calibration preferences
     setTrackingMode(requestedTrackingMode);
     trackingModeRef.current = requestedTrackingMode;
     setCameraOffsetX(requestedOffsetX);
@@ -800,7 +815,7 @@ export default function App() {
     trackingSensitivityRef.current = requestedSensitivity;
     setIsTrackingPipVisible(requestedTrackingPip);
 
-    // 5. Join network room with exact user options activated
+    // 4. Join network room with exact user options activated
     networkServiceSingleton.joinRoom(roomId, userName, avatarId, createAsAdmin, {
       isMuted: !requestedMicActive,
       isCameraActive: requestedCameraActive,
@@ -808,17 +823,19 @@ export default function App() {
     });
   };
 
-  // Toggle Microphone - Only user explicit click can open mic, and blocked if muted by admin
+  // Toggle Microphone - Blocked if admin has muted all / user
   const handleToggleMic = async () => {
     if ((isAdminMuted || room?.isAllMuted) && currentUser?.role !== 'admin') {
       addToast(
-        'Has sido silenciado por el administrador. Solo el administrador puede reactivar los micrófonos de la sala.',
+        'El administrador ha silenciado los micrófonos de la sala. No puedes activar tu micrófono hasta que el administrador desactive esta opción.',
         'warning'
       );
       return;
     }
-    if (!hasMicPermission) {
-      const granted = await startMic();
+    const activeStream = audioServiceSingleton.getStream();
+    const hasLiveTracks = activeStream && activeStream.getAudioTracks().some((t) => t.readyState === 'live');
+    if (!hasMicPermission || !hasLiveTracks) {
+      const granted = await startMic(true);
       if (!granted) return;
       setIsMicActive(true);
       audioServiceSingleton.ensureResumed();
@@ -932,11 +949,7 @@ export default function App() {
 
   const handleMuteAll = () => {
     if (!room || !currentUser) return;
-    const otherParticipants = room.participants.filter(
-      (p) => p.id !== currentUser.id && p.role !== 'admin'
-    );
-    const isCurrentlyAllMuted =
-      !!room.isAllMuted || (otherParticipants.length > 0 && otherParticipants.every((p) => p.isMuted));
+    const isCurrentlyAllMuted = !!room.isAllMuted;
     const targetMuteState = !isCurrentlyAllMuted;
 
     networkServiceSingleton.adminMuteAll(targetMuteState);
@@ -954,9 +967,9 @@ export default function App() {
     });
     addToast(
       targetMuteState
-        ? 'Todos los participantes han sido silenciados por el administrador'
-        : 'Micrófonos de los participantes reactivados',
-      'info'
+        ? 'Todos los participantes han sido silenciados y sus micrófonos han sido bloqueados'
+        : 'Micrófonos de la sala desbloqueados y reactivados',
+      targetMuteState ? 'warning' : 'info'
     );
   };
 

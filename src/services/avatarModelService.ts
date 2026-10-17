@@ -4,12 +4,24 @@ import { getAvatarTrackingProfile, registerAvatarTrackingProfile } from '../comp
 import { buildCustomAvatarTrackingProfile, LandmarkDensity } from './face3d/landmarkCalibrationService';
 import { indexedDbService, StoredCustomModel } from './db/indexedDbService';
 import { getAvatarThumbnail } from './db/avatarThumbnails';
+import { dbServiceSingleton } from './dbService';
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onloadend = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
 
 const STORAGE_CUSTOM_AVATARS = 'xstreamx_custom_avatars_v1';
 const STORAGE_DISABLED_AVATARS = 'xstreamx_disabled_avatars_v1';
 const STORAGE_DELETED_AVATARS = 'xstreamx_deleted_avatars_v1';
 const STORAGE_RENAMED_AVATARS = 'xstreamx_renamed_avatars_v1';
 const STORAGE_PREVIEWS_AVATARS = 'xstreamx_avatar_previews_v1';
+
+export const MAX_USER_AVATARS = 4;
 
 type Listener = () => void;
 
@@ -156,8 +168,245 @@ class AvatarModelService {
 
       this.isInitialized = true;
       this.notify();
+
+      // Sincronizar modelos del Catálogo Público desde Supabase Cloud
+      this.syncCloudPublicAvatars().catch((err) => {
+        console.warn('[AvatarModelService] Notice syncing cloud public avatars:', err);
+      });
+
+      // Asegurar que todos los avatares predefinidos estén en Supabase
+      this.seedDefaultAvatarsToCloud().catch(() => {});
     } catch (err) {
       console.warn('[AvatarModelService] Error inicializando IndexedDB:', err);
+    }
+  }
+
+  /**
+   * Sincroniza la colección pública de modelos 3D desde Supabase Cloud.
+   * Todos los usuarios de la plataforma descargan y ven automáticamente estos modelos.
+   */
+  public async syncCloudPublicAvatars() {
+    try {
+      const publicCloudAvatars = await dbServiceSingleton.getPublicAvatarsFromCloud();
+      if (!publicCloudAvatars || publicCloudAvatars.length === 0) return;
+
+      let hasNew = false;
+      for (const cloudItem of publicCloudAvatars) {
+        if (this.deletedIds.has(cloudItem.id)) continue;
+
+        const existing = this.customAvatars.find((a) => a.id === cloudItem.id);
+        if (existing && existing.modelUrl) continue;
+
+        let blob: Blob | null = null;
+        let modelUrl = '';
+        if (cloudItem.model_data) {
+          try {
+            const res = await fetch(cloudItem.model_data);
+            blob = await res.blob();
+            modelUrl = URL.createObjectURL(blob);
+          } catch (_) {}
+        }
+
+        const previewImage =
+          cloudItem.preview_image || this.modelPreviews[cloudItem.id] || getAvatarThumbnail(cloudItem.id);
+        const format = cloudItem.format || 'glb';
+
+        const def: AvatarDefinition = {
+          id: cloudItem.id,
+          name: this.renamedNames[cloudItem.id] || cloudItem.name || 'Modelo 3D Público',
+          tagline: cloudItem.tagline || 'Modelo 3D del Catálogo Público con seguimiento facial',
+          category: cloudItem.category || 'Catálogo Público',
+          themeColor: cloudItem.theme_color || '#06b6d4',
+          accentColor: cloudItem.accent_color || '#3b82f6',
+          badge: cloudItem.badge || 'PÚBLICO',
+          emoji: '✨',
+          isCustom: false,
+          isPublic: true,
+          modelUrl: modelUrl || undefined,
+          previewImage,
+          format,
+          createdAt: cloudItem.created_at || Date.now(),
+          ownerId: cloudItem.owner_id,
+          debugParams: cloudItem.debug_params,
+          trackingProfile: (() => {
+            const density = (cloudItem.debug_params?.calibration?.density as LandmarkDensity) || 32;
+            const prof = buildCustomAvatarTrackingProfile({
+              avatarId: cloudItem.id,
+              name: cloudItem.name,
+              density,
+              themeColor: cloudItem.theme_color || '#06b6d4',
+              activeIndices: cloudItem.debug_params?.calibration?.activeIndices,
+            });
+            registerAvatarTrackingProfile(cloudItem.id, prof);
+            return prof;
+          })(),
+        };
+
+        if (existing) {
+          Object.assign(existing, def);
+        } else {
+          this.customAvatars.push(def);
+        }
+
+        if (blob) {
+          indexedDbService
+            .saveModel({
+              id: cloudItem.id,
+              name: cloudItem.name,
+              tagline: cloudItem.tagline,
+              category: cloudItem.category || 'Catálogo Público',
+              themeColor: cloudItem.theme_color,
+              accentColor: cloudItem.accent_color,
+              badge: cloudItem.badge || 'PÚBLICO',
+              createdAt: cloudItem.created_at || Date.now(),
+              blob,
+              format,
+              previewImage,
+              isPublic: true,
+              ownerId: cloudItem.owner_id,
+              debugParams: cloudItem.debug_params,
+            })
+            .catch(() => {});
+        }
+
+        hasNew = true;
+      }
+
+      if (hasNew) {
+        this.notify();
+      }
+    } catch (e) {
+      console.warn('[AvatarModelService] Error sincronizando catálogo público de Supabase:', e);
+    }
+  }
+
+  /**
+   * Asegura que todos los avatares predefinidos de la plataforma estén registrados
+   * en la base de datos de Supabase Cloud como parte del catálogo público.
+   */
+  public async seedDefaultAvatarsToCloud() {
+    try {
+      const cloudPublic = await dbServiceSingleton.getPublicAvatarsFromCloud();
+      const existingCloudIds = new Set((cloudPublic || []).map((c: any) => c.id));
+
+      for (const avatar of DEFAULT_AVATARS) {
+        if (!existingCloudIds.has(avatar.id)) {
+          await dbServiceSingleton.saveAvatarRecord({
+            id: avatar.id,
+            name: avatar.name,
+            tagline: avatar.tagline,
+            category: avatar.category,
+            themeColor: avatar.themeColor,
+            accentColor: avatar.accentColor,
+            badge: avatar.badge,
+            ownerId: 'system',
+            previewImage: avatar.previewImage || getAvatarThumbnail(avatar.id),
+            format: avatar.format || 'glb',
+            isPublic: true,
+            createdAt: 1700000000000,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[AvatarModelService] Notice seeding default avatars to cloud:', e);
+    }
+  }
+
+  /**
+   * Sincroniza los avatares guardados en la cuenta del usuario desde Supabase
+   */
+  public async syncUserCloudAvatars(ownerId: string) {
+    if (!ownerId) return;
+    try {
+      const userCloudAvatars = await dbServiceSingleton.getUserAvatarsFromCloud(ownerId);
+      if (!userCloudAvatars || userCloudAvatars.length === 0) return;
+
+      let hasNew = false;
+      for (const cloudItem of userCloudAvatars) {
+        if (this.deletedIds.has(cloudItem.id)) continue;
+        const existing = this.customAvatars.find((a) => a.id === cloudItem.id);
+        if (existing && existing.modelUrl) continue;
+
+        let blob: Blob | null = null;
+        let modelUrl = '';
+        if (cloudItem.model_data) {
+          try {
+            const res = await fetch(cloudItem.model_data);
+            blob = await res.blob();
+            modelUrl = URL.createObjectURL(blob);
+          } catch (_) {}
+        }
+
+        const previewImage =
+          cloudItem.preview_image || this.modelPreviews[cloudItem.id] || getAvatarThumbnail(cloudItem.id);
+        const format = cloudItem.format || 'glb';
+
+        const def: AvatarDefinition = {
+          id: cloudItem.id,
+          name: this.renamedNames[cloudItem.id] || cloudItem.name || 'Mi Avatar 3D',
+          tagline: cloudItem.tagline || 'Avatar 3D biomimético guardado en tu cuenta',
+          category: cloudItem.category || 'Mis Avatares',
+          themeColor: cloudItem.theme_color || '#06b6d4',
+          accentColor: cloudItem.accent_color || '#3b82f6',
+          badge: cloudItem.badge || '3D',
+          emoji: '✨',
+          isCustom: true,
+          isPublic: !!cloudItem.is_public,
+          modelUrl: modelUrl || undefined,
+          previewImage,
+          format,
+          createdAt: cloudItem.created_at || Date.now(),
+          ownerId: cloudItem.owner_id,
+          debugParams: cloudItem.debug_params,
+          trackingProfile: (() => {
+            const density = (cloudItem.debug_params?.calibration?.density as LandmarkDensity) || 32;
+            const prof = buildCustomAvatarTrackingProfile({
+              avatarId: cloudItem.id,
+              name: cloudItem.name,
+              density,
+              themeColor: cloudItem.theme_color || '#06b6d4',
+              activeIndices: cloudItem.debug_params?.calibration?.activeIndices,
+            });
+            registerAvatarTrackingProfile(cloudItem.id, prof);
+            return prof;
+          })(),
+        };
+
+        if (existing) {
+          Object.assign(existing, def);
+        } else {
+          this.customAvatars.push(def);
+        }
+
+        if (blob) {
+          indexedDbService
+            .saveModel({
+              id: cloudItem.id,
+              name: cloudItem.name,
+              tagline: cloudItem.tagline,
+              category: cloudItem.category,
+              themeColor: cloudItem.theme_color,
+              accentColor: cloudItem.accent_color,
+              badge: cloudItem.badge,
+              createdAt: cloudItem.created_at || Date.now(),
+              blob,
+              format,
+              previewImage,
+              isPublic: !!cloudItem.is_public,
+              ownerId: cloudItem.owner_id,
+              debugParams: cloudItem.debug_params,
+            })
+            .catch(() => {});
+        }
+
+        hasNew = true;
+      }
+
+      if (hasNew) {
+        this.notify();
+      }
+    } catch (e) {
+      console.warn('[AvatarModelService] Error sincronizando avatares de usuario desde Supabase:', e);
     }
   }
 
@@ -259,6 +508,30 @@ class AvatarModelService {
     return this.getAllAvatars().filter(
       (a) => a.ownerId && a.ownerId.trim().toLowerCase() === cleanOwner
     );
+  }
+
+  /**
+   * Valida si un usuario tiene cupo disponible para crear un nuevo avatar (máximo 4 avatares por usuario)
+   */
+  canUserCreateAvatar(ownerId: string, isAdmin: boolean = false): {
+    allowed: boolean;
+    currentCount: number;
+    maxCount: number;
+    message?: string;
+  } {
+    if (isAdmin || ownerId === 'admin') {
+      return { allowed: true, currentCount: 0, maxCount: MAX_USER_AVATARS };
+    }
+    const currentCount = this.getUserAvatars(ownerId).length;
+    const allowed = currentCount < MAX_USER_AVATARS;
+    return {
+      allowed,
+      currentCount,
+      maxCount: MAX_USER_AVATARS,
+      message: allowed
+        ? undefined
+        : `Has alcanzado el límite máximo permitido de ${MAX_USER_AVATARS} avatares por cuenta. Elimina o edita uno de tus avatares existentes para crear uno nuevo.`,
+    };
   }
 
   /**
@@ -387,6 +660,14 @@ class AvatarModelService {
     ownerId?: string;
     file: File | Blob;
   }): Promise<AvatarDefinition> {
+    // Validar límite máximo de 4 avatares por cuenta para usuarios normales
+    if (params.ownerId && params.ownerId !== 'admin' && !params.isPublic) {
+      const quota = this.canUserCreateAvatar(params.ownerId, false);
+      if (!quota.allowed) {
+        throw new Error(quota.message || 'Límite de 4 avatares por cuenta alcanzado.');
+      }
+    }
+
     const id = `custom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const modelUrl = URL.createObjectURL(params.file);
 
@@ -480,6 +761,35 @@ class AvatarModelService {
     this.customAvatars.push(newAvatar);
     this.saveMetadataToStorage();
     this.notify();
+
+    // Sincronización en segundo plano con Supabase Cloud
+    (async () => {
+      try {
+        let modelData: string | undefined;
+        if (params.file) {
+          modelData = await blobToDataUrl(params.file);
+        }
+        await dbServiceSingleton.saveAvatarRecord({
+          id,
+          name,
+          tagline,
+          category,
+          themeColor,
+          accentColor,
+          badge,
+          ownerId: params.ownerId,
+          previewImage,
+          format,
+          isPublic,
+          createdAt,
+          modelData,
+          debugParams: params.debugParams,
+        });
+      } catch (err) {
+        console.warn('[AvatarModelService] Error sincronizando avatar con Supabase:', err);
+      }
+    })();
+
     return newAvatar;
   }
 
@@ -499,6 +809,7 @@ class AvatarModelService {
     originalImage?: string;
     debugParams?: any;
     isPublic?: boolean;
+    ownerId?: string;
     file: File | Blob;
   }): Promise<AvatarDefinition> {
     const modelUrl = URL.createObjectURL(params.file);
@@ -584,6 +895,35 @@ class AvatarModelService {
 
     this.saveMetadataToStorage();
     this.notify();
+
+    // Sincronización de actualización en segundo plano con Supabase Cloud
+    (async () => {
+      try {
+        let modelData: string | undefined;
+        if (params.file) {
+          modelData = await blobToDataUrl(params.file);
+        }
+        await dbServiceSingleton.saveAvatarRecord({
+          id: params.id,
+          name,
+          tagline: updatedDef.tagline,
+          category: updatedDef.category,
+          themeColor: updatedDef.themeColor,
+          accentColor: updatedDef.accentColor,
+          badge: updatedDef.badge,
+          ownerId: params.ownerId || existing?.ownerId,
+          previewImage,
+          format: updatedDef.format,
+          isPublic,
+          createdAt: updatedDef.createdAt,
+          modelData,
+          debugParams: params.debugParams,
+        });
+      } catch (err) {
+        console.warn('[AvatarModelService] Error actualizando avatar en Supabase:', err);
+      }
+    })();
+
     return updatedDef;
   }
 
@@ -635,6 +975,20 @@ class AvatarModelService {
         buffer = await res.arrayBuffer();
       } catch (e) {
         console.warn('[AvatarModelService] Error fetching modelUrl:', e);
+      }
+    }
+
+    // 3. Respaldo: intentar cargar desde Supabase Cloud si está disponible
+    if (!buffer) {
+      try {
+        const cloudItem = await dbServiceSingleton.getAvatarByIdFromCloud(avatarId);
+        if (cloudItem && cloudItem.model_data) {
+          const res = await fetch(cloudItem.model_data);
+          buffer = await res.arrayBuffer();
+          if (cloudItem.format) format = cloudItem.format;
+        }
+      } catch (e) {
+        console.warn('[AvatarModelService] Error fetching cloud model for sync:', e);
       }
     }
 

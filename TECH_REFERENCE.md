@@ -620,11 +620,10 @@ Para soportar identidad persistente manteniendo compatibilidad con despliegues e
 
 ### 11.2. Página `/register` y Creación de Perfiles
 * **Ruta Dedicada `/register`:** Integrada mediante enrutamiento cliente transparente sincronizado con `window.location.pathname` y eventos `popstate`. El servidor Node.js/Express y Vite resuelven automáticamente la ruta SPA.
-* **Flujo de Registro Completo:**
-  * Validación en vivo de disponibilidad de nombre de usuario en IndexedDB y Supabase.
-  * Formulario con nombre para mostrar, contraseña con visualización alternable, selección de rol (participante o admin) y biografía.
-  * **Selección de Avatar 3D:** Selector interactivo de modelos presidenciales y estilizados predefinidos con badges y categorías.
-  * **Carga de Modelos 3D Propios:** Permite al usuario subir archivos `.glb`, `.gltf`, `.obj` o `.stl` durante el registro; el archivo se procesa, se almacena en IndexedDB, se asocia al perfil del usuario mediante `ownerId` y se registra en Supabase.
+* **Flujo de Registro Ágil y Simplificado:**
+  * Validación en vivo de disponibilidad de nombre de usuario único en IndexedDB y Supabase.
+  * Formulario conciso con Nombre de Usuario (Alias Único), Contraseña y Confirmar Contraseña (con visualización alternable).
+  * **Selección de Avatar 3D:** Selector interactivo de modelos biomiméticos (Lincoln, Biden, Obama, Trump, Cyber Nova, Mipipi, etc.) con vista previa y badges de categorización.
   * **Inicio de Sesión Automático:** Al completar el registro, el usuario es autenticado de inmediato e ingresa al ecosistema con su sesión activa.
 
 ### 11.3. Gestión de Perfiles (`UserProfileModal`)
@@ -632,4 +631,46 @@ Para soportar identidad persistente manteniendo compatibilidad con despliegues e
 * Permite modificar el nombre para mostrar, la biografía y alternar el avatar activo principal.
 * Incluye la sección **"Avatares creados por ti"** con vista de cuadrícula, badges de formato y botón de equipamiento instantáneo.
 * Incluye un panel interactivo de diagnóstico y configuración de Supabase Cloud para verificar el estado de la conexión en tiempo real o ingresar claves API personalizadas.
+
+### 11.4. Colección Pública, Siembra Completa y Cuota de Avatares en Supabase (`avatars`)
+* **Inventario Total en Supabase Cloud:**
+  * **Siembra de Modelos Predeterminados (`owner_id = 'system', is_public = true`):** Los 15 avatares base del sistema (`three_robot`, `cat_3d`, `dog_3d`, `female_3d`, `horse_3d`, `fox_sensei`, `mesh_outline`, `neon_holo`, `cyber_nova`, `face_cap`, `lincoln_3d`, `biden_3d`, `obama_3d`, `trump_3d`, `mipipi`) están registrados en la tabla `public.avatars` mediante [`supabase_schema.sql`](file:///d:/Apps/xstreamx/supabase_schema.sql) y el método cliente de autoconciliación `seedDefaultAvatarsToCloud()` en [`avatarModelService.ts`](file:///d:/Apps/xstreamx/src/services/avatarModelService.ts).
+* **Modelos Creados por el Administrador (`owner_id = 'admin', is_public = true`):**
+  * Todo modelo 3D creado, importado o exportado por el Administrador hacia la "Colección Pública" se guarda automáticamente en Supabase con su geometría binaria (`model_data`), miniatura (`preview_image`), parámetros de calibración facial (`debug_params`) y metadatos completos.
+  * Al ingresar cualquier usuario, `syncCloudPublicAvatars()` descarga el catálogo público, permitiendo que cualquiera pueda usar estos modelos en salas o cargarlos como plantilla en el 3D Studio para personalizarlos.
+* **Colección Personal y Límite Estricto de 4 Avatares por Usuario (`MAX_USER_AVATARS = 4`):**
+  * Cada cuenta de usuario regular tiene asignada una cuota máxima estricta de **4 avatares personalizados**.
+  * La regla se aplica y valida centralizadamente mediante `canUserCreateAvatar(ownerId, isAdmin)` en [`avatarModelService.ts`](file:///d:/Apps/xstreamx/src/services/avatarModelService.ts) y bloquea la creación al exceder la cuota en:
+    * [`FaceBlendshapeStudioModal.tsx`](file:///d:/Apps/xstreamx/src/components/admin/FaceBlendshapeStudioModal.tsx) (3D Masks Studio al guardar nuevos avatares).
+    * [`UserProfileModal.tsx`](file:///d:/Apps/xstreamx/src/components/profile/UserProfileModal.tsx) (Carga y gestión de avatares desde el perfil de usuario con indicador de cuota `{count} / 4`).
+    * [`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx) (Pestaña "Mis Avatares" con indicador `{count} / 4` y bloqueo amigable en los botones "+ Crear Avatar" y "3D Masks").
+  * El Administrador (`owner_id = 'admin'` o `isAdmin = true`) está exento de esta restricción y posee cupo ilimitado para la creación y gestión de avatares públicos o personales.
+* **Sincronización Híbrida 100% Confiable de Avatares en Sala:**
+  * Al ingresar a una sala de chat, [`networkService.ts`](file:///d:/Apps/xstreamx/src/services/networkService.ts) verifica en `checkAndFetchMissingAvatar(user)` si el avatar 3D de cada compañero está disponible localmente.
+  * **Nivel 1 (Supabase Cloud Instantáneo):** Consulta la base de datos de Supabase vía `dbService.getAvatarByIdFromCloud(avatarId)`. Si el modelo está persistido en la nube, se decodifica y monta en Three.js al instante.
+  * **Nivel 2 (P2P Mesh Fallback):** Si el modelo es estrictamente efímero o no está en la nube, se solicita vía paquete binario directo WebRTC P2P (`request_avatar_model` / `avatar_model_data`).
+
+---
+
+## 12. Controles de Sala, Moderación y Dimensionamiento Proporcional
+
+### 12.1. Continuidad y Reactivación Fiable de Cámara y Micrófono (Lobby a Sala)
+* **Preservación de Estado de Hardware:** Si el micrófono o la cámara fueron encendidos en el Lobby de previsualización, se mantienen abiertos y transmitiendo fluidamente al pulsar "Ingresar al Espacio", sin provocar cierres ni requerir doble clic.
+* **Reactivación Limpia sin Bloqueos de Hardware:**
+  * Tanto para la cámara como para el micrófono, las funciones de apagado liberan completamente las pistas activas (`track.stop()`), previniendo condiciones de error `NotReadableError` o bloqueo de dispositivo ocupado en el sistema operativo.
+  * Al reactivar, se adquiere un nuevo flujo con las restricciones deseadas y se reasocia de forma segura al motor MediaPipe Face Landmarker y al analizador de audio Web Audio API.
+
+### 12.2. Moderación Estricta de Sala: "Mutear a Todos"
+* **Silenciamiento Global Inmediato:** El Administrador cuenta con el control "Mutear a todos", el cual difunde una señal prioritaria a través de la red cuádruple (`force_mute_all` vía PeerJS DataConnection, MQTT WebSockets y Supabase Realtime).
+* **Bloqueo Infranqueable de Micrófono para Participantes:**
+  * Al activarse "Mutear a todos", los micrófonos de todos los participantes no administradores se apagan de inmediato.
+  * El botón del micrófono en [`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx) pasa a estado deshabilitado (`disabled`), mostrando un icono de candado y un tooltip indicando que la sala ha sido silenciada por el administrador.
+  * La lógica en `handleToggleMic` rechaza cualquier intento de desmutearse hasta que el Administrador desactive explícitamente la opción de silenciar a todos.
+
+### 12.3. Dimensionamiento Proporcional de Ventanas de Participantes (120px a 480px)
+* **Control Deslizante Dinámico:** Se incorporó un widget interactivo con barra deslizante en la parte superior derecha de la sala [`RoomView.tsx`](file:///d:/Apps/xstreamx/src/components/room/RoomView.tsx), permitiendo escalar dinámicamente el ancho de las ventanas de los participantes entre **120px** y **480px**.
+* **Proporción 1:1 Estricta (`aspect-ratio: 1 / 1`):** Las tarjetas [`ParticipantCard.tsx`](file:///d:/Apps/xstreamx/src/components/room/ParticipantCard.tsx) aplican un ancho y alto idénticos manteniendo siempre la geometría cuadrada perfecta en el lienzo Three.js y el sombreado facial.
+* **Diseño Adaptativo Interno:** Para tamaños compactos (<160px), las insignias secundarias se condensan automáticamente para mantener la legibilidad del nombre de usuario y los botones de moderación.
+* **Persistencia Local:** La preferencia de escala del usuario se guarda en `localStorage` (`xstreamx_participant_card_size`), con un botón de reinicio rápido al valor por defecto (280px).
+
 

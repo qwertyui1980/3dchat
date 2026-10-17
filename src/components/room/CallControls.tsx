@@ -18,6 +18,7 @@ import {
   Radio,
   Sparkles,
   Smile,
+  Lock,
 } from 'lucide-react';
 import { AvatarId, DynamicTrackingMode } from '../../types';
 import {
@@ -129,14 +130,31 @@ export const CallControls: React.FC<CallControlsProps> = ({
         <button
           type="button"
           onClick={onToggleMic}
-          className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-sm cursor-pointer ${
-            isMicActive
-              ? 'bg-[#121218] hover:bg-[#181822] text-neutral-100 border-white/[0.08]'
-              : 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-300 border-rose-800/60'
+          disabled={!isAdmin && isAllMuted}
+          className={`relative p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-sm ${
+            !isAdmin && isAllMuted
+              ? 'bg-neutral-900/90 border-neutral-800 text-neutral-500 cursor-not-allowed opacity-60'
+              : isMicActive
+              ? 'bg-[#121218] hover:bg-[#181822] text-neutral-100 border-white/[0.08] cursor-pointer'
+              : 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-300 border-rose-800/60 cursor-pointer'
           }`}
-          title={isMicActive ? 'Silenciar mi micrófono' : 'Activar mi micrófono'}
+          title={
+            !isAdmin && isAllMuted
+              ? 'Micrófonos silenciados y bloqueados por el administrador (Mutear a todos activado)'
+              : isMicActive
+              ? 'Silenciar mi micrófono'
+              : 'Activar mi micrófono'
+          }
         >
           {isMicActive ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5 text-rose-400" />}
+          {!isAdmin && isAllMuted && (
+            <span
+              className="absolute -top-1 -right-1 w-4 h-4 bg-rose-600 rounded-full flex items-center justify-center text-white shadow-md"
+              title="Micrófono bloqueado por el administrador"
+            >
+              <Lock className="w-2.5 h-2.5" />
+            </span>
+          )}
         </button>
 
         {/* Camera / Face Tracking Toggle */}

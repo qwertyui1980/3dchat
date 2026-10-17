@@ -91,11 +91,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       }
     });
 
-    // Load avatars
+    // Load avatars and sync from Supabase cloud
     const all = avatarModelServiceSingleton.getAllAvatars();
     setAvailableAvatars(all);
     const mine = avatarModelServiceSingleton.getUserAvatars(authUser.username);
     setUserAvatars(mine);
+    avatarModelServiceSingleton.syncUserCloudAvatars(authUser.username).catch(() => {});
 
     // Subscribe to avatar changes
     const unsub = avatarModelServiceSingleton.subscribe(() => {
@@ -175,6 +176,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
     e.preventDefault();
     if (!uploadFile) {
       setUploadError('Por favor selecciona un archivo 3D (.glb, .gltf, .obj, .stl).');
+      return;
+    }
+
+    if (userAvatars.length >= 4) {
+      setUploadError('Has alcanzado el límite máximo de 4 avatares por cuenta. Elimina uno de tus avatares existentes para subir o crear otro.');
       return;
     }
 
@@ -372,17 +378,33 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Box className="w-4 h-4 text-cyan-400" />
-                <h3 className="text-sm font-bold text-white">
-                  Avatares creados por ti ({userAvatars.length})
+                <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>Avatares creados por ti ({userAvatars.length} / 4)</span>
+                  {userAvatars.length >= 4 && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950/80 border border-amber-600/50 text-amber-300 font-normal">
+                      Límite alcanzado
+                    </span>
+                  )}
                 </h3>
               </div>
               <button
                 type="button"
-                onClick={() => setShowUploadForm(!showUploadForm)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/60 border border-cyan-500/30 text-cyan-300 font-semibold transition cursor-pointer"
+                onClick={() => {
+                  if (userAvatars.length >= 4 && !showUploadForm) {
+                    setUploadError('Has alcanzado el límite máximo de 4 avatares por cuenta. Elimina uno existente para crear otro.');
+                  }
+                  setShowUploadForm(!showUploadForm);
+                }}
+                disabled={userAvatars.length >= 4 && !showUploadForm}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border font-semibold transition ${
+                  userAvatars.length >= 4 && !showUploadForm
+                    ? 'bg-neutral-900 border-neutral-800 text-neutral-500 cursor-not-allowed opacity-60'
+                    : 'bg-cyan-950/60 hover:bg-cyan-900/60 border-cyan-500/30 text-cyan-300 cursor-pointer'
+                }`}
+                title={userAvatars.length >= 4 ? 'Límite de 4 avatares alcanzado. Elimina uno para crear o subir otro.' : 'Subir nuevo avatar 3D'}
               >
                 <Plus className="w-3.5 h-3.5" />
-                <span>{showUploadForm ? 'Cancelar subida' : 'Subir Avatar 3D'}</span>
+                <span>{showUploadForm ? 'Cancelar subida' : userAvatars.length >= 4 ? 'Límite (4/4)' : 'Subir Avatar 3D'}</span>
               </button>
             </div>
 

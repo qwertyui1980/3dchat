@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import { AvatarId, FaceFeatures, AvatarDefinition, DynamicTrackingMode } from '../../types';
 import { AVATAR_LIST } from '../avatars/avatarConfigs';
-import { avatarModelServiceSingleton } from '../../services/avatarModelService';
+import { avatarModelServiceSingleton, MAX_USER_AVATARS } from '../../services/avatarModelService';
 import { AvatarCanvas } from '../avatars/AvatarCanvas';
 import { AudioWaveform } from '../common/AudioWaveform';
 import { AuthenticatedUser } from '../auth/Login';
@@ -215,7 +215,15 @@ export const Lobby: React.FC<LobbyProps> = ({
   });
 
   const predefinedAvatars = useMemo(() => avatars.filter((a) => !a.isCustom), [avatars]);
-  const customAvatars = useMemo(() => avatars.filter((a) => !!a.isCustom), [avatars]);
+  const customAvatars = useMemo(() => {
+    return avatars.filter((a) => {
+      if (!a.isCustom) return false;
+      if (authUser?.username && !isAdminUser) {
+        return a.ownerId === authUser.username || !a.ownerId;
+      }
+      return true;
+    });
+  }, [avatars, authUser?.username, isAdminUser]);
 
   const handleDeleteCustomAvatar = (avatarId: string, avatarName: string) => {
     if (window.confirm(`¿Estás seguro de que deseas eliminar el avatar "${avatarName}"?`)) {
@@ -590,10 +598,8 @@ export const Lobby: React.FC<LobbyProps> = ({
   const handleJoinAsParticipant = () => {
     const trimmedName = userName.trim() || 'Participante';
 
-    if (!hasMicPermission) {
-      setError('No es posible ingresar al espacio sin conceder permisos de micrófono.');
-      if (onRequestMic) onRequestMic();
-      return;
+    if (!hasMicPermission && onRequestMic) {
+      onRequestMic();
     }
 
     setError(null);
@@ -603,7 +609,7 @@ export const Lobby: React.FC<LobbyProps> = ({
       roomId: SINGLE_ROOM_ID,
       avatarId: selectedAvatarId,
       createAsAdmin: false,
-      isMicActive,
+      isMicActive: hasMicPermission ? isMicActive : false,
       isCameraActive,
       trackingMode,
       cameraOffsetX,
@@ -1110,6 +1116,10 @@ export const Lobby: React.FC<LobbyProps> = ({
                     <button
                       type="button"
                       onClick={() => {
+                        if (!isAdminUser && customAvatars.length >= MAX_USER_AVATARS) {
+                          alert(`Has alcanzado el límite máximo permitido de ${MAX_USER_AVATARS} avatares por cuenta. Elimina o edita uno de tus avatares existentes.`);
+                          return;
+                        }
                         setEditingAvatarForStudio(null);
                         setIsFaceStudioOpen(true);
                       }}
@@ -1176,7 +1186,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                           : 'bg-slate-800 text-slate-400'
                       }`}
                     >
-                      {customAvatars.length}
+                      {isAdminUser ? customAvatars.length : `${customAvatars.length}/${MAX_USER_AVATARS}`}
                     </span>
                   </button>
                 </div>
@@ -1371,20 +1381,42 @@ export const Lobby: React.FC<LobbyProps> = ({
                       <button
                         type="button"
                         onClick={() => {
+                          if (!isAdminUser && customAvatars.length >= MAX_USER_AVATARS) {
+                            alert(`Has alcanzado el límite máximo permitido de ${MAX_USER_AVATARS} avatares por cuenta. Elimina o edita uno de tus avatares existentes.`);
+                            return;
+                          }
                           setEditingAvatarForStudio(null);
                           setIsFaceStudioOpen(true);
                         }}
-                        title="Crear nuevo avatar 3D facial con 52 blendshapes desde foto"
-                        className="relative p-2 rounded-xl border border-dashed border-cyan-500/50 hover:border-cyan-400 bg-gradient-to-b from-cyan-950/30 to-indigo-950/30 hover:from-cyan-950/50 hover:to-indigo-950/50 text-left flex flex-col items-center justify-center gap-1 cursor-pointer transition active:scale-95 shadow-md shadow-cyan-950/20 min-h-[86px]"
+                        title={
+                          !isAdminUser && customAvatars.length >= MAX_USER_AVATARS
+                            ? `Límite alcanzado (${MAX_USER_AVATARS}/${MAX_USER_AVATARS} avatares). Elimina o edita uno existente.`
+                            : 'Crear nuevo avatar 3D facial con 52 blendshapes desde foto'
+                        }
+                        className={`relative p-2 rounded-xl border border-dashed text-left flex flex-col items-center justify-center gap-1 cursor-pointer transition active:scale-95 shadow-md min-h-[86px] ${
+                          !isAdminUser && customAvatars.length >= MAX_USER_AVATARS
+                            ? 'border-amber-500/40 bg-amber-950/20 hover:bg-amber-950/30 shadow-amber-950/20'
+                            : 'border-cyan-500/50 hover:border-cyan-400 bg-gradient-to-b from-cyan-950/30 to-indigo-950/30 hover:from-cyan-950/50 hover:to-indigo-950/50 shadow-cyan-950/20'
+                        }`}
                       >
-                        <div className="w-10 h-10 rounded-lg bg-gradient-to-tr from-cyan-500 to-indigo-600 text-white flex items-center justify-center text-sm shadow-md shrink-0">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm shadow-md shrink-0 ${
+                          !isAdminUser && customAvatars.length >= MAX_USER_AVATARS
+                            ? 'bg-gradient-to-tr from-amber-600 to-yellow-500 text-slate-950'
+                            : 'bg-gradient-to-tr from-cyan-500 to-indigo-600 text-white'
+                        }`}>
                           <Sparkles className="w-5 h-5" />
                         </div>
-                        <span className="text-[9px] font-bold text-cyan-200 text-center leading-tight">
-                          + Crear Avatar
+                        <span className={`text-[9px] font-bold text-center leading-tight ${
+                          !isAdminUser && customAvatars.length >= MAX_USER_AVATARS ? 'text-amber-200' : 'text-cyan-200'
+                        }`}>
+                          {!isAdminUser && customAvatars.length >= MAX_USER_AVATARS ? 'Límite (4/4)' : '+ Crear Avatar'}
                         </span>
-                        <span className="text-[8px] font-mono text-cyan-300 px-1 py-0.2 bg-cyan-900/60 rounded border border-cyan-600/50">
-                          3D Masks
+                        <span className={`text-[8px] font-mono px-1 py-0.2 rounded border ${
+                          !isAdminUser && customAvatars.length >= MAX_USER_AVATARS
+                            ? 'text-amber-300 bg-amber-900/60 border-amber-600/50'
+                            : 'text-cyan-300 bg-cyan-900/60 border-cyan-600/50'
+                        }`}>
+                          {!isAdminUser && customAvatars.length >= MAX_USER_AVATARS ? 'Máx 4' : '3D Masks'}
                         </span>
                       </button>
                     </div>

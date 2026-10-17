@@ -18,6 +18,7 @@ interface ParticipantCardProps {
   onFocusClick?: () => void;
   onAdminMute?: (userId: string, state: boolean) => void;
   onAdminKick?: (userId: string) => void;
+  cardSize?: number;
 }
 
 export const ParticipantCard: React.FC<ParticipantCardProps> = ({
@@ -32,6 +33,7 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
   onFocusClick,
   onAdminMute,
   onAdminKick,
+  cardSize = 280,
 }) => {
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -100,8 +102,11 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
       style={{
         transform: `translate3d(${offset.x}px, ${offset.y}px, 0)`,
         touchAction: 'none',
+        width: `${cardSize}px`,
+        height: `${cardSize}px`,
+        aspectRatio: '1 / 1',
       }}
-      className={`group relative w-[280px] h-[280px] sm:w-[320px] sm:h-[320px] shrink-0 rounded-2xl bg-[#08080c] border transition-shadow duration-200 overflow-hidden shadow-2xl select-none ${
+      className={`group relative shrink-0 rounded-2xl bg-[#08080c] border transition-[shadow,border-color] duration-200 overflow-hidden shadow-2xl select-none ${
         isDragging ? 'z-40 ring-2 ring-cyan-400 shadow-cyan-950/60 cursor-grabbing' : 'cursor-grab'
       } ${
         isFocusSpeaker
@@ -122,32 +127,36 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
       />
 
       {/* Top Bar inside Card */}
-      <div className="absolute top-2.5 inset-x-2.5 flex items-center justify-between z-10 gap-1.5">
-        {/* Left: Mode / Voice status badge */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {activeMode === 'gestures' ? (
-            <span
-              className="px-1.5 py-0.5 rounded-md bg-emerald-950/80 text-emerald-300 border border-emerald-800/40 text-[10px] font-mono"
-              title="Modo Reconocimiento de Gestos • Visión 100% Cámara"
-            >
-              Gestos
-            </span>
-          ) : activeMode === 'lipsync' ? (
-            <span
-              className="px-1.5 py-0.5 rounded-md bg-amber-950/80 text-amber-300 border border-amber-800/40 text-[10px] font-mono"
-              title="Modo Lip Sync • Máscara estática y boca por audio"
-            >
-              Lip Sync
-            </span>
-          ) : (
-            <span
-              className="px-1.5 py-0.5 rounded-md bg-cyan-950/80 text-cyan-300 border border-cyan-800/40 text-[10px] font-mono"
-              title="Modo Parafernalia • Ritmo de voz, gestos y zoom dinámico"
-            >
-              Parafernalia
-            </span>
-          )}
-        </div>
+      <div className="absolute top-2 inset-x-2 sm:top-2.5 sm:inset-x-2.5 flex items-center justify-between z-10 gap-1">
+        {/* Left: Mode / Voice status badge (visible on widths >= 160px) */}
+        {cardSize >= 160 ? (
+          <div className="flex items-center gap-1.5 shrink-0">
+            {activeMode === 'gestures' ? (
+              <span
+                className="px-1.5 py-0.5 rounded-md bg-emerald-950/80 text-emerald-300 border border-emerald-800/40 text-[10px] font-mono"
+                title="Modo Reconocimiento de Gestos • Visión 100% Cámara"
+              >
+                Gestos
+              </span>
+            ) : activeMode === 'lipsync' ? (
+              <span
+                className="px-1.5 py-0.5 rounded-md bg-amber-950/80 text-amber-300 border border-amber-800/40 text-[10px] font-mono"
+                title="Modo Lip Sync • Máscara estática y boca por audio"
+              >
+                Lip Sync
+              </span>
+            ) : (
+              <span
+                className="px-1.5 py-0.5 rounded-md bg-cyan-950/80 text-cyan-300 border border-cyan-800/40 text-[10px] font-mono"
+                title="Modo Parafernalia • Ritmo de voz, gestos y zoom dinámico"
+              >
+                Parafernalia
+              </span>
+            )}
+          </div>
+        ) : (
+          <div />
+        )}
 
         {/* Right: Name Badge & Admin Direct Controls (Mic & X) */}
         <div className="flex items-center gap-1.5 min-w-0 max-w-[70%] justify-end">
@@ -209,28 +218,30 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
         </div>
       </div>
 
-      {/* Bottom Bar: Real-time Audio Waveform graphic */}
-      <div className="absolute bottom-2.5 right-2.5 z-10 pointer-events-none">
-        <div className="flex items-center px-2 py-1 rounded-lg bg-[#08080c]/85 backdrop-blur-md border border-white/[0.06] shadow-md">
-          <AudioWaveform
-            volume={features.audioVolume || 0}
-            isMuted={user.isMuted}
-            color={
-              user.isMuted
-                ? '#f43f5e'
-                : user.avatarId === 'face_cap'
-                ? '#38bdf8'
-                : user.avatarId === 'bot_9000'
-                ? '#10b981'
-                : user.avatarId === 'fox_sensei'
-                ? '#f97316'
-                : '#22d3ee'
-            }
-            width={68}
-            height={22}
-          />
+      {/* Bottom Bar: Real-time Audio Waveform graphic (visible when width >= 180px) */}
+      {cardSize >= 180 && (
+        <div className="absolute bottom-2.5 right-2.5 z-10 pointer-events-none">
+          <div className="flex items-center px-2 py-1 rounded-lg bg-[#08080c]/85 backdrop-blur-md border border-white/[0.06] shadow-md">
+            <AudioWaveform
+              volume={features.audioVolume || 0}
+              isMuted={user.isMuted}
+              color={
+                user.isMuted
+                  ? '#f43f5e'
+                  : user.avatarId === 'face_cap'
+                  ? '#38bdf8'
+                  : user.avatarId === 'bot_9000'
+                  ? '#10b981'
+                  : user.avatarId === 'fox_sensei'
+                  ? '#f97316'
+                  : '#22d3ee'
+              }
+              width={68}
+              height={22}
+            />
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

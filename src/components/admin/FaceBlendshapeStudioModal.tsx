@@ -41,7 +41,7 @@ import {
 } from '../../services/face3d/faceToBlendshapeService';
 import { EyePairResult, IRIS_COLOR_PRESETS, PUPIL_COLOR_PRESETS } from '../../services/face3d/eyeGenerator';
 import { ARKIT_BLENDSHAPE_NAMES, ARKitBlendshapeName } from '../../services/face3d/arkitMapper';
-import { avatarModelServiceSingleton } from '../../services/avatarModelService';
+import { avatarModelServiceSingleton, MAX_USER_AVATARS } from '../../services/avatarModelService';
 import { AvatarDefinition } from '../../types';
 import { LandmarkCalibrationModal } from './LandmarkCalibrationModal';
 import {
@@ -145,7 +145,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   const autoProcessedAvatarIdRef = useRef<string | null>(null);
 
   // Target Collection: Personal ('Mis Avatares') vs Public ('Modelos Predefinidos')
-  const [targetCollection, setTargetCollection] = useState<'personal' | 'public'>('personal');
+  const [targetCollection, setTargetCollection] = useState<'personal' | 'public'>(() => (isAdmin ? 'public' : 'personal'));
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -1224,6 +1224,29 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
     const isUpdate = !forceNew && !!currentEditingAvatarId;
     const isPublic = isAdmin && targetCollection === 'public';
 
+    // Obtener la cuenta del usuario actual para guardar en su colección personal
+    let currentAuthOwner = '';
+    if (typeof window !== 'undefined') {
+      try {
+        const authData = sessionStorage.getItem('xstreamx_auth');
+        if (authData) {
+          const parsed = JSON.parse(authData);
+          currentAuthOwner = parsed?.username || parsed?.id || '';
+        }
+      } catch (_) {}
+    }
+    if (!isAdmin && !isPublic && !isUpdate) {
+      const quota = avatarModelServiceSingleton.canUserCreateAvatar(currentAuthOwner, false);
+      if (!quota.allowed) {
+        setStatus(
+          quota.message ||
+            `Has alcanzado el límite máximo permitido de ${MAX_USER_AVATARS} avatares por cuenta. Elimina o edita uno existente.`,
+          'error'
+        );
+        return;
+      }
+    }
+
     setIsSavingAvatar(true);
     try {
       const buffer = await faceToBlendshapeServiceSingleton.exportGLB(
@@ -1299,6 +1322,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
           originalImage: previewUrl || undefined,
           debugParams: finalDebugParams,
           isPublic,
+          ownerId: currentAuthOwner,
           file,
         });
 
@@ -1319,6 +1343,7 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
           originalImage: previewUrl || undefined,
           debugParams: finalDebugParams,
           isPublic,
+          ownerId: currentAuthOwner,
           file,
         });
 

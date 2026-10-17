@@ -167,6 +167,8 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
         themeColor: modelThemeColor,
         previewImage: selectedThumbPreview || undefined,
         file: selectedFile,
+        isPublic: true,
+        ownerId: 'admin',
       });
 
       setUploadSuccess(`¡Modelo "${created.name}" agregado con éxito a la lista de modelos!`);

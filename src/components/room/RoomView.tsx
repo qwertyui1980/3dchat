@@ -23,7 +23,7 @@ import { TvFloatingLauncher } from '../theater/TvFloatingLauncher';
 import { QueueModal } from '../theater/QueueModal';
 import { WhiteboardPanel } from '../whiteboard/WhiteboardPanel';
 import { AdminControlPanel } from './AdminControlPanel';
-import { Maximize2, Minimize2 } from 'lucide-react';
+import { Maximize2, Minimize2, Sliders } from 'lucide-react';
 import { QuickGestureType } from '../../services/face3d/dynamicModeHelper';
 
 interface RoomViewProps {
@@ -124,6 +124,26 @@ export const RoomView: React.FC<RoomViewProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isTrackingPipVisible, setIsTrackingPipVisible] = useState(() => initialTrackingPip ?? true);
   const [lastReadMessageCount, setLastReadMessageCount] = useState(messages.length);
+
+  // Participant Card Dynamic Sizing (120px to 480px, maintaining strict 1:1 proportion)
+  const [cardSize, setCardSize] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('xstreamx_participant_card_size');
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed >= 120 && parsed <= 480) return parsed;
+      }
+    }
+    return 280;
+  });
+
+  const handleCardSizeChange = (val: number) => {
+    const clamped = Math.max(120, Math.min(480, Math.round(val)));
+    setCardSize(clamped);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('xstreamx_participant_card_size', clamped.toString());
+    }
+  };
 
   // Home Theater & Cue Modal States
   const [isTheaterOpen, setIsTheaterOpen] = useState(() => !!(mediaState.currentVideo && mediaState.isPlaying));
@@ -241,6 +261,35 @@ export const RoomView: React.FC<RoomViewProps> = ({
       {/* Main Video Call Stage Layout */}
       <div className="flex-1 flex min-h-0 relative overflow-hidden z-10">
         
+        {/* Floating Participant Card Sizing Slider (120px to 480px, maintaining strict 1:1 ratio) */}
+        <div className="absolute top-2.5 right-3 sm:right-5 z-20 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0d0d14]/90 backdrop-blur-md border border-white/[0.08] shadow-xl text-xs select-none">
+          <Sliders className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+          <span className="text-neutral-400 text-[11px] font-medium hidden sm:inline">Ventanas:</span>
+          <input
+            type="range"
+            min={120}
+            max={480}
+            step={10}
+            value={cardSize}
+            onChange={(e) => handleCardSizeChange(Number(e.target.value))}
+            className="w-16 sm:w-28 h-1.5 accent-cyan-400 bg-neutral-800 rounded-lg cursor-pointer"
+            title={`Dimensionar ventanas de participantes: ${cardSize}px (Mínimo: 120px, Máximo: 480px)`}
+          />
+          <span className="font-mono text-cyan-300 text-[11px] min-w-[36px] text-right">
+            {cardSize}px
+          </span>
+          {cardSize !== 280 && (
+            <button
+              type="button"
+              onClick={() => handleCardSizeChange(280)}
+              className="text-[10px] text-neutral-500 hover:text-cyan-300 transition cursor-pointer ml-0.5"
+              title="Restablecer tamaño predeterminado (280px)"
+            >
+              ↺
+            </button>
+          )}
+        </div>
+
         {/* Participant Avatars Viewport */}
         <div className="flex-1 p-2 sm:p-5 overflow-y-auto flex flex-col justify-center">
           
@@ -262,6 +311,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
                   trackingMode={isSelf ? trackingMode : participant.trackingMode}
                   onAdminMute={onAdminMute}
                   onAdminKick={onAdminKick}
+                  cardSize={cardSize}
                 />
               );
             })}

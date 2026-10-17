@@ -41,8 +41,16 @@ CREATE TABLE IF NOT EXISTS public.avatars (
     preview_image TEXT DEFAULT '',
     format TEXT DEFAULT 'glb',
     is_public BOOLEAN DEFAULT false,
+    model_data TEXT DEFAULT '',
+    debug_params JSONB DEFAULT '{}'::jsonb,
     created_at BIGINT DEFAULT (EXTRACT(epoch FROM NOW()) * 1000)::BIGINT
 );
+
+-- Migrations for existing setups:
+ALTER TABLE public.avatars ADD COLUMN IF NOT EXISTS model_data TEXT DEFAULT '';
+ALTER TABLE public.avatars ADD COLUMN IF NOT EXISTS debug_params JSONB DEFAULT '{}'::jsonb;
+ALTER TABLE public.avatars ADD COLUMN IF NOT EXISTS is_public BOOLEAN DEFAULT false;
+ALTER TABLE public.avatars ADD COLUMN IF NOT EXISTS owner_id TEXT DEFAULT '';
 
 -- 4. Enable Row Level Security (RLS)
 ALTER TABLE public.rooms ENABLE ROW LEVEL SECURITY;
@@ -69,4 +77,25 @@ CREATE POLICY "Allow public insert/update on avatars" ON public.avatars
 INSERT INTO public.rooms (id, name, admin_id, is_locked, participant_count, created_at, last_active)
 VALUES ('main', 'Espacio Principal en Vivo', 'user_admin', false, 0, (EXTRACT(epoch FROM NOW()) * 1000)::BIGINT, (EXTRACT(epoch FROM NOW()) * 1000)::BIGINT)
 ON CONFLICT (id) DO UPDATE SET last_active = EXCLUDED.last_active;
+
+-- 7. Insert all default platform avatars into public collection
+INSERT INTO public.avatars (id, name, tagline, category, theme_color, accent_color, badge, owner_id, preview_image, format, is_public, created_at)
+VALUES
+('three_robot', 'Robot 3D', 'Robot mecha 3D interactivo con huesos esqueléticos y morph targets', 'Robot', '#10b981', '#06b6d4', '3D MECHA', 'system', '', 'glb', true, 1700000000000),
+('cat_3d', 'Gato 3D', 'Felino 3D con orejas activas, bigotes, ojos expresivos y cascabel', 'Animals', '#f59e0b', '#fbbf24', '3D FELINO', 'system', '', 'glb', true, 1700000000000),
+('dog_3d', 'Perro 3D', 'Cachorro 3D alegre con orejas rebotantes, hocico húmedo y lengua', 'Animals', '#3b82f6', '#60a5fa', '3D CANINO', 'system', '', 'glb', true, 1700000000000),
+('female_3d', 'Chica 3D', 'Personaje 3D anime femenina con peinado dinámico y pestañas', 'Character', '#ec4899', '#f43f5e', '3D ANIME', 'system', '', 'glb', true, 1700000000000),
+('horse_3d', 'Caballo 3D', 'Caballo 3D majestuoso con hocico esculpido, crin ondeante y orejas alertas', 'Animals', '#8b5cf6', '#a855f7', '3D EQUINO', 'system', '', 'glb', true, 1700000000000),
+('fox_sensei', 'Kitsune Fox 3D', 'Zorro místico 3D con marcas espirituales y mandíbula animada', 'Fantasy', '#f97316', '#ea580c', '3D SPIRIT', 'system', '', 'glb', true, 1700000000000),
+('mesh_outline', 'Holo Mesh 3D', 'Malla wireframe holográfica con captura completa de expresiones y puntos', 'Sci-Fi', '#06b6d4', '#38bdf8', '3D MESH', 'system', '', 'glb', true, 1700000000000),
+('neon_holo', 'Neon Cyber 3D', 'Avatar holográfico de líneas de neón reactivo a todos los puntos de tracking facial', 'Sci-Fi', '#00f0ff', '#3b82f6', 'NEON HOLO', 'system', '', 'glb', true, 1700000000000),
+('cyber_nova', 'Cyber Nova 3D', 'Androide cibernético con visor holográfico y circuitos reactivos', 'Sci-Fi', '#06b6d4', '#3b82f6', '3D CYBER', 'system', '', 'glb', true, 1700000000000),
+('face_cap', 'Face Cap 3D', 'Rostro humano 3D de alta precisión con 52 morph targets ARKit sincronizados', 'Character', '#38bdf8', '#818cf8', '52 PTS ARKIT', 'system', '', 'glb', true, 1700000000000),
+('lincoln_3d', 'Lincoln 3D', 'Busto estilizado de Abraham Lincoln con sombrero de copa y seguimiento en vivo', 'Líderes', '#3b82f6', '#60a5fa', '3D GLB', 'system', '', 'glb', true, 1700000000000),
+('biden_3d', 'Biden 3D', 'Personaje 3D interactivo con huesos esqueléticos y seguimiento facial', 'Líderes', '#2563eb', '#38bdf8', '3D RIGGED', 'system', '', 'glb', true, 1700000000000),
+('obama_3d', 'Obama 3D', 'Busto 3D presidencial con textura fotorealista y orientación en vivo', 'Líderes', '#0ea5e9', '#38bdf8', '3D BUSTO', 'system', '', 'glb', true, 1700000000000),
+('trump_3d', 'Trump 3D', 'Busto 3D presidencial estilizado con traje, corbata y seguimiento en vivo', 'Líderes', '#e11d48', '#f59e0b', '3D GLB', 'system', '', 'glb', true, 1700000000000),
+('mipipi', 'Mipipi 3D', 'Personaje 3D con morph targets faciales, parpadeo y sincronización de voz', 'Character', '#10b981', '#34d399', '3D MORPH', 'system', '', 'glb', true, 1700000000000)
+ON CONFLICT (id) DO NOTHING;
+
 
