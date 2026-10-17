@@ -1,6 +1,8 @@
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import * as THREE from 'three';
 import { GLTF, GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import { STLLoader } from 'three/examples/jsm/loaders/STLLoader.js';
 import { KTX2Loader } from 'three/examples/jsm/loaders/KTX2Loader.js';
 import { MeshoptDecoder } from 'three/examples/jsm/libs/meshopt_decoder.module.js';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
@@ -9,6 +11,7 @@ import { normalizeTrackingMode } from '../../services/face3d/dynamicModeHelper';
 import { getAvatarTrackingProfile, registerAvatarTrackingProfile } from './avatarTrackingProfiles';
 import { AVATAR_LIST } from './avatarConfigs';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
+import { networkServiceSingleton } from '../../services/networkService';
 import {
   Character3DController,
   buildCatCharacter,
@@ -335,6 +338,14 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
       category: 'Sci-Fi',
     };
   }, [avatarId, avatarRevision]);
+
+  // Auto-request missing custom model from room peers via P2P / WebSocket mesh
+  useEffect(() => {
+    const isStd = AVATAR_LIST.some((a) => a.id === avatarId);
+    if (!isStd && !avatarDef.modelUrl && !avatarDef.fileData) {
+      networkServiceSingleton.requestAvatarModel('', avatarId);
+    }
+  }, [avatarId, avatarDef.modelUrl, avatarDef.fileData]);
 
   const trackingProfile = useMemo(() => {
     if (avatarDef?.trackingProfile) {
@@ -823,14 +834,178 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           }
         });
     } else if (avatarDef && (avatarDef.modelUrl || avatarDef.fileData)) {
-      // Custom Uploaded 3D Model (GLB / GLTF / VRM)
+      // Custom Uploaded 3D Model (GLB / GLTF / VRM / OBJ / STL from 3ds Max / Blender / CAD)
       setIsLoading(true);
-      const loader = new GLTFLoader();
       const modelSource = avatarDef.fileData || avatarDef.modelUrl || '';
-      
-      loader.load(
-        modelSource,
-        (gltf) => {
+      const fmt = (avatarDef.format || '').toLowerCase();
+      const nameLower = (avatarDef.name || '').toLowerCase();
+      const isObj = fmt === 'obj' || nameLower.endsWith('.obj') || modelSource.startsWith('data:text/plain') || modelSource.includes('.obj');
+      const isStl = fmt === 'stl' || nameLower.endsWith('.stl') || modelSource.includes('.stl');
+
+      if (isObj) {
+        const objLoader = new OBJLoader();
+        objLoader.load(
+          modelSource,
+          (objGroup) => {
+            if (isDisposed) return;
+            setIsLoading(false);
+            const rootGroup = new THREE.Group();
+            const headPivot = new THREE.Group();
+            rootGroup.add(headPivot);
+
+            const box = new THREE.Box3().setFromObject(objGroup);
+            const size = box.getSize(new THREE.Vector3());
+            const center = box.getCenter(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z) || 1;
+            const targetScale = 2.4 / maxDim;
+
+            objGroup.scale.setScalar(targetScale);
+            objGroup.position.set(-center.x * targetScale, -center.y * targetScale, -center.z * targetScale);
+
+            const themeColorNum = new THREE.Color(avatarDef.themeColor || '#38bdf8');
+            objGroup.traverse((child) => {
+              const mesh = child as THREE.Mesh;
+              if (mesh.isMesh) {
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                if (!mesh.material || (Array.isArray(mesh.material) && mesh.material.length === 0)) {
+                  mesh.material = new THREE.MeshStandardMaterial({
+                    color: themeColorNum,
+                    roughness: 0.35,
+                    metalness: 0.2,
+                  });
+                }
+              }
+            });
+
+            headPivot.position.set(0, 3.8, 0);
+            headPivot.add(objGroup);
+
+            const controller: Character3DController = {
+              group: rootGroup,
+              headPivot,
+              update: (features: FaceFeatures) => {
+                const targetRotX = features.pitch * 0.45;
+                const targetRotY = features.yaw * 0.55;
+                const targetRotZ = -features.roll * 0.4;
+
+                headPivot.rotation.x = THREE.MathUtils.lerp(headPivot.rotation.x, targetRotX, 0.4);
+                headPivot.rotation.y = THREE.MathUtils.lerp(headPivot.rotation.y, targetRotY, 0.4);
+                headPivot.rotation.z = THREE.MathUtils.lerp(headPivot.rotation.z, targetRotZ, 0.4);
+
+                const speechReact = Math.max(features.audioVolume || 0, features.jawOpen || 0);
+                if (speechReact > 0.05) {
+                  const sY = targetScale * (1 + speechReact * 0.08);
+                  objGroup.scale.y = THREE.MathUtils.lerp(objGroup.scale.y, sY, 0.4);
+                } else {
+                  objGroup.scale.y = THREE.MathUtils.lerp(objGroup.scale.y, targetScale, 0.2);
+                }
+              },
+              dispose: () => {
+                rootGroup.traverse((child) => {
+                  const m = child as THREE.Mesh;
+                  if (m.isMesh) {
+                    m.geometry?.dispose();
+                    if (Array.isArray(m.material)) m.material.forEach((mat) => mat.dispose());
+                    else m.material?.dispose();
+                  }
+                });
+              },
+            };
+
+            characterControllerRef.current = controller;
+            scene.add(controller.group);
+          },
+          undefined,
+          (err) => {
+            console.warn('[ThreeAvatarCanvas] Error cargando modelo OBJ de 3ds Max:', err);
+            if (!isDisposed) {
+              setIsLoading(false);
+              const fallbackCtrl = buildProceduralRobotCharacter('mecha');
+              characterControllerRef.current = fallbackCtrl;
+              scene.add(fallbackCtrl.group);
+            }
+          }
+        );
+      } else if (isStl) {
+        const stlLoader = new STLLoader();
+        stlLoader.load(
+          modelSource,
+          (geometry) => {
+            if (isDisposed) return;
+            setIsLoading(false);
+            const rootGroup = new THREE.Group();
+            const headPivot = new THREE.Group();
+            rootGroup.add(headPivot);
+
+            geometry.computeVertexNormals();
+            geometry.center();
+            geometry.computeBoundingBox();
+            const box = geometry.boundingBox || new THREE.Box3();
+            const size = box.getSize(new THREE.Vector3());
+            const maxDim = Math.max(size.x, size.y, size.z) || 1;
+            const targetScale = 2.4 / maxDim;
+
+            const themeColorNum = new THREE.Color(avatarDef.themeColor || '#38bdf8');
+            const material = new THREE.MeshStandardMaterial({
+              color: themeColorNum,
+              roughness: 0.3,
+              metalness: 0.25,
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            mesh.scale.setScalar(targetScale);
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+
+            headPivot.position.set(0, 3.8, 0);
+            headPivot.add(mesh);
+
+            const controller: Character3DController = {
+              group: rootGroup,
+              headPivot,
+              update: (features: FaceFeatures) => {
+                const targetRotX = features.pitch * 0.45;
+                const targetRotY = features.yaw * 0.55;
+                const targetRotZ = -features.roll * 0.4;
+
+                headPivot.rotation.x = THREE.MathUtils.lerp(headPivot.rotation.x, targetRotX, 0.4);
+                headPivot.rotation.y = THREE.MathUtils.lerp(headPivot.rotation.y, targetRotY, 0.4);
+                headPivot.rotation.z = THREE.MathUtils.lerp(headPivot.rotation.z, targetRotZ, 0.4);
+
+                const speechReact = Math.max(features.audioVolume || 0, features.jawOpen || 0);
+                if (speechReact > 0.05) {
+                  const sY = targetScale * (1 + speechReact * 0.08);
+                  mesh.scale.y = THREE.MathUtils.lerp(mesh.scale.y, sY, 0.4);
+                } else {
+                  mesh.scale.y = THREE.MathUtils.lerp(mesh.scale.y, targetScale, 0.2);
+                }
+              },
+              dispose: () => {
+                geometry.dispose();
+                material.dispose();
+              },
+            };
+
+            characterControllerRef.current = controller;
+            scene.add(controller.group);
+          },
+          undefined,
+          (err) => {
+            console.warn('[ThreeAvatarCanvas] Error cargando modelo STL de 3ds Max:', err);
+            if (!isDisposed) {
+              setIsLoading(false);
+              const fallbackCtrl = buildProceduralRobotCharacter('mecha');
+              characterControllerRef.current = fallbackCtrl;
+              scene.add(fallbackCtrl.group);
+            }
+          }
+        );
+      } else {
+        // GLTF / GLB / VRM
+        const loader = new GLTFLoader();
+        loader.load(
+          modelSource,
+          (gltf) => {
           if (isDisposed) return;
           setIsLoading(false);
           const rootGroup = new THREE.Group();
@@ -1577,7 +1752,8 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           }
         }
       );
-    } else {
+    }
+  } else {
       // Distinct 3D Characters Built Instantly
       setIsLoading(false);
       let controller: Character3DController;

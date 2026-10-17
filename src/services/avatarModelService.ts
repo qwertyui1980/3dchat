@@ -128,6 +128,14 @@ class AvatarModelService {
             previewImage,
             originalImage: item.originalImage,
             debugParams: item.debugParams,
+            format: item.format || (() => {
+              const n = (item.name || '').toLowerCase();
+              if (n.endsWith('.obj')) return 'obj';
+              if (n.endsWith('.stl')) return 'stl';
+              if (n.endsWith('.gltf')) return 'gltf';
+              if (n.endsWith('.vrm')) return 'vrm';
+              return 'glb';
+            })(),
             createdAt: item.createdAt || Date.now(),
             trackingProfile: (() => {
               const density = (item.debugParams?.calibration?.density as LandmarkDensity) || 32;
@@ -363,6 +371,7 @@ class AvatarModelService {
     originalImage?: string;
     debugParams?: any;
     isPublic?: boolean;
+    format?: 'glb' | 'gltf' | 'obj' | 'stl' | 'vrm' | string;
     file: File | Blob;
   }): Promise<AvatarDefinition> {
     const id = `custom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -370,6 +379,15 @@ class AvatarModelService {
 
     const isPublic = !!params.isPublic;
     const name = params.name.trim() || 'Modelo 3D Personalizado';
+    const fileName = (params.file as File).name ? (params.file as File).name.toLowerCase() : name.toLowerCase();
+    const format = params.format || (() => {
+      if (fileName.endsWith('.obj')) return 'obj';
+      if (fileName.endsWith('.stl')) return 'stl';
+      if (fileName.endsWith('.gltf')) return 'gltf';
+      if (fileName.endsWith('.vrm')) return 'vrm';
+      return 'glb';
+    })();
+
     const tagline =
       params.tagline?.trim() ||
       (isPublic
@@ -378,7 +396,7 @@ class AvatarModelService {
     const category = params.category || (isPublic ? 'Catálogo Público' : 'Creados con IA');
     const themeColor = params.themeColor || '#06b6d4';
     const accentColor = params.accentColor || '#3b82f6';
-    const badge = params.badge?.trim() || (isPublic ? 'PÚBLICO' : '3D MASK');
+    const badge = params.badge?.trim() || (isPublic ? 'PÚBLICO' : (format ? format.toUpperCase() : '3D MASK'));
     const createdAt = Date.now();
     const previewImage = params.previewImage || getAvatarThumbnail(id);
 
@@ -393,6 +411,7 @@ class AvatarModelService {
       badge,
       createdAt,
       blob: params.file,
+      format,
       previewImage,
       originalImage: params.originalImage,
       debugParams: params.debugParams,
@@ -420,6 +439,7 @@ class AvatarModelService {
       emoji: '✨',
       isCustom: !isPublic,
       isPublic,
+      format,
       modelUrl,
       previewImage,
       originalImage: params.originalImage,
@@ -547,6 +567,157 @@ class AvatarModelService {
     this.saveMetadataToStorage();
     this.notify();
     return updatedDef;
+  }
+
+  /**
+   * Obtiene los datos binarios del modelo para sincronización P2P con los demás integrantes de la sala
+   */
+  async getModelDataForSync(avatarId: string): Promise<{
+    avatarId: string;
+    name: string;
+    format: string;
+    themeColor: string;
+    accentColor: string;
+    previewImage?: string;
+    trackingProfile?: any;
+    debugParams?: any;
+    buffer: ArrayBuffer;
+  } | null> {
+    const avatar = this.getAvatarById(avatarId);
+    if (!avatar) return null;
+
+    let buffer: ArrayBuffer | null = null;
+    let format = avatar.format || 'glb';
+
+    // 1. Intentar desde IndexedDB
+    try {
+      const stored = await indexedDbService.getModel(avatarId);
+      if (stored?.blob) {
+        buffer = await stored.blob.arrayBuffer();
+        if (stored.format) {
+          format = stored.format;
+        } else if ((stored.blob as any).name) {
+          const ext = (stored.blob as any).name.split('.').pop()?.toLowerCase();
+          if (ext && ['glb', 'gltf', 'obj', 'stl', 'vrm'].includes(ext)) {
+            format = ext;
+          }
+        }
+      } else if (stored?.fileData) {
+        const res = await fetch(stored.fileData);
+        buffer = await res.arrayBuffer();
+      }
+    } catch (e) {
+      console.warn('[AvatarModelService] Error reading from IndexedDB:', e);
+    }
+
+    // 2. Si no se encontró en IndexedDB pero tiene modelUrl
+    if (!buffer && avatar.modelUrl) {
+      try {
+        const res = await fetch(avatar.modelUrl);
+        buffer = await res.arrayBuffer();
+      } catch (e) {
+        console.warn('[AvatarModelService] Error fetching modelUrl:', e);
+      }
+    }
+
+    if (!buffer) return null;
+
+    // Detectar formato si aún es genérico
+    if (!format || format === 'glb') {
+      const nameLower = (avatar.name || '').toLowerCase();
+      if (nameLower.endsWith('.obj')) format = 'obj';
+      else if (nameLower.endsWith('.stl')) format = 'stl';
+      else if (nameLower.endsWith('.gltf')) format = 'gltf';
+      else if (nameLower.endsWith('.vrm')) format = 'vrm';
+    }
+
+    return {
+      avatarId: avatar.id,
+      name: avatar.name,
+      format,
+      themeColor: avatar.themeColor || '#06b6d4',
+      accentColor: avatar.accentColor || '#38bdf8',
+      previewImage: avatar.previewImage,
+      trackingProfile: avatar.trackingProfile,
+      debugParams: avatar.debugParams,
+      buffer,
+    };
+  }
+
+  /**
+   * Registra un modelo 3D recibido en vivo de un compañero en la sala de chat
+   */
+  async registerRemoteAvatar(packet: {
+    avatarId: string;
+    name: string;
+    format: string;
+    themeColor?: string;
+    accentColor?: string;
+    previewImage?: string;
+    trackingProfile?: any;
+    debugParams?: any;
+    buffer: ArrayBuffer;
+  }): Promise<AvatarDefinition> {
+    const { avatarId, name, format, themeColor, accentColor, previewImage, trackingProfile, debugParams, buffer } = packet;
+
+    let mimeType = 'model/gltf-binary';
+    if (format === 'obj') mimeType = 'text/plain';
+    else if (format === 'stl') mimeType = 'model/stl';
+    else if (format === 'gltf') mimeType = 'model/gltf+json';
+
+    const blob = new Blob([buffer], { type: mimeType });
+    const modelUrl = URL.createObjectURL(blob);
+
+    const remoteAvatar: AvatarDefinition = {
+      id: avatarId,
+      name: name || 'Modelo 3D Remoto',
+      tagline: 'Avatar 3D compartido por integrante de la sala',
+      category: 'Compartidos en Sala',
+      themeColor: themeColor || '#06b6d4',
+      accentColor: accentColor || '#38bdf8',
+      badge: (format || '3D').toUpperCase(),
+      emoji: '👤',
+      isCustom: true,
+      format,
+      modelUrl,
+      previewImage: previewImage || getAvatarThumbnail(avatarId),
+      trackingProfile,
+      debugParams,
+      createdAt: Date.now(),
+    };
+
+    if (trackingProfile) {
+      registerAvatarTrackingProfile(avatarId, trackingProfile);
+    }
+
+    // Actualizar o insertar en customAvatars
+    const existingIndex = this.customAvatars.findIndex((a) => a.id === avatarId);
+    if (existingIndex >= 0) {
+      this.customAvatars[existingIndex] = remoteAvatar;
+    } else {
+      this.customAvatars.push(remoteAvatar);
+    }
+
+    // Guardar en IndexedDB para caché local
+    try {
+      await indexedDbService.saveModel({
+        id: avatarId,
+        name: remoteAvatar.name,
+        tagline: remoteAvatar.tagline,
+        category: remoteAvatar.category,
+        themeColor: remoteAvatar.themeColor,
+        accentColor: remoteAvatar.accentColor,
+        badge: remoteAvatar.badge,
+        createdAt: remoteAvatar.createdAt || Date.now(),
+        blob,
+        format,
+        previewImage: remoteAvatar.previewImage,
+        debugParams,
+      });
+    } catch (_) {}
+
+    this.notify();
+    return remoteAvatar;
   }
 }
 

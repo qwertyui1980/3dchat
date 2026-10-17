@@ -26,6 +26,7 @@ export interface StoredCustomModel {
   previewImage?: string;
   originalImage?: string;
   debugParams?: any;
+  format?: 'glb' | 'gltf' | 'obj' | 'stl' | 'vrm' | string;
 }
 
 export interface StoredElement<T = any> {

@@ -5,6 +5,8 @@ import { RealtimeChannel } from '@supabase/supabase-js';
 import { User, RoomInfo, FaceFeatures, ChatMessage, AvatarId, VideoQueueItem, RoomMediaState, WhiteboardStroke, DynamicTrackingMode } from '../types';
 import { getSupabaseClient } from './supabaseClient';
 import { INITIAL_ROOM_MEDIA_STATE } from '../utils/youtube';
+import { avatarModelServiceSingleton } from './avatarModelService';
+import { AVATAR_LIST } from '../components/avatars/avatarConfigs';
 
 const PUBLIC_MQTT_BROKERS = [
   'wss://broker.emqx.io:8084/mqtt',
@@ -32,6 +34,7 @@ export class NetworkService {
   private presenceInterval: any = null;
   private burstTimeouts: any[] = [];
   private peerHeartbeats: Map<string, number> = new Map();
+  private pendingAvatarRequests: Map<string, number> = new Map();
 
   public currentUser: User | null = null;
   public currentRoom: RoomInfo | null = null;
@@ -144,6 +147,7 @@ export class NetworkService {
           if (this.currentRoom) {
             this.currentRoom.participants = this.deduplicateParticipants(participants);
           }
+          this.checkAndFetchMissingAvatar(user);
           if (this.onUserJoined) this.onUserJoined(user, this.currentRoom?.participants || participants);
         });
 
@@ -251,8 +255,22 @@ export class NetworkService {
             }
           }
           participants.forEach((user) => {
+            this.checkAndFetchMissingAvatar(user);
             if (this.onUserUpdated) this.onUserUpdated(user);
           });
+        });
+
+        this.socket.on(
+          'request_avatar_model',
+          async ({ fromUserId, fromSocketId, avatarId }: { fromUserId: string; fromSocketId?: string; avatarId: string }) => {
+            this.handleAvatarModelRequest(avatarId, fromUserId, fromSocketId);
+          }
+        );
+
+        this.socket.on('avatar_model_data', async (modelPacket: any) => {
+          if (modelPacket && modelPacket.avatarId && modelPacket.buffer) {
+            await avatarModelServiceSingleton.registerRemoteAvatar(modelPacket);
+          }
         });
 
         this.socket.on('media_state_sync', (state: RoomMediaState) => {
@@ -660,6 +678,10 @@ export class NetworkService {
         if (this.onWhiteboardClear) {
           this.onWhiteboardClear();
         }
+      } else if (data.type === 'request_avatar_model' && data.avatarId) {
+        this.handleAvatarModelRequest(data.avatarId, data.fromUserId, undefined, conn);
+      } else if (data.type === 'avatar_model_data' && data.modelPacket) {
+        avatarModelServiceSingleton.registerRemoteAvatar(data.modelPacket);
       } else if (data.type === 'room_closed') {
         console.log('[Room Teardown] Room closed via PeerJS P2P data connection.');
         this.cleanup();
@@ -951,6 +973,7 @@ export class NetworkService {
             const nextList = this.deduplicateParticipants([...this.currentRoom.participants, msg.user]);
             this.currentRoom.participants = nextList;
             this.connectToPeerP2P(msg.user);
+            this.checkAndFetchMissingAvatar(msg.user);
             if (this.onUserJoined) {
               this.onUserJoined(msg.user, nextList);
             }
@@ -968,10 +991,27 @@ export class NetworkService {
             const updated = [...this.currentRoom.participants];
             updated[existingIdx] = { ...updated[existingIdx], ...msg.user };
             this.currentRoom.participants = this.deduplicateParticipants(updated);
+            this.checkAndFetchMissingAvatar(msg.user);
             if (this.onUserUpdated) {
               this.onUserUpdated(msg.user);
             }
           }
+        }
+        break;
+      }
+
+      case 'request_avatar_model': {
+        if (msg.avatarId && msg.fromUserId !== this.currentUser?.id) {
+          if (!msg.targetUserId || msg.targetUserId === this.currentUser?.id) {
+            this.handleAvatarModelRequest(msg.avatarId, msg.fromUserId);
+          }
+        }
+        break;
+      }
+
+      case 'avatar_model_data': {
+        if (msg.modelPacket && msg.modelPacket.avatarId && msg.modelPacket.buffer) {
+          avatarModelServiceSingleton.registerRemoteAvatar(msg.modelPacket);
         }
         break;
       }
@@ -2717,6 +2757,145 @@ export class NetworkService {
 
   leaveRoom() {
     this.cleanup();
+  }
+
+  /**
+   * Verifica si el avatar de un usuario remoto no está disponible localmente y lo solicita vía P2P / Relay
+   */
+  public checkAndFetchMissingAvatar(user: User) {
+    if (!user || !user.avatarId || !this.currentUser) return;
+    if (user.id === this.currentUser.id) return;
+
+    // Si es un avatar estándar conocido del catálogo incorporado, no hace falta pedirlo
+    const isStandard = AVATAR_LIST.some((a) => a.id === user.avatarId);
+    if (isStandard) return;
+
+    // Verificar si ya existe en memoria o almacenamiento local
+    const existing = avatarModelServiceSingleton.getAvatarById(user.avatarId);
+    if (existing && (existing.modelUrl || existing.fileData)) {
+      return;
+    }
+
+    // Solicitar el modelo 3D al participante
+    this.requestAvatarModel(user.id, user.avatarId);
+  }
+
+  /**
+   * Solicita el archivo y definición del modelo 3D al usuario que lo posee
+   */
+  public requestAvatarModel(targetUserId: string, avatarId: string) {
+    if (!avatarId || !this.currentUser) return;
+
+    const existing = avatarModelServiceSingleton.getAvatarById(avatarId);
+    if (existing && (existing.modelUrl || existing.fileData)) {
+      return;
+    }
+
+    // Rate-limiting de solicitudes para evitar congestión (1 solicitud cada 6s por modelo)
+    const now = Date.now();
+    const lastReq = this.pendingAvatarRequests.get(avatarId) || 0;
+    if (now - lastReq < 6000) {
+      return;
+    }
+    this.pendingAvatarRequests.set(avatarId, now);
+
+    console.info(`[XStreamX Network] Solicitando modelo 3D (${avatarId}) a peer ${targetUserId}...`);
+
+    // 1. Intentar enviar vía conexión P2P WebRTC directa
+    let sentViaP2P = false;
+    if (this.currentRoom) {
+      const peerId = this.getPeerJsId(this.currentRoom.id, targetUserId);
+      const conn = this.peerDataConnections.get(peerId);
+      if (conn && conn.open) {
+        try {
+          conn.send({
+            type: 'request_avatar_model',
+            avatarId,
+            fromUserId: this.currentUser.id,
+          });
+          sentViaP2P = true;
+        } catch (_) {}
+      }
+    }
+
+    // 2. Enviar vía Socket.io de señalización
+    if (this.socket && this.socket.connected) {
+      this.socket.emit('request_avatar_model', {
+        targetUserId,
+        avatarId,
+      });
+    }
+
+    // 3. Respaldo vía MQTT WebSockets Mesh
+    if (!sentViaP2P) {
+      this.publishMeshMessage({
+        type: 'request_avatar_model',
+        roomId: this.currentRoom?.id,
+        targetUserId,
+        avatarId,
+        fromUserId: this.currentUser.id,
+      });
+    }
+  }
+
+  /**
+   * Responde a una solicitud de modelo 3D enviando el paquete binario de definición
+   */
+  private async handleAvatarModelRequest(
+    avatarId: string,
+    fromUserId: string,
+    fromSocketId?: string,
+    directConn?: DataConnection
+  ) {
+    if (!avatarId) return;
+
+    // Solo responder si tenemos el modelo en nuestro servicio local
+    const modelData = await avatarModelServiceSingleton.getModelDataForSync(avatarId);
+    if (!modelData) return;
+
+    console.info(`[XStreamX Network] Enviando paquete de modelo 3D (${avatarId}) a ${fromUserId}...`);
+
+    // 1. Si hay conexión directa P2P abierta, enviar por WebRTC DataConnection
+    if (directConn && directConn.open) {
+      try {
+        directConn.send({
+          type: 'avatar_model_data',
+          modelPacket: modelData,
+        });
+        return;
+      } catch (_) {}
+    }
+
+    if (this.currentRoom) {
+      const peerId = this.getPeerJsId(this.currentRoom.id, fromUserId);
+      const conn = this.peerDataConnections.get(peerId);
+      if (conn && conn.open) {
+        try {
+          conn.send({
+            type: 'avatar_model_data',
+            modelPacket: modelData,
+          });
+          return;
+        } catch (_) {}
+      }
+    }
+
+    // 2. Enviar por Socket.io
+    if (this.socket && this.socket.connected) {
+      this.socket.emit('send_avatar_model', {
+        targetSocketId: fromSocketId,
+        targetUserId: fromUserId,
+        modelPacket: modelData,
+      });
+      return;
+    }
+
+    // 3. Fallback a Mqtt mesh
+    this.publishMeshMessage({
+      type: 'avatar_model_data',
+      roomId: this.currentRoom?.id,
+      modelPacket: modelData,
+    });
   }
 }
 

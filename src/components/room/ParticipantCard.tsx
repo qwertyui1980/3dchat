@@ -4,6 +4,7 @@ import { User, FaceFeatures, DynamicTrackingMode } from '../../types';
 import { AvatarCanvas } from '../avatars/AvatarCanvas';
 import { AudioWaveform } from '../common/AudioWaveform';
 import { normalizeTrackingMode } from '../../services/face3d/dynamicModeHelper';
+import { networkServiceSingleton } from '../../services/networkService';
 
 interface ParticipantCardProps {
   user: User;
@@ -82,6 +83,13 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
     }
     return features;
   }, [features, user.isMuted, activeMode]);
+
+  // Request remote 3D model automatically if participant is using a custom avatar not yet in local storage
+  React.useEffect(() => {
+    if (!isSelf && user.avatarId) {
+      networkServiceSingleton.checkAndFetchMissingAvatar(user);
+    }
+  }, [isSelf, user.avatarId, user.id]);
 
   return (
     <div

@@ -91,6 +91,7 @@ async function startServer() {
       methods: ['GET', 'POST'],
     },
     transports: ['websocket', 'polling'],
+    maxHttpBufferSize: 50 * 1024 * 1024, // 50MB for 3D model synchronization
   });
 
   const PORT = Number(process.env.PORT) || 3000;
@@ -383,6 +384,63 @@ async function startServer() {
       if (room) {
         room.users.set(socket.id, currentUser);
         io.to(currentUser.roomId).emit('user_updated', { user: currentUser });
+      }
+    });
+
+    // P2P / Server Relay for Custom 3D Avatar Models (e.g., created in 3ds Max / Face Studio)
+    socket.on('request_avatar_model', ({ targetUserId, avatarId }) => {
+      if (!currentUser) return;
+      const room = rooms.get(currentUser.roomId);
+      if (!room) return;
+
+      if (targetUserId) {
+        let targetSocketId: string | undefined;
+        for (const [sId, u] of room.users.entries()) {
+          if (u.id === targetUserId || sId === targetUserId) {
+            targetSocketId = sId;
+            break;
+          }
+        }
+        if (targetSocketId) {
+          io.to(targetSocketId).emit('request_avatar_model', {
+            fromUserId: currentUser.id,
+            fromSocketId: socket.id,
+            avatarId,
+          });
+          return;
+        }
+      }
+
+      // Broadcast to room if specific target not found or omitted
+      socket.to(currentUser.roomId).emit('request_avatar_model', {
+        fromUserId: currentUser.id,
+        fromSocketId: socket.id,
+        avatarId,
+      });
+    });
+
+    socket.on('send_avatar_model', ({ targetSocketId, targetUserId, modelPacket }) => {
+      if (!currentUser) return;
+      const room = rooms.get(currentUser.roomId);
+      if (!room) return;
+
+      if (targetSocketId) {
+        io.to(targetSocketId).emit('avatar_model_data', modelPacket);
+      } else if (targetUserId) {
+        let destSocketId: string | undefined;
+        for (const [sId, u] of room.users.entries()) {
+          if (u.id === targetUserId || sId === targetUserId) {
+            destSocketId = sId;
+            break;
+          }
+        }
+        if (destSocketId) {
+          io.to(destSocketId).emit('avatar_model_data', modelPacket);
+        } else {
+          socket.to(currentUser.roomId).emit('avatar_model_data', modelPacket);
+        }
+      } else {
+        socket.to(currentUser.roomId).emit('avatar_model_data', modelPacket);
       }
     });
 

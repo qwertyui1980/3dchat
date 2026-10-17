@@ -91,6 +91,16 @@ graph LR
 5. **Nivel Multi-Pestaña Local (`BroadcastChannel`):**
    * Canal nativo `xstreamx_mesh_channel` que permite sincronizar múltiples ventanas o pestañas en la misma máquina sin consumir ancho de banda de red.
 
+### 3.1. Sincronización Automática P2P y Relay de Modelos 3D Personalizados (3ds Max / Custom Models)
+* **Problema Resuelto:** Los modelos 3D creados o importados por los usuarios (archivos `.obj`, `.stl`, `.glb`, `.gltf` exportados desde 3ds Max, Blender o el Estudio 3D) residían originalmente únicamente en el `IndexedDB` / almacenamiento local del usuario emisor, impidiendo que los demás participantes de la sala de chat pudieran visualizarlos.
+* **Protocolo de Detección y Solicitud Bajo Demanda:**
+  * Al unirse un participante (`user_joined`, `presence_sync` o al montarse `ParticipantCard`), el cliente receptor evalúa si el `avatarId` corresponde a un modelo ausente localmente.
+  * Si el modelo no existe, emite `requestAvatarModel(targetUserId, avatarId)` a través de la conexión directa `PeerJS DataConnection`, con fallback hacia Socket.io (`request_avatar_model`) y MQTT Mesh.
+* **Empaquetado y Entrega Binaria:**
+  * El usuario poseedor del modelo extrae el binario y metadatos (`avatarModelServiceSingleton.getModelDataForSync`) y lo transmite al solicitante con búfer binario de hasta 50MB.
+* **Ingesta Dinámica e Invocación en Caliente:**
+  * El cliente receptor registra el modelo en caliente con `avatarModelServiceSingleton.registerRemoteAvatar`, generando un `Blob` de objeto en memoria, guardando en caché local en IndexedDB y disparando el listener reactivo de `ThreeAvatarCanvas`, que carga y anima inmediatamente el avatar en pantalla sin requerir reinicio de la llamada.
+
 ---
 
 ## 4. Pipeline de Visión por Computadora y Animación Facial
@@ -147,8 +157,11 @@ Implementado en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/component
    * `cat_3d`: Avatar estilizado de felino con orejas articuladas, bigotes y cinemática en párpados.
    * `lowpoly_human` / `anime_girl`: Mallas humanoides ligeras optimizadas para rendimiento móvil.
    * `neon_holo` (**Neon Cyber 3D**): Avatar holográfico vectorial de líneas de neón cian y labios azul eléctrico reactivo a todos los puntos anatómicos de tracking facial (48+ nodos). Incluye silueta craneal con partición de cabello, orejas redondeadas prominentes en laterales, hendidura frontal reactiva a elevación de cejas, cejas arqueadas dinámicas, ojos elípticos con pupilas que siguen la mirada (`gazeX/Y`) y parpadean (`blinkL/R`), trazo continuo nasal con rizo alar, labios azul neón reactivos a apertura bucal, sonrisa y fruncimiento (`jawOpen`, `mouthSmile`, `mouthPucker`), y contornos minimalistas de cuello vertical que se abren en hombros estilizados.
-2. **Modelos 3D de Busto y Esculturas (OBJ, STL, GLB):**
-   * Soporta carga de modelos históricos y escultóricos (`Bush_standard.stl`, `Jinping.obj`, `Ptin2.obj`, `Thatcher_bust.obj`) con normalización geométrica automática, corrección de normales y re-centrado respecto al origen.
+2. **Modelos 3D de Busto, Esculturas y Exportaciones de 3ds Max / CAD (OBJ, STL, GLB, GLTF, VRM):**
+   * Integración nativa de `OBJLoader` y `STLLoader` junto a `GLTFLoader` en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/components/avatars/ThreeAvatarCanvas.tsx).
+   * Normalización geométrica automática, corrección de normales de superficie (`computeVertexNormals`), re-centrado al origen focal $(0, 3.8, 0)$ y escalado armónico a $2.40$ unidades para encuadre óptimo.
+   * Asignación dinámica de materiales `MeshStandardMaterial` PBR reactivos a iluminación de estudio y color temático para modelos que carecen de `.mtl` o materiales embebidos.
+   * Articulación reactiva de cabeceo (Pitch, Yaw, Roll) y escala elástica labial ante detección de voz y mandíbula abierta.
 3. **Avatares Personalizados 3D Masks:**
    * Mallas faciales generadas por el Administrador con mapeo de textura fotográfica y 52 morph targets.
 

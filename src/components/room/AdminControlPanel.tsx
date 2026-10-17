@@ -154,7 +154,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
   const handleUploadSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedFile) {
-      setUploadError('Por favor selecciona un archivo 3D (.glb, .gltf, .vrm, .json)');
+      setUploadError('Por favor selecciona un archivo 3D (.glb, .gltf, .vrm, .obj, .stl)');
       return;
     }
 
@@ -333,12 +333,12 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[11px] font-bold text-neutral-300 mb-1">
-                        Archivo 3D (.glb, .gltf, .vrm, .json, .obj) *
+                        Archivo 3D (.glb, .gltf, .vrm, .obj, .stl) *
                       </label>
                       <input
                         ref={fileInputRef}
                         type="file"
-                        accept=".glb,.gltf,.vrm,.json,.obj"
+                        accept=".glb,.gltf,.vrm,.json,.obj,.stl"
                         onChange={handleFileChange}
                         className="hidden"
                         id="admin-model-file-input"
