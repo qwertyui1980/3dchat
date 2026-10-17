@@ -9,6 +9,8 @@ export interface UserRecord {
   provider: 'local';
   avatarId: AvatarId;
   createdAt: number;
+  bio?: string;
+  createdAvatars?: string[];
 }
 
 export interface RoomRecord {
@@ -375,6 +377,8 @@ class DatabaseService {
             provider: data.provider || 'local',
             avatarId: data.avatar_id || 'three_robot',
             createdAt: data.created_at || Date.now(),
+            bio: data.bio || '',
+            createdAvatars: Array.isArray(data.created_avatars) ? data.created_avatars : [],
           };
           this.localUsers.set(cleanUsername, user);
           this.saveLocalUsers();
@@ -386,6 +390,46 @@ class DatabaseService {
     }
 
     return null;
+  }
+
+  async getAllUsers(): Promise<UserRecord[]> {
+    this.initLocal();
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!error && data && data.length > 0) {
+          data.forEach((row: any) => {
+            const u: UserRecord = {
+              id: row.id,
+              username: row.username,
+              name: row.name,
+              role: row.role || 'participant',
+              provider: row.provider || 'local',
+              avatarId: row.avatar_id || 'three_robot',
+              createdAt: row.created_at || Date.now(),
+              bio: row.bio || '',
+              createdAvatars: Array.isArray(row.created_avatars) ? row.created_avatars : [],
+            };
+            this.localUsers.set(u.username.toLowerCase(), u);
+          });
+          this.saveLocalUsers();
+        }
+      } catch (err) {
+        console.warn('[Supabase] Error listing users:', err);
+      }
+    }
+
+    return Array.from(this.localUsers.values());
+  }
+
+  async isUsernameAvailable(username: string): Promise<boolean> {
+    const existing = await this.getUserByUsername(username);
+    return !existing;
   }
 
   async upsertUser(user: UserRecord): Promise<UserRecord> {
@@ -407,6 +451,8 @@ class DatabaseService {
           role: user.role,
           provider: user.provider,
           avatar_id: user.avatarId,
+          bio: user.bio || '',
+          created_avatars: user.createdAvatars || [],
           created_at: user.createdAt,
         })
       )
@@ -417,6 +463,69 @@ class DatabaseService {
     }
 
     return user;
+  }
+
+  // ==========================================
+  // AVATARS (Supabase Cloud + Local Sync)
+  // ==========================================
+  async saveAvatarRecord(avatar: {
+    id: string;
+    name: string;
+    tagline?: string;
+    category?: string;
+    themeColor?: string;
+    accentColor?: string;
+    badge?: string;
+    ownerId?: string;
+    previewImage?: string;
+    format?: string;
+    isPublic?: boolean;
+    createdAt?: number;
+  }): Promise<void> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    try {
+      const { error } = await supabase.from('avatars').upsert({
+        id: avatar.id,
+        name: avatar.name,
+        tagline: avatar.tagline || '',
+        category: avatar.category || 'Personalizados',
+        theme_color: avatar.themeColor || '#06b6d4',
+        accent_color: avatar.accentColor || '#3b82f6',
+        badge: avatar.badge || '3D',
+        owner_id: avatar.ownerId || '',
+        preview_image: avatar.previewImage || '',
+        format: avatar.format || 'glb',
+        is_public: !!avatar.isPublic,
+        created_at: avatar.createdAt || Date.now(),
+      });
+      if (error) {
+        console.warn('[Supabase] Avatar upsert warning:', error.message);
+      }
+    } catch (err) {
+      console.warn('[Supabase] Error saving avatar record:', err);
+    }
+  }
+
+  async getUserAvatarsFromCloud(ownerId: string): Promise<any[]> {
+    const supabase = getSupabaseClient();
+    if (!supabase || !ownerId) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from('avatars')
+        .select('*')
+        .eq('owner_id', ownerId.trim().toLowerCase())
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        return data;
+      }
+    } catch (err) {
+      console.warn('[Supabase] Error fetching avatars from cloud:', err);
+    }
+    return [];
   }
 }
 

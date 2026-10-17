@@ -137,6 +137,7 @@ class AvatarModelService {
               return 'glb';
             })(),
             createdAt: item.createdAt || Date.now(),
+            ownerId: item.ownerId,
             trackingProfile: (() => {
               const density = (item.debugParams?.calibration?.density as LandmarkDensity) || 32;
               const prof = buildCustomAvatarTrackingProfile({
@@ -247,6 +248,17 @@ class AvatarModelService {
    */
   getAvatarById(avatarId: AvatarId): AvatarDefinition | undefined {
     return this.getAllAvatars().find((a) => a.id === avatarId);
+  }
+
+  /**
+   * Obtiene todos los avatares creados por un usuario específico
+   */
+  getUserAvatars(ownerId: string): AvatarDefinition[] {
+    if (!ownerId) return [];
+    const cleanOwner = ownerId.trim().toLowerCase();
+    return this.getAllAvatars().filter(
+      (a) => a.ownerId && a.ownerId.trim().toLowerCase() === cleanOwner
+    );
   }
 
   /**
@@ -372,6 +384,7 @@ class AvatarModelService {
     debugParams?: any;
     isPublic?: boolean;
     format?: 'glb' | 'gltf' | 'obj' | 'stl' | 'vrm' | string;
+    ownerId?: string;
     file: File | Blob;
   }): Promise<AvatarDefinition> {
     const id = `custom_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
@@ -416,10 +429,14 @@ class AvatarModelService {
       originalImage: params.originalImage,
       debugParams: params.debugParams,
       isPublic,
+      ownerId: params.ownerId,
     };
 
     try {
       await indexedDbService.saveModel(storedModel);
+      if (params.ownerId) {
+        await indexedDbService.addAvatarToUser(params.ownerId, id);
+      }
     } catch (e) {
       console.error('[AvatarModelService] Error guardando modelo en IndexedDB:', e);
     }
@@ -445,6 +462,7 @@ class AvatarModelService {
       originalImage: params.originalImage,
       debugParams: params.debugParams,
       createdAt,
+      ownerId: params.ownerId,
       trackingProfile: (() => {
         const density = (params.debugParams?.calibration?.density as LandmarkDensity) || 32;
         const prof = buildCustomAvatarTrackingProfile({

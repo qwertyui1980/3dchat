@@ -27,6 +27,7 @@ export interface StoredCustomModel {
   originalImage?: string;
   debugParams?: any;
   format?: 'glb' | 'gltf' | 'obj' | 'stl' | 'vrm' | string;
+  ownerId?: string; // Username or user ID that created/owns this avatar
 }
 
 export interface StoredElement<T = any> {
@@ -43,6 +44,8 @@ export interface UserAccount {
   password: string;
   avatarId: string;
   createdAt: number;
+  bio?: string;
+  createdAvatars?: string[];
 }
 
 export const SEED_USERS: UserAccount[] = [
@@ -494,6 +497,32 @@ class IndexedDbService {
     }
 
     return null;
+  }
+
+  /**
+   * Asocia un ID de avatar creado a la cuenta del usuario
+   */
+  async addAvatarToUser(username: string, avatarId: string): Promise<UserAccount | null> {
+    const user = await this.getUser(username);
+    if (!user) return null;
+
+    const existingList = user.createdAvatars || [];
+    if (!existingList.includes(avatarId)) {
+      user.createdAvatars = [...existingList, avatarId];
+      await this.saveUser(user);
+    }
+    return user;
+  }
+
+  /**
+   * Obtiene todos los modelos creados por un usuario específico
+   */
+  async getUserModels(username: string): Promise<StoredCustomModel[]> {
+    const allModels = await this.getAllModels();
+    const cleanUser = username.trim().toLowerCase();
+    return allModels.filter(
+      (m) => m.ownerId && m.ownerId.trim().toLowerCase() === cleanUser
+    );
   }
 
   // ==========================================

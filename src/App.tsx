@@ -25,6 +25,8 @@ import { Header } from './components/common/Header';
 import { Lobby } from './components/lobby/Lobby';
 import { RoomView } from './components/room/RoomView';
 import { Login, AuthenticatedUser } from './components/auth/Login';
+import { Register } from './components/auth/Register';
+import { UserProfileModal } from './components/profile/UserProfileModal';
 import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import { applyDynamicMode, normalizeTrackingMode, QuickGestureType } from './services/face3d/dynamicModeHelper';
 import { INITIAL_ROOM_MEDIA_STATE } from './utils/youtube';
@@ -54,6 +56,27 @@ export default function App() {
     }
     return null;
   });
+
+  // Client Routing (/register, /, etc.) & Profile Modal
+  const [currentPath, setCurrentPath] = useState<string>(() => (typeof window !== 'undefined' ? window.location.pathname : '/'));
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+
+  const navigateTo = useCallback((path: string) => {
+    if (typeof window !== 'undefined') {
+      if (window.location.pathname !== path) {
+        window.history.pushState(null, '', path);
+      }
+    }
+    setCurrentPath(path);
+  }, []);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // App state
   const [isInRoom, setIsInRoom] = useState(false);
@@ -1023,9 +1046,21 @@ export default function App() {
         ))}
       </div>
 
-      {/* Screen Routing: Login -> Lobby -> Active Room */}
-      {!authenticatedUser ? (
-        <Login onLogin={handleLogin} />
+      {/* Screen Routing: Register (/register) -> Login (/) -> Lobby -> Active Room */}
+      {currentPath === '/register' ? (
+        <Register
+          onRegisterSuccess={(newUser) => {
+            handleLogin(newUser);
+            navigateTo('/');
+            addToast(`¡Bienvenido a XStreamX, ${newUser.name}! Tu perfil ha sido creado exitosamente.`, 'success');
+          }}
+          onNavigateLogin={() => navigateTo('/')}
+        />
+      ) : !authenticatedUser ? (
+        <Login
+          onLogin={handleLogin}
+          onOpenRegister={() => navigateTo('/register')}
+        />
       ) : !isInRoom || !room || !currentUser ? (
         <div className="flex-1 flex flex-col min-h-0">
           <Header
@@ -1034,6 +1069,7 @@ export default function App() {
             isAdmin={authenticatedUser.role === 'admin'}
             authUser={authenticatedUser}
             onLogout={handleLogout}
+            onOpenProfile={() => setIsProfileModalOpen(true)}
           />
           <Lobby
             onJoinRoom={handleJoinRoom}
@@ -1107,6 +1143,24 @@ export default function App() {
           onBroadcastClear={handleBroadcastClear}
           remoteStroke={remoteStroke}
           remoteClearTimestamp={remoteClearTimestamp}
+          onOpenProfile={() => setIsProfileModalOpen(true)}
+        />
+      )}
+
+      {/* User Profile & Avatars Modal */}
+      {authenticatedUser && (
+        <UserProfileModal
+          isOpen={isProfileModalOpen}
+          onClose={() => setIsProfileModalOpen(false)}
+          authUser={authenticatedUser}
+          onUserUpdated={(updated) => {
+            setAuthenticatedUser(updated);
+            sessionStorage.setItem('xstreamx_auth', JSON.stringify(updated));
+            addToast('Perfil actualizado correctamente', 'success');
+          }}
+          onSelectAvatar={handleSelectAvatar}
+          currentAvatarId={currentUser?.avatarId}
+          onOpenRegister={() => navigateTo('/register')}
         />
       )}
     </div>

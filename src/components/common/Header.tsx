@@ -12,6 +12,7 @@ interface HeaderProps {
   onLogout?: () => void;
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
+  onOpenProfile?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -21,6 +22,7 @@ export const Header: React.FC<HeaderProps> = ({
   onLogout,
   isFullscreen = false,
   onToggleFullscreen,
+  onOpenProfile,
 }) => {
 
   return (
@@ -57,12 +59,30 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        {/* User Session & Logout */}
+        {/* User Session, Profile & Logout */}
         {authUser && (
-          <div className="flex items-center gap-1 sm:gap-2 pl-1 sm:pl-2 border-l border-slate-800">
-            <span className="text-xs text-slate-300 font-semibold hidden lg:inline max-w-[100px] truncate">
-              {authUser.name}
-            </span>
+          <div className="flex items-center gap-1.5 sm:gap-2 pl-1 sm:pl-2 border-l border-white/[0.08]">
+            {onOpenProfile ? (
+              <button
+                type="button"
+                onClick={onOpenProfile}
+                title="Ver y editar perfil / avatares"
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#121218] hover:bg-cyan-950/60 border border-white/[0.08] hover:border-cyan-500/40 text-neutral-200 hover:text-cyan-300 text-xs font-semibold transition cursor-pointer"
+              >
+                <div className="w-4 h-4 rounded-full bg-cyan-500/20 text-cyan-400 flex items-center justify-center text-[10px] font-bold">
+                  {authUser.name.charAt(0).toUpperCase()}
+                </div>
+                <span className="hidden sm:inline max-w-[110px] truncate">{authUser.name}</span>
+                <span className="text-[9px] uppercase px-1 rounded bg-white/[0.06] text-neutral-400 font-mono">
+                  {authUser.role === 'admin' ? 'Admin' : 'Perfil'}
+                </span>
+              </button>
+            ) : (
+              <span className="text-xs text-slate-300 font-semibold hidden lg:inline max-w-[100px] truncate">
+                {authUser.name}
+              </span>
+            )}
+
             {onLogout && (
               <button
                 type="button"

@@ -4,11 +4,13 @@ import { getAssetUrl } from '../../utils/assetUrl';
 interface PresidentesNeonHomeProps {
   onEnterSalon: () => void;
   onOpenLegal?: () => void;
+  onOpenRegister?: () => void;
 }
 
 export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
   onEnterSalon,
   onOpenLegal,
+  onOpenRegister,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
 
@@ -367,7 +369,7 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
 
           {/* Botón: Ver el show de esta noche (lleva a youtube.com) */}
           <a
-            href="https://youtube.com"
+            href="https://www.youtube.com/@DavidGregorioRodriguezG"
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
@@ -375,6 +377,20 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
           >
             Ver el show de esta noche
           </a>
+
+          {/* Botón: Crear Nuevo Perfil / Registro */}
+          {onOpenRegister && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenRegister();
+              }}
+              className="px-5 sm:px-6 py-2.5 sm:py-3 rounded-full bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 hover:text-white border border-cyan-500/40 hover:border-cyan-300 font-bold text-xs sm:text-sm tracking-wide shadow-lg shadow-cyan-500/20 transition-all transform hover:scale-[1.03] active:scale-[0.98] cursor-pointer"
+            >
+              Crear Perfil
+            </button>
+          )}
         </div>
 
       </div>

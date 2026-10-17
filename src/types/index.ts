@@ -66,6 +66,7 @@ export interface AvatarDefinition {
   debugParams?: any;
   createdAt?: number;
   format?: 'glb' | 'gltf' | 'obj' | 'stl' | 'vrm' | string;
+  ownerId?: string;
 }
 
 export interface FaceFeatures {

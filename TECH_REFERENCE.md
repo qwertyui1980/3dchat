@@ -563,13 +563,14 @@ xstreamx/
 │   ├── favicon.svg               # Identidad gráfica
 │   └── 404.html                  # Soporte SPA para GitHub Pages / subrutas
 ├── src/                          # Código fuente principal de la aplicación
-│   ├── App.tsx                   # Controlador maestro de estado, sala y hardware
+│   ├── App.tsx                   # Controlador maestro de estado, enrutamiento (/register, /), sala y hardware
 │   ├── main.tsx                  # Punto de entrada de renderizado React
 │   ├── index.css                 # Estilos globales y utilidades Tailwind
 │   ├── types/                    # Definiciones de tipos TypeScript globales
 │   ├── components/
 │   │   ├── admin/                # FaceBlendshapeStudioModal (Estudio 3D de avatares)
-│   │   ├── auth/                 # Login (Controlador de acceso, modal de credenciales y privacidad)
+│   │   ├── auth/                 # Login y Register (Página /register, creación de perfiles y modales)
+│   │   ├── profile/              # UserProfileModal (Gestión de perfil, avatares creados y Supabase Sync)
 │   │   ├── home/                 # PresidentesNeonHome (Landing con las figuras neón fotorrealistas sin marco sobre muro de ladrillo negro, fallas eléctricas independientes en letras 'R' y las 3 figuras, y chispas interactivas con física de partículas)
 │   │   ├── avatars/              # ThreeAvatarCanvas, threeCharacterBuilder, configs
 │   │   ├── common/               # Header, LegalDisclaimerModal, StarfieldBackground
@@ -582,8 +583,10 @@ xstreamx/
 │   │   ├── audioService.ts       # Web Audio API, análisis de volumen y muting
 │   │   ├── mediapipeService.ts   # MediaPipe Face Landmarker y tracking 60 FPS
 │   │   ├── networkService.ts     # Quad-Mesh networking (PeerJS, MQTT, Supabase, Socket)
-│   │   ├── dbService.ts          # Gestión de usuarios, salas y persistencia
-│   │   ├── supabaseClient.ts     # Cliente y canales broadcast de Supabase
+│   │   ├── dbService.ts          # Gestión de usuarios, salas, perfiles y persistencia en Supabase
+│   │   ├── supabaseClient.ts     # Cliente Supabase, configuración dinámica y test de conexión
+│   │   ├── avatarModelService.ts # Servicio de avatares 3D, catálogo, carga y asociación a propietarios
+│   │   ├── db/indexedDbService.ts# Almacén local IndexedDB de modelos binarios (.glb) y cuentas
 │   │   └── face3d/               # Pipeline de reconstrucción 3D (ARKit, mesh, UV, bust)
 │   └── utils/
 │       ├── assetUrl.ts           # Resuelve rutas absolutas/relativas en subcarpetas
@@ -595,3 +598,38 @@ xstreamx/
 ├── supabase_schema.sql           # Esquema de base de datos PostgreSQL / Supabase
 └── vite.config.ts                # Configuración de compilación Vite
 ```
+
+---
+
+## 11. Sistema de Perfiles de Usuario, Página `/register` y Persistencia Supabase
+
+### 11.1. Arquitectura de Perfiles y Almacenamiento Dual (IndexedDB + Supabase)
+Para soportar identidad persistente manteniendo compatibilidad con despliegues edge y estáticos, el sistema implementa una arquitectura híbrida de doble capa:
+
+1. **Capa 1: Almacén Local de Alto Rendimiento (IndexedDB `xstreamx_db`):**
+   * Almacena las cuentas de usuario (`UserAccount`: id, username, name, role, password, avatarId, bio, createdAvatars, createdAt).
+   * Almacena binarios pesados de modelos 3D (`StoredCustomModel`: blobs `.glb`, `.obj`, `.stl`, texturas, miniaturas de vista previa) sin el límite de 5 MB de LocalStorage.
+   * Proporciona respuesta inmediata de 0 ms en autenticación local y carga de avatares.
+2. **Capa 2: Base de Datos en la Nube Supabase (PostgreSQL + Realtime):**
+   * Proyecto central reactivado: `https://zhlhyasefzwnecszazlf.supabase.co`.
+   * Tablas maestras:
+     * `public.rooms`: Control persistente de salas, candados de moderación y número de participantes.
+     * `public.users`: Sincronización de perfiles (id, username único, name, role, avatar_id, bio, created_avatars en JSONB, timestamps).
+     * `public.avatars`: Catálogo de avatares creados por usuarios con referencia de propietario (`owner_id`), categoría, formato y metadatos.
+   * Sincronización no bloqueante: Las operaciones de guardado escriben primero en memoria/IndexedDB y sincronizan en segundo plano con Supabase.
+
+### 11.2. Página `/register` y Creación de Perfiles
+* **Ruta Dedicada `/register`:** Integrada mediante enrutamiento cliente transparente sincronizado con `window.location.pathname` y eventos `popstate`. El servidor Node.js/Express y Vite resuelven automáticamente la ruta SPA.
+* **Flujo de Registro Completo:**
+  * Validación en vivo de disponibilidad de nombre de usuario en IndexedDB y Supabase.
+  * Formulario con nombre para mostrar, contraseña con visualización alternable, selección de rol (participante o admin) y biografía.
+  * **Selección de Avatar 3D:** Selector interactivo de modelos presidenciales y estilizados predefinidos con badges y categorías.
+  * **Carga de Modelos 3D Propios:** Permite al usuario subir archivos `.glb`, `.gltf`, `.obj` o `.stl` durante el registro; el archivo se procesa, se almacena en IndexedDB, se asocia al perfil del usuario mediante `ownerId` y se registra en Supabase.
+  * **Inicio de Sesión Automático:** Al completar el registro, el usuario es autenticado de inmediato e ingresa al ecosistema con su sesión activa.
+
+### 11.3. Gestión de Perfiles (`UserProfileModal`)
+* Accesible desde el botón de perfil del `Header` tanto en el Lobby como dentro de salas activas.
+* Permite modificar el nombre para mostrar, la biografía y alternar el avatar activo principal.
+* Incluye la sección **"Avatares creados por ti"** con vista de cuadrícula, badges de formato y botón de equipamiento instantáneo.
+* Incluye un panel interactivo de diagnóstico y configuración de Supabase Cloud para verificar el estado de la conexión en tiempo real o ingresar claves API personalizadas.
+

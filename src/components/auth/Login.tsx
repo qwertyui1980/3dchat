@@ -14,6 +14,7 @@ export interface AuthenticatedUser {
 
 interface LoginProps {
   onLogin: (user: AuthenticatedUser) => void;
+  onOpenRegister?: () => void;
 }
 
 const PRIVACY_WORDS: Array<{ text: string; isBold?: boolean }> = [
@@ -72,7 +73,7 @@ const PRIVACY_WORDS: Array<{ text: string; isBold?: boolean }> = [
   { text: 'servidor.' },
 ];
 
-export const Login: React.FC<LoginProps> = ({ onLogin }) => {
+export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -149,6 +150,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       <PresidentesNeonHome
         onEnterSalon={() => setShowLoginForm(true)}
         onOpenLegal={() => setIsLegalOpen(true)}
+        onOpenRegister={onOpenRegister}
       />
 
       {/* 2. Modal Reveal: Formulario de Login para Entrar al Salón */}
@@ -261,6 +263,23 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                     </>
                   )}
                 </button>
+
+                {/* Link to Register Page */}
+                {onOpenRegister && (
+                  <div className="text-center pt-2 text-xs text-neutral-400">
+                    ¿No tienes una cuenta?{' '}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowLoginForm(false);
+                        onOpenRegister();
+                      }}
+                      className="text-cyan-400 hover:text-cyan-300 font-bold underline cursor-pointer"
+                    >
+                      Crear nuevo perfil aquí
+                    </button>
+                  </div>
+                )}
               </form>
 
               {/* Footer Legal & Apache License Notice */}
