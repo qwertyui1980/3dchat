@@ -37,6 +37,7 @@ interface UserProfileModalProps {
   onSelectAvatar?: (avatarId: string) => void;
   currentAvatarId?: string;
   onOpenRegister?: () => void;
+  onOpenFaces?: () => void;
 }
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({
@@ -47,6 +48,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   onSelectAvatar,
   currentAvatarId,
   onOpenRegister,
+  onOpenFaces,
 }) => {
   const [userAccount, setUserAccount] = useState<UserAccount | null>(null);
   const [displayName, setDisplayName] = useState(authUser.name);
@@ -656,6 +658,23 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 className="text-cyan-400 hover:text-cyan-300 font-semibold underline cursor-pointer"
               >
                 Ir a /register
+              </button>
+            </div>
+          )}
+
+          {/* Quick link to /3dchat/faces */}
+          {onOpenFaces && (
+            <div className="border-t border-white/[0.08] pt-3 flex items-center justify-between text-neutral-400">
+              <span>¿Quieres crear una máscara facial 3D desde una foto?</span>
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenFaces();
+                }}
+                className="text-cyan-400 hover:text-cyan-300 font-semibold underline cursor-pointer flex items-center gap-1"
+              >
+                <span>Ir a /3dchat/faces</span>
               </button>
             </div>
           )}

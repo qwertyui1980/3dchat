@@ -28,11 +28,27 @@ import { RoomView } from './components/room/RoomView';
 import { Login, AuthenticatedUser } from './components/auth/Login';
 import { Register } from './components/auth/Register';
 import { UserProfileModal } from './components/profile/UserProfileModal';
+import { FaceBlendshapeStudioModal } from './components/admin/FaceBlendshapeStudioModal';
 import { dbServiceSingleton } from './services/dbService';
 import { indexedDbService } from './services/db/indexedDbService';
 import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import { applyDynamicMode, normalizeTrackingMode, QuickGestureType } from './services/face3d/dynamicModeHelper';
 import { INITIAL_ROOM_MEDIA_STATE } from './utils/youtube';
+
+const isFacesRoute = (pathname: string, hash: string = ''): boolean => {
+  const cleanPath = (pathname || '').toLowerCase().replace(/\/+$/, '');
+  const cleanHash = (hash || '').toLowerCase().replace(/^#\/?/, '').replace(/\/+$/, '');
+  return (
+    cleanPath === '/3dchat/faces' ||
+    cleanPath === '/faces' ||
+    cleanPath === '/3dmask' ||
+    cleanPath === '/3dmasks' ||
+    cleanHash === '3dchat/faces' ||
+    cleanHash === 'faces' ||
+    cleanHash === '3dmask' ||
+    cleanHash === '3dmasks'
+  );
+};
 
 interface Toast {
   id: string;
@@ -85,8 +101,9 @@ export default function App() {
     }
   }, [authenticatedUser?.username, authenticatedUser?.avatarId]);
 
-  // Client Routing (/register, /, etc.) & Profile Modal
+  // Client Routing (/register, /3dchat/faces, /, etc.) & Profile Modal
   const [currentPath, setCurrentPath] = useState<string>(() => (typeof window !== 'undefined' ? window.location.pathname : '/'));
+  const [currentHash, setCurrentHash] = useState<string>(() => (typeof window !== 'undefined' ? window.location.hash : ''));
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
 
   const navigateTo = useCallback((path: string) => {
@@ -96,14 +113,20 @@ export default function App() {
       }
     }
     setCurrentPath(path);
+    setCurrentHash(typeof window !== 'undefined' ? window.location.hash : '');
   }, []);
 
   useEffect(() => {
-    const handlePopState = () => {
+    const handleLocationChange = () => {
       setCurrentPath(window.location.pathname);
+      setCurrentHash(window.location.hash);
     };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('popstate', handleLocationChange);
+    window.addEventListener('hashchange', handleLocationChange);
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+    };
   }, []);
 
   // App state
@@ -1096,8 +1119,31 @@ export default function App() {
         ))}
       </div>
 
-      {/* Screen Routing: Register (/register) -> Login (/) -> Lobby -> Active Room */}
-      {currentPath === '/register' ? (
+      {/* Screen Routing: 3D Mask Studio (/3dchat/faces) -> Register (/register) -> Login (/) -> Lobby -> Active Room */}
+      {isFacesRoute(currentPath, currentHash) ? (
+        <div className="flex-1 flex flex-col min-h-0 relative w-full h-full bg-[#08080c] overflow-hidden">
+          <FaceBlendshapeStudioModal
+            isOpen={true}
+            onClose={() => {
+              if (isInRoom && room && currentUser) {
+                navigateTo('/espacio/main');
+              } else {
+                navigateTo('/');
+              }
+            }}
+            isAdmin={authenticatedUser ? authenticatedUser.role === 'admin' : true}
+            onSelectAvatar={(avatarId) => {
+              handleSelectAvatar(avatarId);
+              addToast('¡Avatar 3D guardado y seleccionado con éxito!', 'success');
+              if (isInRoom && room && currentUser) {
+                navigateTo('/espacio/main');
+              } else {
+                navigateTo('/');
+              }
+            }}
+          />
+        </div>
+      ) : currentPath === '/register' ? (
         <Register
           onRegisterSuccess={(newUser) => {
             handleLogin(newUser);
@@ -1110,6 +1156,7 @@ export default function App() {
         <Login
           onLogin={handleLogin}
           onOpenRegister={() => navigateTo('/register')}
+          onOpenFaces={() => navigateTo('/3dchat/faces')}
         />
       ) : !isInRoom || !room || !currentUser ? (
         <div className="flex-1 flex flex-col min-h-0">
@@ -1120,6 +1167,7 @@ export default function App() {
             authUser={authenticatedUser}
             onLogout={handleLogout}
             onOpenProfile={() => setIsProfileModalOpen(true)}
+            onOpenFaces={() => navigateTo('/3dchat/faces')}
           />
           <Lobby
             onJoinRoom={handleJoinRoom}
@@ -1194,6 +1242,7 @@ export default function App() {
           remoteStroke={remoteStroke}
           remoteClearTimestamp={remoteClearTimestamp}
           onOpenProfile={() => setIsProfileModalOpen(true)}
+          onOpenFaces={() => navigateTo('/3dchat/faces')}
         />
       )}
 
@@ -1211,6 +1260,10 @@ export default function App() {
           onSelectAvatar={handleSelectAvatar}
           currentAvatarId={currentUser?.avatarId}
           onOpenRegister={() => navigateTo('/register')}
+          onOpenFaces={() => {
+            setIsProfileModalOpen(false);
+            navigateTo('/3dchat/faces');
+          }}
         />
       )}
     </div>

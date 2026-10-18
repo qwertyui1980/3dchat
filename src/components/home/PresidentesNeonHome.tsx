@@ -1,16 +1,19 @@
 import React, { useEffect, useRef } from 'react';
+import { Sparkles } from 'lucide-react';
 import { getAssetUrl } from '../../utils/assetUrl';
 
 interface PresidentesNeonHomeProps {
   onEnterSalon: () => void;
   onOpenLegal?: () => void;
   onOpenRegister?: () => void;
+  onOpenFaces?: () => void;
 }
 
 export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
   onEnterSalon,
   onOpenLegal,
   onOpenRegister,
+  onOpenFaces,
 }) => {
   const svgRef = useRef<SVGSVGElement | null>(null);
 
@@ -389,6 +392,22 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
               className="px-5 sm:px-6 py-2.5 sm:py-3 rounded-full bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-white border border-rose-500/60 hover:border-rose-400 font-bold text-xs sm:text-sm tracking-wide shadow-sm hover:shadow-rose-500/30 transition-all transform hover:scale-[1.03] active:scale-[0.98] cursor-pointer"
             >
               Crear Perfil
+            </button>
+          )}
+
+          {/* Botón: 3D Masks Studio (/3dchat/faces) */}
+          {onOpenFaces && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenFaces();
+              }}
+              className="px-5 sm:px-6 py-2.5 sm:py-3 rounded-full bg-cyan-950/40 hover:bg-cyan-900/60 text-cyan-300 hover:text-white border border-cyan-500/60 hover:border-cyan-400 font-bold text-xs sm:text-sm tracking-wide shadow-sm hover:shadow-cyan-500/30 transition-all transform hover:scale-[1.03] active:scale-[0.98] cursor-pointer flex items-center gap-1.5"
+              title="Abrir 3D Masks App (/3dchat/faces)"
+            >
+              <Sparkles className="w-4 h-4 text-cyan-400" />
+              <span>3D Masks</span>
             </button>
           )}
         </div>

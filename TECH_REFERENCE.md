@@ -784,5 +784,32 @@ Para asegurar que todos los participantes puedan usar tanto los modelos estánda
   1. Se implementó la función selectora `getValidModelSource()` en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/components/avatars/ThreeAvatarCanvas.tsx) que rechaza de forma estricta cualquier valor que no inicie con protocolos legítimos (`blob:`, `data:`, `http:`, `https:` o `/`) o que contenga `"[object Object]"`. Si la fuente no es válida, la escena utiliza el fallback procedural mecha sin arrojar errores a la consola.
   2. En [`avatarModelService.ts`](file:///d:/Apps/xstreamx/src/services/avatarModelService.ts) (`syncUserCloudAvatars` y `fetchAndCacheAvatarFromCloud`), se agregaron filtros que excluyen los avatares de fábrica (`DEFAULT_AVATARS`) de la colección dinámica de usuario para no sobreescribir sus loaders nativos y se valida que `modelDataStr` sea un Data URL o URL web válida antes de invocar `fetch()`.
 
+---
+
+## 17. Enrutamiento y Deep Linking de la Aplicación 3D Mask Studio (`/3dchat/faces`)
+
+Para habilitar el acceso directo e independiente a la aplicación y taller de creación de máscaras faciales 3D biomiméticas, se introdujo el enrutamiento dedicado `/3dchat/faces`:
+
+### 17.1. Especificación de Rutas y Compatibilidad Dual (Path & Hash Routing)
+* **URL Primaria Canónica:** `https://<host>/3dchat/faces`
+* **Rutas Alternativas y Alias Soportados:**
+  * `/#/3dchat/faces` o `#/3dchat/faces` (Deep linking mediante fragmento de URL hash para compatibilidad con servidores estáticos y recargas de página sin reescritura de URL).
+  * `/faces`, `/#/faces`, `/3dmask`, `#/3dmask`, `/3dmasks`, `#/3dmasks`.
+* **Detección Dinámica:** Implementada mediante `isFacesRoute(pathname, hash)` en [`App.tsx`](file:///d:/Apps/xstreamx/src/App.tsx), la cual inspecciona tanto el pathname de la ventana como el hash actual, reaccionando a los eventos `popstate` y `hashchange`.
+
+### 17.2. Experiencia de Usuario y Flujo de Navegación
+* **Modo Autónomo a Pantalla Completa:** Al navegar directamente a `/3dchat/faces`, se renderiza directamente [`FaceBlendshapeStudioModal.tsx`](file:///d:/Apps/xstreamx/src/components/admin/FaceBlendshapeStudioModal.tsx) a pantalla completa sin requerir autenticación previa obligatoria (`isAdmin` habilitado para visitantes invitados en modo estudio).
+* **Flujo de Retorno Contextual:**
+  * Al cerrar el estudio (`onClose`), si el usuario se encontraba dentro de una videollamada activa (`isInRoom && room && currentUser`), la aplicación regresa limpiamente a `/espacio/main`.
+  * Si el usuario ingresó de forma directa o desde el lobby/login, la aplicación retorna a la raíz `/`.
+* **Guardado y Selección Automática:** Al generar y guardar una máscara 3D en el estudio (`onSelectAvatar`), el nuevo modelo se activa inmediatamente como avatar local, se almacena en Supabase/IndexedDB y se notifica al usuario con un toast de confirmación.
+
+### 17.3. Puntos de Entrada y Acceso Rápido en la Interfaz (UI Deep Linking)
+* **Página de Inicio (`PresidentesNeonHome.tsx`):** Botón con efecto neón cian `"3D Masks"` con ícono de destellos (`Sparkles`) situado de forma prominente en la barra de acciones principal del Home.
+* **Barra Superior (`Header.tsx`):** Botón `"3D Masks"` en el encabezado visible tanto en el Lobby como dentro de la sala de reuniones.
+* **Perfil de Usuario (`UserProfileModal.tsx`):** Enlace directo con tarjeta destacada en la parte inferior del modal de gestión de avatares: *"¿Quieres crear una máscara facial 3D desde una foto? Ir a /3dchat/faces"*.
+* **Soporte en Servidor Express (`server.ts`):** Regla explícita en modo producción (`app.get(['/3dchat/faces', '/3dchat/faces/*', '/faces', '/faces/*'], ...)`) para entregar el bundle SPA sin interferir con otros recursos ni provocar respuestas 404.
+
+
 
 

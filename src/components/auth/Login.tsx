@@ -16,9 +16,10 @@ export interface AuthenticatedUser {
 interface LoginProps {
   onLogin: (user: AuthenticatedUser) => void;
   onOpenRegister?: () => void;
+  onOpenFaces?: () => void;
 }
 
-export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
+export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister, onOpenFaces }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -107,6 +108,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
         onEnterSalon={() => setShowLoginForm(true)}
         onOpenLegal={() => setIsLegalOpen(true)}
         onOpenRegister={onOpenRegister}
+        onOpenFaces={onOpenFaces}
       />
 
       {/* 2. Modal Reveal: Formulario de Login para Entrar al Salón */}

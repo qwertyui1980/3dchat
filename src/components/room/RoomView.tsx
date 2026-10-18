@@ -75,6 +75,7 @@ interface RoomViewProps {
   activeGesture?: QuickGestureType | null;
   onTriggerGesture?: (gesture: QuickGestureType) => void;
   onOpenProfile?: () => void;
+  onOpenFaces?: () => void;
 }
 
 export const RoomView: React.FC<RoomViewProps> = ({
@@ -106,6 +107,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
   authUser,
   onLogout,
   onOpenProfile,
+  onOpenFaces,
   mediaState,
   onAddMediaQueueItem,
   onRemoveMediaQueueItem,
@@ -263,6 +265,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
           isFullscreen={isFullscreen}
           onToggleFullscreen={handleToggleFullscreen}
           onOpenProfile={onOpenProfile}
+          onOpenFaces={onOpenFaces}
         />
       )}
 

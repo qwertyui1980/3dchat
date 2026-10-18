@@ -717,6 +717,15 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
+    // Explicit route handler for 3D Mask Studio app (/3dchat/faces) and its aliases
+    app.get(['/3dchat/faces', '/3dchat/faces/*', '/faces', '/faces/*'], (_req, res) => {
+      const indexPath = path.resolve(distPath, 'index.html');
+      if (fs.existsSync(indexPath)) {
+        return res.sendFile(indexPath);
+      }
+      return res.status(404).send('Build not found. Run npm run build first.');
+    });
+
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       const indexPath = path.resolve(distPath, 'index.html');

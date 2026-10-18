@@ -1,5 +1,4 @@
-import React from 'react';
-import { Users, LogOut, Maximize2, Minimize2 } from 'lucide-react';
+import { Users, LogOut, Maximize2, Minimize2, Sparkles } from 'lucide-react';
 import { RoomInfo, User } from '../../types';
 import { AuthenticatedUser } from '../auth/Login';
 
@@ -13,6 +12,7 @@ interface HeaderProps {
   isFullscreen?: boolean;
   onToggleFullscreen?: () => void;
   onOpenProfile?: () => void;
+  onOpenFaces?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -23,6 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
   isFullscreen = false,
   onToggleFullscreen,
   onOpenProfile,
+  onOpenFaces,
 }) => {
 
   return (
@@ -45,6 +46,19 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="font-semibold">{room.participants.length}</span>
             </div>
           </>
+        )}
+
+        {/* 3D Masks Studio Direct Link (/3dchat/faces) */}
+        {onOpenFaces && (
+          <button
+            type="button"
+            onClick={onOpenFaces}
+            title="Abrir aplicación 3D Masks (/3dchat/faces)"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#0e1626] hover:bg-[#132238] text-cyan-300 hover:text-cyan-200 border border-cyan-500/40 hover:border-cyan-400 text-xs font-semibold shadow-sm shadow-cyan-950/40 transition cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="text-[11px]">3D Masks</span>
+          </button>
         )}
 
         {/* Fullscreen Toggle Button */}
