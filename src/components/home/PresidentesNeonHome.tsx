@@ -353,32 +353,32 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
           Presidentes Muertos y Vivos
         </h1>
 
-        {/* Botones de Acción */}
+        {/* Botones de Acción con la paleta de color del rótulo de neón */}
         <div className="flex flex-row items-center justify-center gap-3 sm:gap-5 mt-6 sm:mt-9 z-20">
-          {/* Botón: Entrar al salón */}
+          {/* Botón Principal: Entrar al salón (Amarillo Neón del Letrero) */}
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               onEnterSalon();
             }}
-            className="px-6 sm:px-8 py-2.5 sm:py-3 rounded-full bg-[#4f8bf9] hover:bg-[#3b82f6] text-[#07131e] font-black text-xs sm:text-sm tracking-wide shadow-lg shadow-blue-500/25 hover:shadow-blue-500/40 transition-all transform hover:scale-[1.03] active:scale-[0.98] cursor-pointer"
+            className="px-6 sm:px-8 py-2.5 sm:py-3 rounded-full bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-400 hover:from-yellow-300 hover:to-amber-200 text-slate-950 font-black text-xs sm:text-sm tracking-wide shadow-lg shadow-yellow-500/30 hover:shadow-yellow-400/50 transition-all transform hover:scale-[1.03] active:scale-[0.98] cursor-pointer"
           >
             Entrar al salón
           </button>
 
-          {/* Botón: Ver el show de esta noche (lleva a youtube.com) */}
+          {/* Botón Secundario: Ver el show de esta noche (Azul Neón del Personaje Derecho) */}
           <a
             href="https://www.youtube.com/@DavidGregorioRodriguezG"
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            className="px-5 sm:px-7 py-2.5 sm:py-3 rounded-full bg-transparent hover:bg-cyan-950/40 text-[#5eead4] hover:text-[#2dd4bf] border border-[#5eead4] hover:border-cyan-300 font-bold text-xs sm:text-sm tracking-wide shadow-sm hover:shadow-cyan-500/20 transition-all transform hover:scale-[1.03] active:scale-[0.98] cursor-pointer"
+            className="px-5 sm:px-7 py-2.5 sm:py-3 rounded-full bg-blue-950/30 hover:bg-blue-900/50 text-blue-300 hover:text-white border border-blue-500/60 hover:border-blue-400 font-bold text-xs sm:text-sm tracking-wide shadow-sm hover:shadow-blue-500/30 transition-all transform hover:scale-[1.03] active:scale-[0.98] cursor-pointer"
           >
             Ver el show de esta noche
           </a>
 
-          {/* Botón: Crear Nuevo Perfil / Registro */}
+          {/* Botón: Crear Nuevo Perfil (Rojo Neón del Personaje Izquierdo) */}
           {onOpenRegister && (
             <button
               type="button"
@@ -386,7 +386,7 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
                 e.stopPropagation();
                 onOpenRegister();
               }}
-              className="px-5 sm:px-6 py-2.5 sm:py-3 rounded-full bg-cyan-950/80 hover:bg-cyan-900 text-cyan-300 hover:text-white border border-cyan-500/40 hover:border-cyan-300 font-bold text-xs sm:text-sm tracking-wide shadow-lg shadow-cyan-500/20 transition-all transform hover:scale-[1.03] active:scale-[0.98] cursor-pointer"
+              className="px-5 sm:px-6 py-2.5 sm:py-3 rounded-full bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-white border border-rose-500/60 hover:border-rose-400 font-bold text-xs sm:text-sm tracking-wide shadow-sm hover:shadow-rose-500/30 transition-all transform hover:scale-[1.03] active:scale-[0.98] cursor-pointer"
             >
               Crear Perfil
             </button>
@@ -397,15 +397,14 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
 
       {/* Footer Discreto con Atribución y Licencia */}
       {onOpenLegal && (
-        <div className="absolute bottom-3 text-center text-[10px] text-cyan-500/50 hover:text-cyan-300 transition flex items-center gap-2 z-20">
-
+        <div className="absolute bottom-3 text-center text-[10px] text-neutral-500 hover:text-yellow-400 transition flex items-center gap-2 z-20">
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               onOpenLegal();
             }}
-            className="underline cursor-pointer hover:text-cyan-200"
+            className="underline cursor-pointer hover:text-yellow-300"
           >
             Términos y Licencia
           </button>

@@ -1048,12 +1048,12 @@ export default function App() {
                 ? 'bg-emerald-950/90 border-emerald-600 text-emerald-200'
                 : toast.type === 'warning'
                   ? 'bg-rose-950/90 border-rose-600 text-rose-200'
-                  : 'bg-slate-900/90 border-cyan-700 text-cyan-200'
+                  : 'bg-[#0a0d18]/95 border-yellow-500/50 text-yellow-200 shadow-[0_0_15px_rgba(250,204,21,0.2)]'
               }`}
           >
             {toast.type === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />}
             {toast.type === 'warning' && <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />}
-            {toast.type === 'info' && <Info className="w-4 h-4 text-cyan-400 shrink-0" />}
+            {toast.type === 'info' && <Info className="w-4 h-4 text-yellow-400 shrink-0" />}
             <span>{toast.text}</span>
           </div>
         ))}

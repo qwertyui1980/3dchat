@@ -27,33 +27,79 @@ html, body, #root {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(34, 211, 238, 0.5);
+  background: rgba(255, 230, 0, 0.6);
 }
 
-/* Neon Presidentes Muertos Theme & Glitch Animations */
-.neon-glow-cyan {
-  filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 6px #22d3ee) drop-shadow(0 0 16px rgba(34, 211, 238, 0.75)) drop-shadow(0 0 35px rgba(34, 211, 238, 0.35));
+/* Presidentes Muertos Neon Color System (Yellow, Blue, Red, Ice White, Midnight Brick) */
+:root {
+  --neon-yellow: #ffe600;
+  --neon-yellow-glow: rgba(255, 230, 0, 0.75);
+  --neon-blue: #3b82f6;
+  --neon-blue-glow: rgba(59, 130, 246, 0.75);
+  --neon-red: #ff2d55;
+  --neon-red-glow: rgba(255, 45, 85, 0.75);
+  --neon-white: #f8fafc;
+  --neon-white-glow: rgba(248, 250, 252, 0.7);
+  --bg-midnight: #07090e;
+  --bg-brick-dark: #0b0e15;
+}
+
+.neon-glow-yellow {
+  filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 6px #ffe600) drop-shadow(0 0 16px rgba(255, 230, 0, 0.8)) drop-shadow(0 0 35px rgba(255, 230, 0, 0.4));
 }
 
 .neon-glow-blue {
   filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 7px #3b82f6) drop-shadow(0 0 18px rgba(59, 130, 246, 0.85)) drop-shadow(0 0 35px rgba(59, 130, 246, 0.4));
 }
 
-.neon-text-title {
-  font-family: 'Playfair Display', Georgia, serif;
-  color: #5b95ff;
-  text-shadow:
-    0 0 4px #ffffff,
-    0 0 14px #3b82f6,
-    0 0 28px rgba(59, 130, 246, 0.9),
-    0 0 55px rgba(59, 130, 246, 0.55),
-    0 0 80px rgba(59, 130, 246, 0.3);
+.neon-glow-red {
+  filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 6px #ff2d55) drop-shadow(0 0 16px rgba(255, 45, 85, 0.8)) drop-shadow(0 0 35px rgba(255, 45, 85, 0.4));
 }
 
-.neon-text-club {
-  font-family: 'Playfair Display', Georgia, serif;
-  color: #fef08a;
-  text-shadow: 0 0 8px rgba(254, 240, 138, 0.6), 0 0 20px rgba(254, 240, 138, 0.25);
+.neon-glow-white {
+  filter: drop-shadow(0 0 2px #fff) drop-shadow(0 0 6px #f8fafc) drop-shadow(0 0 16px rgba(248, 250, 252, 0.75));
+}
+
+.neon-text-yellow {
+  color: #ffe600;
+  text-shadow:
+    0 0 4px #ffffff,
+    0 0 12px #ffe600,
+    0 0 24px rgba(255, 230, 0, 0.9),
+    0 0 50px rgba(255, 230, 0, 0.5);
+}
+
+.neon-text-blue {
+  color: #60a5fa;
+  text-shadow:
+    0 0 4px #ffffff,
+    0 0 12px #3b82f6,
+    0 0 24px rgba(59, 130, 246, 0.9),
+    0 0 50px rgba(59, 130, 246, 0.5);
+}
+
+.neon-text-red {
+  color: #ff3b5c;
+  text-shadow:
+    0 0 4px #ffffff,
+    0 0 12px #ff2d55,
+    0 0 24px rgba(255, 45, 85, 0.9),
+    0 0 50px rgba(255, 45, 85, 0.5);
+}
+
+.neon-border-yellow {
+  border-color: rgba(255, 230, 0, 0.5);
+  box-shadow: 0 0 15px rgba(255, 230, 0, 0.2);
+}
+
+.neon-border-blue {
+  border-color: rgba(59, 130, 246, 0.5);
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.2);
+}
+
+.neon-border-red {
+  border-color: rgba(255, 45, 85, 0.5);
+  box-shadow: 0 0 15px rgba(255, 45, 85, 0.2);
 }
 
 @keyframes neon-hum-subtle {

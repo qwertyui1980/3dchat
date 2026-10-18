@@ -852,50 +852,50 @@ export const Lobby: React.FC<LobbyProps> = ({
               </div>
 
               <div className="grid grid-cols-3 gap-1.5">
-                {/* 1. Parafernalia */}
+                {/* 1. Parafernalia (Amarillo Neón) */}
                 <button
                   type="button"
                   onClick={() => handleSelectTrackingMode('parafernalia')}
                   className={`p-2 rounded-lg border text-left transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
                     normalizeTrackingMode(trackingMode) === 'parafernalia'
-                      ? 'bg-cyan-950/80 border-cyan-400 text-white ring-1 ring-cyan-400/40 shadow-sm'
+                      ? 'bg-yellow-950/80 border-yellow-400 text-white ring-1 ring-yellow-400/40 shadow-sm shadow-yellow-500/20'
                       : 'bg-[#121218] hover:bg-[#181822] text-neutral-400 border-white/[0.06]'
                   }`}
                   title="Modo divertido: la máscara se mueve al ritmo de la voz, con gestos y zoom dinámico"
                 >
-                  <Sparkles className={`w-4 h-4 ${normalizeTrackingMode(trackingMode) === 'parafernalia' ? 'text-cyan-400' : 'text-neutral-400'}`} />
+                  <Sparkles className={`w-4 h-4 ${normalizeTrackingMode(trackingMode) === 'parafernalia' ? 'text-yellow-400' : 'text-neutral-400'}`} />
                   <span className="text-[11px] font-bold leading-none text-center">Parafernalia</span>
                   <span className="text-[9px] text-neutral-400 text-center leading-none">Voz & Zoom</span>
                 </button>
 
-                {/* 2. Reconocimiento de Gestos */}
+                {/* 2. Reconocimiento de Gestos (Azul Neón) */}
                 <button
                   type="button"
                   onClick={() => handleSelectTrackingMode('gestures')}
                   className={`p-2 rounded-lg border text-left transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
                     normalizeTrackingMode(trackingMode) === 'gestures'
-                      ? 'bg-emerald-950/80 border-emerald-400 text-white ring-1 ring-emerald-400/40 shadow-sm'
+                      ? 'bg-blue-950/80 border-blue-400 text-white ring-1 ring-blue-400/40 shadow-sm shadow-blue-500/20'
                       : 'bg-[#121218] hover:bg-[#181822] text-neutral-400 border-white/[0.06]'
                   }`}
                   title="Reconoce única y exclusivamente gestos faciales por cámara y los iguala en el avatar"
                 >
-                  <ScanFace className={`w-4 h-4 ${normalizeTrackingMode(trackingMode) === 'gestures' ? 'text-emerald-400' : 'text-neutral-400'}`} />
+                  <ScanFace className={`w-4 h-4 ${normalizeTrackingMode(trackingMode) === 'gestures' ? 'text-blue-400' : 'text-neutral-400'}`} />
                   <span className="text-[11px] font-bold leading-none text-center">Gestos</span>
                   <span className="text-[9px] text-neutral-400 text-center leading-none">100% Cámara</span>
                 </button>
 
-                {/* 3. Lip Sync */}
+                {/* 3. Lip Sync (Rojo Neón) */}
                 <button
                   type="button"
                   onClick={() => handleSelectTrackingMode('lipsync')}
                   className={`p-2 rounded-lg border text-left transition flex flex-col items-center justify-center gap-1 cursor-pointer ${
                     normalizeTrackingMode(trackingMode) === 'lipsync'
-                      ? 'bg-amber-950/80 border-amber-400 text-white ring-1 ring-amber-400/40 shadow-sm'
+                      ? 'bg-rose-950/80 border-rose-500 text-white ring-1 ring-rose-500/40 shadow-sm shadow-rose-500/20'
                       : 'bg-[#121218] hover:bg-[#181822] text-neutral-400 border-white/[0.06]'
                   }`}
                   title="Máscara estática: el audio anima únicamente la sección de los labios y la boca sin requerir video"
                 >
-                  <Radio className={`w-4 h-4 ${normalizeTrackingMode(trackingMode) === 'lipsync' ? 'text-amber-400' : 'text-neutral-400'}`} />
+                  <Radio className={`w-4 h-4 ${normalizeTrackingMode(trackingMode) === 'lipsync' ? 'text-rose-400' : 'text-neutral-400'}`} />
                   <span className="text-[11px] font-bold leading-none text-center">Lip Sync</span>
                   <span className="text-[9px] text-neutral-400 text-center leading-none">Solo Boca</span>
                 </button>
@@ -909,7 +909,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                   type="button"
                   onClick={onToggleMic}
                   className={`p-2.5 rounded-xl border flex items-center justify-center transition cursor-pointer ${isMicActive
-                    ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-cyan-400 shadow-sm'
+                    ? 'bg-slate-800 hover:bg-slate-700 border-blue-500/50 text-blue-400 shadow-sm shadow-blue-500/20'
                     : 'bg-rose-950/60 hover:bg-rose-900 border-rose-800 text-rose-300'
                     }`}
                   title={isMicActive ? 'Silenciar Micrófono' : 'Activar Micrófono'}
@@ -921,7 +921,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                   type="button"
                   onClick={onToggleCamera}
                   className={`p-2.5 rounded-xl border flex items-center justify-center transition cursor-pointer ${isCameraActive
-                    ? 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-cyan-400 shadow-sm'
+                    ? 'bg-slate-800 hover:bg-slate-700 border-blue-500/50 text-blue-400 shadow-sm shadow-blue-500/20'
                     : 'bg-rose-950/60 hover:bg-rose-900 border-rose-800 text-rose-300'
                     }`}
                   title={isCameraActive ? 'Pausar Cámara' : 'Reanudar Cámara'}
@@ -1003,7 +1003,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                   isMuted={!isMicActive}
                   width={90}
                   height={24}
-                  color="#22d3ee"
+                  color="#ffe600"
                 />
               </div>
             </div>
@@ -1109,7 +1109,7 @@ export const Lobby: React.FC<LobbyProps> = ({
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded-full bg-cyan-500 text-slate-950 text-[10px] font-black flex items-center justify-center">1</span>
+                    <span className="w-4 h-4 rounded-full bg-yellow-400 text-slate-950 text-[10px] font-black flex items-center justify-center shadow-sm shadow-yellow-500/30">1</span>
                     <span>Elige tu Avatar 3D</span>
                   </label>
                   <div className="flex items-center gap-1.5">
@@ -1123,10 +1123,10 @@ export const Lobby: React.FC<LobbyProps> = ({
                         setEditingAvatarForStudio(null);
                         setIsFaceStudioOpen(true);
                       }}
-                      className="text-[11px] text-cyan-300 hover:text-cyan-200 font-black flex items-center gap-1 cursor-pointer bg-gradient-to-r from-cyan-500/20 to-indigo-500/20 hover:from-cyan-500/30 hover:to-indigo-500/30 px-2.5 py-1 rounded-lg border border-cyan-400/40 shadow-sm transition active:scale-95"
+                      className="text-[11px] text-yellow-300 hover:text-yellow-200 font-black flex items-center gap-1 cursor-pointer bg-gradient-to-r from-yellow-500/20 to-blue-500/20 hover:from-yellow-500/30 hover:to-blue-500/30 px-2.5 py-1 rounded-lg border border-yellow-400/40 shadow-sm shadow-yellow-500/10 transition active:scale-95"
                       title="Crear Avatar Facial con 3D Masks"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                      <Sparkles className="w-3.5 h-3.5 text-yellow-400" />
                       <span>3D Masks</span>
                     </button>
 
@@ -1151,7 +1151,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                     onClick={() => setAvatarTab('predefined')}
                     className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                       avatarTab === 'predefined'
-                        ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
+                        ? 'bg-yellow-400 text-slate-950 shadow-md font-black shadow-yellow-500/20'
                         : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
                     }`}
                   >
@@ -1173,7 +1173,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                     onClick={() => setAvatarTab('custom')}
                     className={`flex-1 py-1.5 px-2.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                       avatarTab === 'custom'
-                        ? 'bg-cyan-500 text-slate-950 shadow-md font-black'
+                        ? 'bg-yellow-400 text-slate-950 shadow-md font-black shadow-yellow-500/20'
                         : 'text-slate-400 hover:text-slate-200 hover:bg-slate-900/60'
                     }`}
                   >
@@ -1202,7 +1202,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                           onClick={() => handleSelectAvatar(avatar.id)}
                           className={`group relative p-2 rounded-xl border text-left flex flex-col items-center gap-1 transition cursor-pointer ${
                             isSelected
-                              ? 'bg-cyan-950/80 border-cyan-400 ring-2 ring-cyan-400/40 shadow-md shadow-cyan-500/20 scale-[1.02]'
+                              ? 'bg-yellow-950/40 border-yellow-400 ring-2 ring-yellow-400/40 shadow-md shadow-yellow-500/20 scale-[1.02]'
                               : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
                           }`}
                         >
@@ -1229,7 +1229,7 @@ export const Lobby: React.FC<LobbyProps> = ({
 
                           {/* Selected Indicator Check */}
                           {isSelected && (
-                            <div className="absolute top-1 left-1 w-3.5 h-3.5 rounded-full bg-cyan-400 flex items-center justify-center shadow">
+                            <div className="absolute top-1 left-1 w-3.5 h-3.5 rounded-full bg-yellow-400 flex items-center justify-center shadow">
                               <Check className="w-2.5 h-2.5 text-slate-950" />
                             </div>
                           )}
@@ -1301,7 +1301,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                             onClick={() => handleSelectAvatar(avatar.id)}
                             className={`group relative p-2 rounded-xl border text-left flex flex-col items-center gap-1 transition cursor-pointer ${
                               isSelected
-                                ? 'bg-cyan-950/80 border-cyan-400 ring-2 ring-cyan-400/40 shadow-md shadow-cyan-500/20 scale-[1.02]'
+                                ? 'bg-yellow-950/40 border-yellow-400 ring-2 ring-yellow-400/40 shadow-md shadow-yellow-500/20 scale-[1.02]'
                                 : 'bg-slate-950/70 border-slate-800 hover:border-slate-700 hover:bg-slate-900'
                             }`}
                           >
@@ -1326,7 +1326,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                                   e.stopPropagation();
                                   handleRenameAvatar(avatar.id, avatar.name);
                                 }}
-                                className="absolute top-1 right-7 w-5 h-5 rounded-full bg-slate-900/90 hover:bg-cyan-600 text-slate-400 hover:text-white border border-slate-700 hover:border-cyan-400 flex items-center justify-center transition shadow-md z-10 cursor-pointer"
+                                className="absolute top-1 right-7 w-5 h-5 rounded-full bg-slate-900/90 hover:bg-yellow-500 hover:text-slate-950 text-slate-400 border border-slate-700 hover:border-yellow-400 flex items-center justify-center transition shadow-md z-10 cursor-pointer"
                                 title={`Cambiar nombre de "${avatar.name}"`}
                               >
                                 <Pencil className="w-2.5 h-2.5" />
@@ -1340,10 +1340,10 @@ export const Lobby: React.FC<LobbyProps> = ({
                                 e.stopPropagation();
                                 handleEditCustomAvatar(avatar);
                               }}
-                              className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-slate-900/90 hover:bg-emerald-600 text-slate-400 hover:text-white border border-slate-700 hover:border-emerald-400 flex items-center justify-center transition shadow-md z-10 cursor-pointer"
+                              className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-slate-900/90 hover:bg-blue-600 text-slate-400 hover:text-white border border-slate-700 hover:border-blue-400 flex items-center justify-center transition shadow-md z-10 cursor-pointer"
                               title={`Volver a editar "${avatar.name}" con 3D Mask`}
                             >
-                              <Sliders className="w-2.5 h-2.5 text-emerald-400 group-hover:text-white" />
+                              <Sliders className="w-2.5 h-2.5 text-blue-400 group-hover:text-white" />
                             </button>
 
                             <div
@@ -1369,7 +1369,7 @@ export const Lobby: React.FC<LobbyProps> = ({
 
                             {/* Selected Indicator Check */}
                             {isSelected && (
-                              <div className="absolute top-1 left-1 w-3.5 h-3.5 rounded-full bg-cyan-400 flex items-center justify-center shadow">
+                              <div className="absolute top-1 left-1 w-3.5 h-3.5 rounded-full bg-yellow-400 flex items-center justify-center shadow">
                                 <Check className="w-2.5 h-2.5 text-slate-950" />
                               </div>
                             )}
@@ -1440,13 +1440,13 @@ export const Lobby: React.FC<LobbyProps> = ({
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-bold uppercase tracking-wider text-slate-200 flex items-center gap-1.5">
-                    <span className="w-4 h-4 rounded-full bg-cyan-500 text-slate-950 text-[10px] font-black flex items-center justify-center">2</span>
+                    <span className="w-4 h-4 rounded-full bg-yellow-400 text-slate-950 text-[10px] font-black flex items-center justify-center shadow-sm shadow-yellow-500/30">2</span>
                     <span>Tu Nombre o Alias</span>
                   </label>
                   <button
                     type="button"
                     onClick={handleGenerateRandomAnon}
-                    className="text-[11px] font-semibold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 transition cursor-pointer"
+                    className="text-[11px] font-semibold text-yellow-400 hover:text-yellow-300 flex items-center gap-1 transition cursor-pointer"
                   >
                     <Dices className="w-3.5 h-3.5" />
                     <span>Aleatorio</span>
@@ -1458,7 +1458,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                   onChange={(e) => setUserName(e.target.value)}
                   placeholder="Escribe tu nombre o alias aquí..."
                   maxLength={24}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 font-semibold transition"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/30 font-semibold transition"
                 />
               </div>
 
@@ -1498,7 +1498,7 @@ export const Lobby: React.FC<LobbyProps> = ({
               ) : (
                 <button
                   type="submit"
-                  className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-cyan-400 via-sky-500 to-indigo-600 hover:from-cyan-300 hover:to-indigo-500 text-slate-950 font-black tracking-wide text-sm flex items-center justify-center gap-2 shadow-xl shadow-cyan-500/30 transition active:scale-[0.99] cursor-pointer"
+                  className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-400 hover:from-yellow-300 hover:to-amber-200 text-slate-950 font-black tracking-wide text-sm flex items-center justify-center gap-2 shadow-xl shadow-yellow-500/30 transition active:scale-[0.99] cursor-pointer"
                 >
                   <Play className="w-4 h-4 fill-slate-950" />
                   <span>INGRESAR AL ESPACIO EN VIVO AHORA</span>

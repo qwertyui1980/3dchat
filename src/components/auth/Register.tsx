@@ -8,7 +8,6 @@ import {
   ArrowLeft,
   AlertCircle,
   CheckCircle2,
-  Sparkles,
   Box,
 } from 'lucide-react';
 import { AuthenticatedUser } from './Login';
@@ -142,37 +141,31 @@ export const Register: React.FC<RegisterProps> = ({
 
   return (
     <div className="w-full min-h-[100dvh] relative overflow-y-auto select-none bg-[#08090d] text-neutral-100 flex flex-col justify-between p-3 sm:p-6 md:p-8">
-      {/* Background Cyber Ambient Glows */}
-      <div className="fixed top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-cyan-600/10 blur-[130px] pointer-events-none" />
+      {/* Background Neon Ambient Glows matching the sign: Yellow, Blue, Red */}
+      <div className="fixed top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-rose-600/10 blur-[130px] pointer-events-none" />
       <div className="fixed bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-blue-600/10 blur-[130px] pointer-events-none" />
+      <div className="fixed top-[40%] left-[30%] w-[400px] h-[400px] rounded-full bg-yellow-500/5 blur-[150px] pointer-events-none" />
 
       {/* Top Header Navigation */}
       <div className="w-full max-w-4xl mx-auto flex items-center justify-between z-10 mb-6">
         <button
           type="button"
           onClick={onNavigateLogin}
-          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-neutral-300 hover:text-white border border-white/[0.08] text-xs font-semibold transition cursor-pointer"
+          className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-neutral-300 hover:text-yellow-400 border border-white/[0.08] text-xs font-semibold transition cursor-pointer"
         >
-          <ArrowLeft className="w-4 h-4 text-cyan-400" />
+          <ArrowLeft className="w-4 h-4 text-yellow-400" />
           <span>Volver al Inicio / Salón</span>
         </button>
       </div>
 
       {/* Main Registration Form Container */}
-      <div className="w-full max-w-4xl mx-auto bg-[#0d0f16]/90 border border-white/[0.12] backdrop-blur-2xl rounded-3xl p-5 sm:p-8 md:p-10 shadow-2xl z-10 my-auto">
+      <div className="w-full max-w-4xl mx-auto bg-[#0b0e15]/95 border border-white/[0.1] backdrop-blur-2xl rounded-3xl p-5 sm:p-8 md:p-10 shadow-2xl z-10 my-auto">
         
         {/* Title Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-cyan-300 text-[11px] font-mono font-bold uppercase tracking-wider mb-2">
-            <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Nuevo Perfil de Usuario • XStreamX</span>
-          </div>
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-neutral-100 via-neutral-200 to-neutral-400">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-neutral-100 via-yellow-100 to-amber-200">
             Crea tu Perfil y Elige tu Avatar 3D
           </h1>
-          <p className="text-xs sm:text-sm text-neutral-400 mt-2 max-w-lg mx-auto">
-            Únete al espacio de telepresencia con privacidad por diseño: sin transmisión de video y con renderizado biomimético local en Three.js.
-          </p>
         </div>
 
         {/* Global Error Alert */}
@@ -188,7 +181,7 @@ export const Register: React.FC<RegisterProps> = ({
           {/* STEP 1: Datos de la Cuenta */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 pb-2 border-b border-white/[0.08]">
-              <div className="w-6 h-6 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xs">
+              <div className="w-6 h-6 rounded-lg bg-yellow-400 text-slate-950 flex items-center justify-center font-black text-xs shadow-sm shadow-yellow-500/30">
                 1
               </div>
               <h2 className="text-sm font-bold text-white uppercase tracking-wider">
@@ -201,7 +194,7 @@ export const Register: React.FC<RegisterProps> = ({
               {/* Username Input */}
               <div className="sm:col-span-2">
                 <label className="block text-xs font-bold text-neutral-300 mb-1.5">
-                  Nombre de Usuario (Alias Único) <span className="text-cyan-400">*</span>
+                  Nombre de Usuario (Alias Único) <span className="text-yellow-400">*</span>
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-500">
@@ -217,7 +210,7 @@ export const Register: React.FC<RegisterProps> = ({
                     className={`w-full pl-10 pr-4 py-2.5 bg-[#06070a] border rounded-xl text-neutral-100 placeholder-neutral-600 text-sm focus:outline-none transition font-mono ${
                       usernameError
                         ? 'border-rose-500 focus:border-rose-400'
-                        : 'border-white/[0.1] focus:border-cyan-400'
+                        : 'border-white/[0.1] focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/30'
                     }`}
                   />
                 </div>
@@ -231,7 +224,7 @@ export const Register: React.FC<RegisterProps> = ({
               {/* Password Input */}
               <div>
                 <label className="block text-xs font-bold text-neutral-300 mb-1.5">
-                  Contraseña <span className="text-cyan-400">*</span>
+                  Contraseña <span className="text-yellow-400">*</span>
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-500">
@@ -244,7 +237,7 @@ export const Register: React.FC<RegisterProps> = ({
                     placeholder="Mínimo 4 caracteres"
                     autoComplete="new-password"
                     required
-                    className="w-full pl-10 pr-10 py-2.5 bg-[#06070a] border border-white/[0.1] focus:border-cyan-400 rounded-xl text-neutral-100 placeholder-neutral-600 text-sm focus:outline-none transition"
+                    className="w-full pl-10 pr-10 py-2.5 bg-[#06070a] border border-white/[0.1] focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/30 rounded-xl text-neutral-100 placeholder-neutral-600 text-sm focus:outline-none transition"
                   />
                   <button
                     type="button"
@@ -259,7 +252,7 @@ export const Register: React.FC<RegisterProps> = ({
               {/* Confirm Password Input */}
               <div>
                 <label className="block text-xs font-bold text-neutral-300 mb-1.5">
-                  Confirmar Contraseña <span className="text-cyan-400">*</span>
+                  Confirmar Contraseña <span className="text-yellow-400">*</span>
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-neutral-500">
@@ -272,7 +265,7 @@ export const Register: React.FC<RegisterProps> = ({
                     placeholder="Repite tu contraseña"
                     autoComplete="new-password"
                     required
-                    className="w-full pl-10 pr-4 py-2.5 bg-[#06070a] border border-white/[0.1] focus:border-cyan-400 rounded-xl text-neutral-100 placeholder-neutral-600 text-sm focus:outline-none transition"
+                    className="w-full pl-10 pr-4 py-2.5 bg-[#06070a] border border-white/[0.1] focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/30 rounded-xl text-neutral-100 placeholder-neutral-600 text-sm focus:outline-none transition"
                   />
                 </div>
               </div>
@@ -283,7 +276,7 @@ export const Register: React.FC<RegisterProps> = ({
           {/* STEP 2: Selección de Avatar 3D */}
           <div className="space-y-4">
             <div className="flex items-center gap-2 pb-2 border-b border-white/[0.08]">
-              <div className="w-6 h-6 rounded-lg bg-cyan-500/20 text-cyan-400 flex items-center justify-center font-bold text-xs">
+              <div className="w-6 h-6 rounded-lg bg-blue-500 text-white flex items-center justify-center font-black text-xs shadow-sm shadow-blue-500/30">
                 2
               </div>
               <h2 className="text-sm font-bold text-white uppercase tracking-wider">
@@ -307,16 +300,16 @@ export const Register: React.FC<RegisterProps> = ({
                       onClick={() => setSelectedAvatarId(avatar.id)}
                       className={`p-2.5 rounded-2xl border text-left flex flex-col justify-between transition-all cursor-pointer ${
                         isSelected
-                          ? 'bg-cyan-950/60 border-cyan-400 shadow-lg shadow-cyan-500/20 scale-[1.02]'
+                          ? 'bg-yellow-950/40 border-yellow-400 ring-2 ring-yellow-400/40 shadow-lg shadow-yellow-500/20 scale-[1.02]'
                           : 'bg-black/50 border-white/[0.08] hover:border-white/[0.2] hover:bg-black/70'
                       }`}
                     >
                       <div className="flex items-center justify-between mb-1.5">
-                        <span className="text-[10px] uppercase font-bold text-cyan-300 truncate font-mono">
+                        <span className="text-[10px] uppercase font-bold text-yellow-300 truncate font-mono">
                           {avatar.badge || '3D'}
                         </span>
                         {isSelected && (
-                          <CheckCircle2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                          <CheckCircle2 className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
                         )}
                       </div>
 
@@ -346,7 +339,7 @@ export const Register: React.FC<RegisterProps> = ({
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-300 hover:to-blue-400 text-slate-950 font-black text-sm tracking-wide shadow-xl shadow-cyan-400/20 flex items-center justify-center gap-2 transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-50"
+              className="w-full py-3.5 px-6 rounded-2xl bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-400 hover:from-yellow-300 hover:to-amber-200 text-slate-950 font-black text-sm tracking-wide shadow-xl shadow-yellow-500/25 flex items-center justify-center gap-2 transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-50"
             >
               {isLoading ? (
                 <span className="inline-block w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
@@ -364,7 +357,7 @@ export const Register: React.FC<RegisterProps> = ({
               <button
                 type="button"
                 onClick={onNavigateLogin}
-                className="text-cyan-400 hover:text-cyan-300 font-bold underline cursor-pointer"
+                className="text-yellow-400 hover:text-yellow-300 font-bold underline cursor-pointer"
               >
                 Inicia sesión aquí
               </button>

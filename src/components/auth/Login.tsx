@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, User, Eye, EyeOff, ArrowRight, AlertCircle, ShieldCheck, ArrowLeft, X, ChevronDown } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, ArrowRight, AlertCircle, ArrowLeft, X } from 'lucide-react';
 import { dbServiceSingleton } from '../../services/dbService';
 import { indexedDbService } from '../../services/db/indexedDbService';
 import { LegalDisclaimerModal } from '../common/LegalDisclaimerModal';
@@ -17,62 +17,6 @@ interface LoginProps {
   onOpenRegister?: () => void;
 }
 
-const PRIVACY_WORDS: Array<{ text: string; isBold?: boolean }> = [
-  { text: 'El' },
-  { text: 'rastreo' },
-  { text: 'facial' },
-  { text: 'opera' },
-  { text: '100%', isBold: true },
-  { text: 'en', isBold: true },
-  { text: 'el', isBold: true },
-  { text: 'dispositivo', isBold: true },
-  { text: 'del', isBold: true },
-  { text: 'usuario', isBold: true },
-  { text: '(lado', isBold: true },
-  { text: 'cliente)', isBold: true },
-  { text: 'y' },
-  { text: 'transmite' },
-  { text: 'únicamente' },
-  { text: 'un' },
-  { text: 'flujo' },
-  { text: 'ultraligero' },
-  { text: 'de' },
-  { text: 'blendshapes' },
-  { text: 'numéricos' },
-  { text: '(pocos', isBold: true },
-  { text: 'cientos', isBold: true },
-  { text: 'de', isBold: true },
-  { text: 'bytes', isBold: true },
-  { text: 'por', isBold: true },
-  { text: 'fotograma)', isBold: true },
-  { text: 'en' },
-  { text: 'lugar' },
-  { text: 'de' },
-  { text: 'video.' },
-  { text: 'Cada' },
-  { text: 'espectador' },
-  { text: 'renderiza' },
-  { text: 'el' },
-  { text: 'avatar' },
-  { text: '3D' },
-  { text: 'de' },
-  { text: 'forma' },
-  { text: 'local,' },
-  { text: 'garantizando' },
-  { text: 'privacidad', isBold: true },
-  { text: 'total,', isBold: true },
-  { text: 'optimizando' },
-  { text: 'el' },
-  { text: 'ancho' },
-  { text: 'de' },
-  { text: 'banda' },
-  { text: 'y' },
-  { text: 'eliminando' },
-  { text: 'costos' },
-  { text: 'de' },
-  { text: 'servidor.' },
-];
-
 export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -81,7 +25,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isLegalOpen, setIsLegalOpen] = useState(false);
   const [showLoginForm, setShowLoginForm] = useState(false);
-  const [isPrivacyExpanded, setIsPrivacyExpanded] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -164,7 +107,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
                 <button
                   type="button"
                   onClick={() => setShowLoginForm(false)}
-                  className="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-cyan-300 font-semibold transition cursor-pointer"
+                  className="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-yellow-400 font-semibold transition cursor-pointer"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   <span>Volver al Club</span>
@@ -181,15 +124,9 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
 
               {/* Header Branding */}
               <div className="text-center mb-6">
-                <span className="text-[11px] font-bold uppercase tracking-widest text-cyan-400 font-mono">
-                  * * * * *
-                </span>
-                <h2 className="text-2xl sm:text-3xl font-black tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-neutral-100 via-neutral-200 to-neutral-400 mt-1">
+                <h2 className="text-2xl sm:text-3xl font-black tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-neutral-100 via-yellow-100 to-amber-200">
                   Acceso al Salón
                 </h2>
-                <p className="text-xs text-neutral-400 mt-1 font-medium">
-                  Presidentes Muertos • Avatares 3D biomiméticos
-                </p>
               </div>
 
               {/* Error Alert */}
@@ -215,7 +152,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
                       onChange={(e) => setUsername(e.target.value)}
                       placeholder="Tu nombre de usuario o alias"
                       autoComplete="username"
-                      className="w-full pl-10 pr-4 py-2.5 bg-[#070709] border border-white/[0.08] focus:border-cyan-400 rounded-xl text-neutral-100 placeholder-neutral-600 text-sm focus:outline-none transition"
+                      className="w-full pl-10 pr-4 py-2.5 bg-[#070709] border border-white/[0.08] focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/30 rounded-xl text-neutral-100 placeholder-neutral-600 text-sm focus:outline-none transition"
                       required
                     />
                   </div>
@@ -235,7 +172,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Ingresa tu contraseña"
                       autoComplete="current-password"
-                      className="w-full pl-10 pr-10 py-2.5 bg-[#070709] border border-white/[0.08] focus:border-cyan-400 rounded-xl text-neutral-100 placeholder-neutral-600 text-sm focus:outline-none transition"
+                      className="w-full pl-10 pr-10 py-2.5 bg-[#070709] border border-white/[0.08] focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400/30 rounded-xl text-neutral-100 placeholder-neutral-600 text-sm focus:outline-none transition"
                       required
                     />
                     <button
@@ -252,7 +189,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full mt-3 py-3 px-4 rounded-xl bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-black text-sm tracking-wide shadow-lg shadow-cyan-400/20 flex items-center justify-center gap-2 transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-50"
+                  className="w-full mt-3 py-3 px-4 rounded-xl bg-gradient-to-r from-yellow-400 via-amber-300 to-yellow-400 hover:from-yellow-300 hover:to-amber-200 text-slate-950 font-black text-sm tracking-wide shadow-lg shadow-yellow-500/25 flex items-center justify-center gap-2 transition hover:scale-[1.01] active:scale-[0.99] cursor-pointer disabled:opacity-50"
                 >
                   {isLoading ? (
                     <span className="inline-block w-4 h-4 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
@@ -274,7 +211,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
                         setShowLoginForm(false);
                         onOpenRegister();
                       }}
-                      className="text-cyan-400 hover:text-cyan-300 font-bold underline cursor-pointer"
+                      className="text-yellow-400 hover:text-yellow-300 font-bold underline cursor-pointer"
                     >
                       Crear nuevo perfil aquí
                     </button>
@@ -282,77 +219,6 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
                 )}
               </form>
 
-              {/* Footer Legal & Apache License Notice */}
-              <div className="pt-5 text-center text-[10px] text-neutral-500 flex flex-col items-center gap-1 border-t border-white/[0.06] mt-5">
-                <span>
-                  Licenciado bajo la <strong>Apache License 2.0</strong> &ldquo;TAL CUAL&rdquo; sin garantías expresas o implícitas.
-                </span>
-                <div className="flex items-center gap-2 text-neutral-400">
-                  <span>Origen: <strong className="text-neutral-300">XStreamX</strong></span>
-                  <span>•</span>
-                  <button
-                    type="button"
-                    onClick={() => setIsLegalOpen(true)}
-                    className="text-cyan-400/80 hover:text-cyan-300 underline cursor-pointer"
-                  >
-                    Ver Licencia Apache 2.0 y Términos Legales
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            {/* Privacy-by-Design Architecture Legal Card (Colapsable) */}
-            <div className="w-full mt-3 rounded-3xl bg-[#0d0d12]/90 border border-emerald-500/20 backdrop-blur-2xl text-xs text-neutral-300 shadow-xl overflow-hidden transition-all duration-300">
-              {/* Encabezado Clicable para Expandir / Colapsar */}
-              <button
-                type="button"
-                onClick={() => setIsPrivacyExpanded((prev) => !prev)}
-                className="w-full p-3.5 sm:p-4 flex items-center justify-between text-left hover:bg-emerald-500/[0.04] transition cursor-pointer select-none"
-              >
-                <div className="flex items-center gap-2 text-emerald-400 font-bold text-[11px] uppercase tracking-wider">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>Garantía de Privacidad y Flujo</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="px-2 py-0.5 rounded-full bg-cyan-950/80 border border-cyan-500/40 text-[9px] font-mono font-black text-cyan-300 uppercase">
-                    Apache 2.0
-                  </span>
-                  <ChevronDown
-                    className={`w-4 h-4 text-neutral-400 transition-transform duration-300 ${isPrivacyExpanded ? 'rotate-180 text-emerald-300' : ''
-                      }`}
-                  />
-                </div>
-              </button>
-
-              {/* Contenido Expandible Animado Palabra por Palabra */}
-              {isPrivacyExpanded && (
-                <div className="px-3.5 sm:px-4 pb-3.5 sm:pb-4 pt-1.5 space-y-2.5 border-t border-white/[0.06] animate-in fade-in duration-200">
-                  <p className="text-[11px] text-neutral-300/90 leading-relaxed flex flex-wrap items-baseline gap-x-1 gap-y-0.5">
-                    {PRIVACY_WORDS.map((item, idx) => (
-                      <span
-                        key={idx}
-                        className="inline-block animate-word-reveal"
-                        style={{ animationDelay: `${idx * 22}ms` }}
-                      >
-                        {item.isBold ? (
-                          <strong className="text-white font-bold">{item.text}</strong>
-                        ) : (
-                          <span>{item.text}</span>
-                        )}
-                      </span>
-                    ))}
-                  </p>
-                  <div className="pt-1.5 flex items-center justify-end text-[10px] text-neutral-400 border-t border-white/[0.04]">
-                    <button
-                      type="button"
-                      onClick={() => setIsLegalOpen(true)}
-                      className="text-cyan-400 hover:text-cyan-300 underline font-semibold cursor-pointer"
-                    >
-                      Detalles Legales
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>

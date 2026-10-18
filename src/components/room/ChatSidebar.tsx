@@ -42,9 +42,9 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       {/* Top Header */}
       <div className="h-16 px-4 border-b border-slate-800 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-4 h-4 text-cyan-400" />
+          <Sparkles className="w-4 h-4 text-yellow-400" />
           <h3 className="text-sm font-bold text-white">Chat del Espacio</h3>
-          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">
+          <span className="text-[10px] px-1.5 py-0.5 rounded bg-[#121622] text-yellow-300 border border-yellow-500/20 font-mono">
             En vivo
           </span>
         </div>
@@ -92,7 +92,7 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
                 <div
                   className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed break-words ${
                     isMe
-                      ? 'bg-gradient-to-r from-cyan-600 to-indigo-600 text-white rounded-br-xs'
+                      ? 'bg-blue-600 text-white rounded-br-xs shadow-[0_0_10px_rgba(59,130,246,0.25)]'
                       : 'bg-slate-800 text-slate-200 border border-slate-700/80 rounded-bl-xs'
                   }`}
                 >
@@ -123,21 +123,21 @@ export const ChatSidebar: React.FC<ChatSidebarProps> = ({
       </div>
 
       {/* Chat Input */}
-      <form onSubmit={handleSend} className="p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-slate-800 flex items-center gap-2 bg-slate-950/80">
+      <form onSubmit={handleSend} className="p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-slate-800 flex items-center gap-2 bg-[#080a10]">
         <input
           type="text"
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           placeholder="Escribe un mensaje..."
           maxLength={200}
-          className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition"
+          className="flex-1 bg-[#10141f] border border-white/[0.1] rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 transition"
         />
         <button
           type="submit"
           disabled={!inputText.trim()}
-          className="p-2.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 disabled:hover:bg-cyan-500 text-slate-950 transition active:scale-95 shadow-md"
+          className="p-2.5 rounded-xl bg-gradient-to-r from-yellow-400 to-amber-500 hover:brightness-110 disabled:opacity-40 text-black font-bold transition active:scale-95 shadow-[0_0_12px_rgba(250,204,21,0.3)] cursor-pointer"
         >
-          <Send className="w-4 h-4" />
+          <Send className="w-4 h-4 text-black" />
         </button>
       </form>
     </div>

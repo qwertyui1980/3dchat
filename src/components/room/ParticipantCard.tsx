@@ -107,11 +107,11 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
         aspectRatio: '1 / 1',
       }}
       className={`group relative shrink-0 rounded-2xl bg-[#08080c] border transition-[shadow,border-color] duration-200 overflow-hidden shadow-2xl select-none ${
-        isDragging ? 'z-40 ring-2 ring-cyan-400 shadow-cyan-950/60 cursor-grabbing' : 'cursor-grab'
+        isDragging ? 'z-40 ring-2 ring-yellow-400 shadow-yellow-950/60 cursor-grabbing' : 'cursor-grab'
       } ${
         isFocusSpeaker
-          ? 'border-cyan-500/80 ring-1 ring-cyan-500/30'
-          : 'border-white/[0.08] hover:border-white/[0.20]'
+          ? 'border-yellow-400 ring-2 ring-yellow-400/40 shadow-lg shadow-yellow-500/20'
+          : 'border-white/[0.08] hover:border-blue-500/40'
       }`}
     >
       {/* Avatar Canvas Rendering */}
@@ -133,21 +133,21 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
           <div className="flex items-center gap-1.5 shrink-0">
             {activeMode === 'gestures' ? (
               <span
-                className="px-1.5 py-0.5 rounded-md bg-emerald-950/80 text-emerald-300 border border-emerald-800/40 text-[10px] font-mono"
+                className="px-1.5 py-0.5 rounded-md bg-blue-950/80 text-blue-300 border border-blue-500/40 text-[10px] font-mono shadow-[0_0_8px_rgba(59,130,246,0.3)]"
                 title="Modo Reconocimiento de Gestos • Visión 100% Cámara"
               >
                 Gestos
               </span>
             ) : activeMode === 'lipsync' ? (
               <span
-                className="px-1.5 py-0.5 rounded-md bg-amber-950/80 text-amber-300 border border-amber-800/40 text-[10px] font-mono"
+                className="px-1.5 py-0.5 rounded-md bg-rose-950/80 text-rose-300 border border-rose-500/40 text-[10px] font-mono shadow-[0_0_8px_rgba(244,63,94,0.3)]"
                 title="Modo Lip Sync • Máscara estática y boca por audio"
               >
                 Lip Sync
               </span>
             ) : (
               <span
-                className="px-1.5 py-0.5 rounded-md bg-cyan-950/80 text-cyan-300 border border-cyan-800/40 text-[10px] font-mono"
+                className="px-1.5 py-0.5 rounded-md bg-yellow-950/80 text-yellow-300 border border-yellow-500/40 text-[10px] font-mono shadow-[0_0_8px_rgba(250,204,21,0.3)]"
                 title="Modo Parafernalia • Ritmo de voz, gestos y zoom dinámico"
               >
                 Parafernalia
@@ -165,12 +165,12 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
             <span
               className={`w-2 h-2 rounded-full shrink-0 ${
                 user.isMuted
-                  ? 'bg-rose-500'
+                  ? 'bg-rose-500 shadow-[0_0_6px_#f43f5e]'
                   : isSpeaking
-                  ? 'bg-cyan-400 animate-ping'
+                  ? 'bg-yellow-400 animate-ping shadow-[0_0_6px_#ffe600]'
                   : features.isFaceDetected
-                  ? 'bg-emerald-400'
-                  : 'bg-neutral-500'
+                  ? 'bg-blue-400 shadow-[0_0_6px_#60a5fa]'
+                  : 'bg-neutral-600'
               }`}
             />
             <span className="font-semibold truncate text-[11px] sm:text-xs">{user.name}</span>
@@ -225,17 +225,7 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
             <AudioWaveform
               volume={features.audioVolume || 0}
               isMuted={user.isMuted}
-              color={
-                user.isMuted
-                  ? '#f43f5e'
-                  : user.avatarId === 'face_cap'
-                  ? '#38bdf8'
-                  : user.avatarId === 'bot_9000'
-                  ? '#10b981'
-                  : user.avatarId === 'fox_sensei'
-                  ? '#f97316'
-                  : '#22d3ee'
-              }
+              color={user.isMuted ? '#f43f5e' : '#ffe600'}
               width={68}
               height={22}
             />

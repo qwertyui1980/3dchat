@@ -135,8 +135,8 @@ export const CallControls: React.FC<CallControlsProps> = ({
             !isAdmin && isAllMuted
               ? 'bg-neutral-900/90 border-neutral-800 text-neutral-500 cursor-not-allowed opacity-60'
               : isMicActive
-              ? 'bg-[#121218] hover:bg-[#181822] text-neutral-100 border-white/[0.08] cursor-pointer'
-              : 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-300 border-rose-800/60 cursor-pointer'
+              ? 'bg-blue-600/90 hover:bg-blue-500 text-white border-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.35)] cursor-pointer'
+              : 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-300 border-rose-800/60 shadow-[0_0_10px_rgba(244,63,94,0.3)] cursor-pointer'
           }`}
           title={
             !isAdmin && isAllMuted
@@ -146,7 +146,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
               : 'Activar mi micrófono'
           }
         >
-          {isMicActive ? <Mic className="w-5 h-5" /> : <MicOff className="w-5 h-5 text-rose-400" />}
+          {isMicActive ? <Mic className="w-5 h-5 text-white" /> : <MicOff className="w-5 h-5 text-rose-400" />}
           {!isAdmin && isAllMuted && (
             <span
               className="absolute -top-1 -right-1 w-4 h-4 bg-rose-600 rounded-full flex items-center justify-center text-white shadow-md"
@@ -163,12 +163,12 @@ export const CallControls: React.FC<CallControlsProps> = ({
           onClick={onToggleCamera}
           className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-sm cursor-pointer ${
             isCameraActive
-              ? 'bg-[#121218] hover:bg-[#181822] text-neutral-100 border-white/[0.08]'
-              : 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-300 border-rose-800/60'
+              ? 'bg-blue-600/90 hover:bg-blue-500 text-white border-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.35)]'
+              : 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-300 border-rose-800/60 shadow-[0_0_10px_rgba(244,63,94,0.3)]'
           }`}
           title={isCameraActive ? 'Pausar captura de rostro' : 'Activar captura de rostro'}
         >
-          {isCameraActive ? <Video className="w-5 h-5" /> : <VideoOff className="w-5 h-5 text-rose-400" />}
+          {isCameraActive ? <Video className="w-5 h-5 text-white" /> : <VideoOff className="w-5 h-5 text-rose-400" />}
         </button>
 
         {/* Dynamic Mode Quick Switcher Popover */}
@@ -178,21 +178,21 @@ export const CallControls: React.FC<CallControlsProps> = ({
             onClick={() => setShowModePicker(!showModePicker)}
             className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-sm cursor-pointer flex items-center gap-1.5 ${
               showModePicker
-                ? 'bg-[#20202c] text-white border-white/[0.22]'
+                ? 'bg-[#181824] text-white border-yellow-400/80 shadow-[0_0_12px_rgba(250,204,21,0.35)]'
                 : normalizeTrackingMode(trackingMode) === 'gestures'
-                ? 'bg-emerald-950/70 hover:bg-emerald-900/80 text-emerald-300 border-emerald-500/40'
+                ? 'bg-blue-950/80 hover:bg-blue-900/80 text-blue-300 border-blue-500/50 shadow-[0_0_10px_rgba(59,130,246,0.3)]'
                 : normalizeTrackingMode(trackingMode) === 'lipsync'
-                ? 'bg-amber-950/70 hover:bg-amber-900/80 text-amber-300 border-amber-500/40'
-                : 'bg-cyan-950/70 hover:bg-cyan-900/80 text-cyan-300 border-cyan-500/40'
+                ? 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-300 border-rose-500/50 shadow-[0_0_10px_rgba(244,63,94,0.3)]'
+                : 'bg-yellow-950/80 hover:bg-yellow-900/80 text-yellow-300 border-yellow-500/50 shadow-[0_0_10px_rgba(250,204,21,0.3)]'
             }`}
             title="Cambiar Modo Dinámico: Parafernalia / Gestos / Lip Sync"
           >
             {normalizeTrackingMode(trackingMode) === 'gestures' ? (
-              <ScanFace className="w-5 h-5 text-emerald-400" />
+              <ScanFace className="w-5 h-5 text-blue-400" />
             ) : normalizeTrackingMode(trackingMode) === 'lipsync' ? (
-              <Radio className="w-5 h-5 text-amber-400" />
+              <Radio className="w-5 h-5 text-rose-400" />
             ) : (
-              <Sparkles className="w-5 h-5 text-cyan-400" />
+              <Sparkles className="w-5 h-5 text-yellow-400" />
             )}
             <span className="hidden xl:inline text-xs font-semibold">
               {normalizeTrackingMode(trackingMode) === 'gestures' ? 'Gestos' : normalizeTrackingMode(trackingMode) === 'lipsync' ? 'Lip Sync' : 'Parafernalia'}
@@ -202,7 +202,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
           {showModePicker && (
             <>
               <div className="fixed inset-0 z-20" onClick={() => setShowModePicker(false)} />
-              <div className="absolute -translate-x-1/2 left-1/2 bottom-full mb-3 w-[calc(100vw-32px)] max-w-xs rounded-2xl bg-[#0e0e14] border border-white/[0.1] p-3 shadow-2xl z-30 space-y-2">
+              <div className="absolute -translate-x-1/2 left-1/2 bottom-full mb-3 w-[calc(100vw-32px)] max-w-xs rounded-2xl bg-[#0a0d14] border border-yellow-500/30 p-3 shadow-2xl z-30 space-y-2">
                 <div className="text-xs font-bold text-neutral-300 px-1 flex items-center justify-between">
                   <span>Modos de Animación</span>
                 </div>
@@ -220,8 +220,8 @@ export const CallControls: React.FC<CallControlsProps> = ({
                         }}
                         className={`w-full p-2.5 rounded-xl border text-left transition flex items-center justify-between gap-2.5 cursor-pointer ${
                           isSelected
-                            ? 'bg-cyan-950/80 border-cyan-400 text-white shadow-md'
-                            : 'bg-[#14141c] border-white/[0.06] hover:border-white/[0.12] text-neutral-300'
+                            ? 'bg-yellow-950/60 border-yellow-400 text-yellow-200 shadow-md ring-1 ring-yellow-400/30'
+                            : 'bg-[#121622] border-white/[0.06] hover:border-white/[0.12] text-neutral-300'
                         }`}
                       >
                         <div className="flex items-center gap-2.5">
@@ -246,7 +246,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
                             <p className="text-[10px] text-neutral-400 leading-tight">{cfg.sublabel}</p>
                           </div>
                         </div>
-                        {isSelected && <Check className="w-4 h-4 text-cyan-400 shrink-0" />}
+                        {isSelected && <Check className="w-4 h-4 text-yellow-400 shrink-0" />}
                       </button>
                     );
                   })}

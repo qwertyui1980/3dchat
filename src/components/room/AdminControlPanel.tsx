@@ -65,7 +65,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
   // Upload Form State
   const [modelName, setModelName] = useState('');
   const [modelCategory, setModelCategory] = useState('Personalizados');
-  const [modelThemeColor, setModelThemeColor] = useState('#06b6d4');
+  const [modelThemeColor, setModelThemeColor] = useState('#ffe600');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedThumbPreview, setSelectedThumbPreview] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -226,7 +226,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
             onClick={() => setActiveTab('models')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition border-b-2 cursor-pointer ${
               activeTab === 'models'
-                ? 'border-cyan-400 text-cyan-300 bg-cyan-500/10'
+                ? 'border-yellow-400 text-yellow-300 bg-yellow-500/10'
                 : 'border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.03]'
             }`}
           >
@@ -239,7 +239,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
             onClick={() => setActiveTab('room')}
             className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition border-b-2 cursor-pointer ${
               activeTab === 'room'
-                ? 'border-amber-400 text-amber-300 bg-amber-500/10'
+                ? 'border-blue-400 text-blue-300 bg-blue-500/10'
                 : 'border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.03]'
             }`}
           >
@@ -253,17 +253,17 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
           {activeTab === 'models' && (
             <div className="space-y-6">
               {/* 0. 3D Masks Banner */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-cyan-950/60 via-indigo-950/60 to-purple-950/60 border border-cyan-500/40 shadow-xl shadow-cyan-950/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-yellow-950/40 via-blue-950/30 to-[#0e1220] border border-yellow-500/40 shadow-xl shadow-yellow-950/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-start sm:items-center gap-3.5">
-                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-500 via-indigo-500 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-lg shadow-cyan-500/30">
-                    <Sparkles className="w-6 h-6" />
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-yellow-400 to-amber-500 text-black flex items-center justify-center shrink-0 shadow-lg shadow-yellow-500/25">
+                    <Sparkles className="w-6 h-6 text-black" />
                   </div>
                   <div>
                     <div className="flex items-center gap-2">
                       <h4 className="text-sm sm:text-base font-black text-white tracking-wide">
                         3D Masks
                       </h4>
-                      <span className="px-2 py-0.5 rounded-full bg-cyan-400/20 text-cyan-300 border border-cyan-400/40 text-[9px] font-black uppercase">
+                      <span className="px-2 py-0.5 rounded-full bg-yellow-400/20 text-yellow-300 border border-yellow-400/40 text-[9px] font-black uppercase font-mono">
                         NUEVO
                       </span>
                     </div>
@@ -282,16 +282,16 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                       setIsFaceStudioModalOpen(true);
                     }
                   }}
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-white font-black text-xs tracking-wider shadow-lg shadow-cyan-500/25 flex items-center justify-center gap-2 transition hover:scale-[1.02] active:scale-[0.98] shrink-0 cursor-pointer"
+                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl bg-gradient-to-r from-yellow-400 to-amber-500 hover:brightness-110 text-black font-black text-xs tracking-wider shadow-lg shadow-yellow-500/25 flex items-center justify-center gap-2 transition hover:scale-[1.02] active:scale-[0.98] shrink-0 cursor-pointer"
                 >
-                  <Sparkles className="w-4 h-4" />
+                  <Sparkles className="w-4 h-4 text-black" />
                   <span>ABRIR ESTUDIO 3D</span>
                 </button>
               </div>
 
               {/* 1. Upload Model File Section */}
-              <div className="p-4 sm:p-5 rounded-2xl bg-[#0f1426] border border-cyan-500/20 shadow-lg">
-                <div className="flex items-center gap-2 text-cyan-300 font-bold text-sm mb-3">
+              <div className="p-4 sm:p-5 rounded-2xl bg-[#0b0e18] border border-yellow-500/20 shadow-lg">
+                <div className="flex items-center gap-2 text-yellow-300 font-bold text-sm mb-3">
                   <Upload className="w-4 h-4" />
                   <span>Subir Archivo de Modelo 3D (.glb / .gltf)</span>
                 </div>
@@ -307,7 +307,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                         value={modelName}
                         onChange={(e) => setModelName(e.target.value)}
                         placeholder="Ej. Cyber Ninja 3D, Robot Alpha..."
-                        className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-cyan-400 transition"
+                        className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-yellow-400 transition"
                       />
                     </div>
 
@@ -318,7 +318,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                       <select
                         value={modelCategory}
                         onChange={(e) => setModelCategory(e.target.value)}
-                        className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-cyan-400 transition cursor-pointer"
+                        className="w-full px-3 py-2 rounded-xl bg-black/40 border border-white/10 text-white text-xs focus:outline-none focus:border-yellow-400 transition cursor-pointer"
                       >
                         <option value="Personalizados">Personalizados</option>
                         <option value="Character">Character</option>
@@ -347,7 +347,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                       />
                       <label
                         htmlFor="admin-model-file-input"
-                        className="flex items-center justify-center gap-2 p-2.5 rounded-xl border border-dashed border-cyan-500/40 hover:border-cyan-400 bg-cyan-950/20 hover:bg-cyan-950/30 text-cyan-300 text-xs font-bold cursor-pointer transition truncate"
+                        className="flex items-center justify-center gap-2 p-2.5 rounded-xl border border-dashed border-yellow-500/40 hover:border-yellow-400 bg-yellow-950/20 hover:bg-yellow-950/30 text-yellow-300 text-xs font-bold cursor-pointer transition truncate"
                       >
                         <FileBox className="w-4 h-4 shrink-0" />
                         <span className="truncate">
@@ -370,12 +370,12 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                       />
                       <label
                         htmlFor="admin-thumb-file-input"
-                        className="flex items-center justify-center gap-2 p-2.5 rounded-xl border border-dashed border-indigo-500/40 hover:border-indigo-400 bg-indigo-950/20 hover:bg-indigo-950/30 text-indigo-300 text-xs font-bold cursor-pointer transition truncate"
+                        className="flex items-center justify-center gap-2 p-2.5 rounded-xl border border-dashed border-blue-500/40 hover:border-blue-400 bg-blue-950/20 hover:bg-blue-950/30 text-blue-300 text-xs font-bold cursor-pointer transition truncate"
                       >
                         {selectedThumbPreview ? (
                           <div className="flex items-center gap-2">
                             <img src={selectedThumbPreview} alt="Preview" className="w-5 h-5 rounded object-cover" />
-                            <span className="text-emerald-400 text-[11px]">Imagen cargada ✓</span>
+                            <span className="text-yellow-400 text-[11px]">Imagen cargada ✓</span>
                           </div>
                         ) : (
                           <>
@@ -391,13 +391,13 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                     <button
                       type="submit"
                       disabled={isUploading || !selectedFile}
-                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:opacity-50 text-white font-bold text-xs transition active:scale-95 shadow-md shadow-cyan-900/30 cursor-pointer flex items-center gap-2"
+                      className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-yellow-400 to-amber-500 hover:brightness-110 disabled:opacity-50 text-black font-bold text-xs transition active:scale-95 shadow-md shadow-yellow-900/30 cursor-pointer flex items-center gap-2"
                     >
                       {isUploading ? (
                         <span>Procesando modelo...</span>
                       ) : (
                         <>
-                          <Plus className="w-4 h-4" />
+                          <Plus className="w-4 h-4 text-black" />
                           <span>Guardar Modelo en Base de Datos</span>
                         </>
                       )}
@@ -433,7 +433,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                   <button
                     type="button"
                     onClick={() => avatarModelServiceSingleton.restoreDefaultModels()}
-                    className="text-[11px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1 cursor-pointer"
+                    className="text-[11px] text-yellow-400 hover:text-yellow-300 flex items-center gap-1 cursor-pointer"
                     title="Restaurar lista de modelos predeterminados"
                   >
                     <RotateCcw className="w-3 h-3" />
@@ -450,7 +450,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                         className={`flex items-center justify-between p-3 rounded-xl border transition ${
                           isDisabled
                             ? 'bg-black/30 border-white/[0.04] opacity-60'
-                            : 'bg-[#0f1322] border-white/[0.08] hover:border-cyan-500/40'
+                            : 'bg-[#0f1322] border-white/[0.08] hover:border-yellow-500/40'
                         }`}
                       >
                         <div className="flex items-center gap-3 min-w-0 flex-1 mr-2">
@@ -477,7 +477,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                             {/* Botón para cambiar o subir imagen de miniatura personalizada */}
                             <label
                               htmlFor={`change-thumb-${av.id}`}
-                              className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-cyan-600 hover:bg-cyan-500 border border-slate-950 text-white flex items-center justify-center cursor-pointer shadow opacity-0 group-hover/thumb:opacity-100 transition z-10"
+                              className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-blue-600 hover:bg-blue-500 border border-slate-950 text-white flex items-center justify-center cursor-pointer shadow opacity-0 group-hover/thumb:opacity-100 transition z-10"
                               title="Cambiar miniatura/imagen del modelo"
                             >
                               <Camera className="w-2.5 h-2.5" />
@@ -502,13 +502,13 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                                   if (e.key === 'Escape') setEditingAvatarId(null);
                                 }}
                                 autoFocus
-                                className="bg-black/60 border border-cyan-400 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-cyan-400 w-full font-bold"
+                                className="bg-black/60 border border-yellow-400 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:ring-1 focus:ring-yellow-400 w-full font-bold"
                                 placeholder="Nombre del modelo..."
                               />
                               <button
                                 type="button"
                                 onClick={() => handleSaveRename(av.id)}
-                                className="p-1 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition cursor-pointer shrink-0"
+                                className="p-1 rounded-lg bg-yellow-400 hover:bg-yellow-300 text-black transition cursor-pointer shrink-0 font-bold"
                                 title="Guardar nombre"
                               >
                                 <Check className="w-3.5 h-3.5" />
@@ -527,7 +527,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                               <p className="text-xs font-bold text-white truncate flex items-center gap-1.5">
                                 <span>{av.name}</span>
                                 {av.isCustom && (
-                                  <span className="px-1.5 py-0.2 rounded bg-cyan-500/20 text-cyan-300 text-[9px] font-mono">
+                                  <span className="px-1.5 py-0.2 rounded bg-yellow-500/20 text-yellow-300 text-[9px] font-mono">
                                     CUSTOM
                                   </span>
                                 )}
@@ -545,7 +545,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                           <button
                             type="button"
                             onClick={() => handleStartRename(av)}
-                            className="p-1.5 rounded-lg bg-cyan-950/40 hover:bg-cyan-900 border border-cyan-500/30 hover:border-cyan-400 text-cyan-300 transition active:scale-90 cursor-pointer"
+                            className="p-1.5 rounded-lg bg-yellow-950/40 hover:bg-yellow-900 border border-yellow-500/30 hover:border-yellow-400 text-yellow-300 transition active:scale-90 cursor-pointer"
                             title="Cambiar nombre de este modelo"
                           >
                             <Pencil className="w-3.5 h-3.5" />
@@ -558,7 +558,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                             className={`px-2 py-1 rounded-lg border text-[11px] font-semibold transition flex items-center gap-1 cursor-pointer ${
                               isDisabled
                                 ? 'bg-neutral-900 border-neutral-700 text-neutral-400 hover:text-neutral-200'
-                                : 'bg-emerald-950/60 border-emerald-500/40 text-emerald-300'
+                                : 'bg-blue-950/60 border-blue-500/40 text-blue-300 shadow-[0_0_8px_rgba(59,130,246,0.2)]'
                             }`}
                             title={isDisabled ? 'Activar este modelo' : 'Desactivar este modelo'}
                           >
@@ -569,7 +569,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                               </>
                             ) : (
                               <>
-                                <ToggleRight className="w-3.5 h-3.5 text-emerald-400" />
+                                <ToggleRight className="w-3.5 h-3.5 text-blue-400" />
                                 <span>Activo</span>
                               </>
                             )}
@@ -583,7 +583,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                                 setEditingAvatarForStudio(av);
                                 setIsFaceStudioModalOpen(true);
                               }}
-                              className="p-1.5 rounded-lg bg-emerald-950/40 hover:bg-emerald-900 border border-emerald-500/30 hover:border-emerald-400 text-emerald-300 transition active:scale-90 cursor-pointer"
+                              className="p-1.5 rounded-lg bg-blue-950/40 hover:bg-blue-900 border border-blue-500/30 hover:border-blue-400 text-blue-300 transition active:scale-90 cursor-pointer"
                               title="Volver a editar este modelo en 3D Masks Studio"
                             >
                               <Sliders className="w-3.5 h-3.5" />

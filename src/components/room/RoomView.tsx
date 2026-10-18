@@ -262,9 +262,9 @@ export const RoomView: React.FC<RoomViewProps> = ({
       <div className="flex-1 flex min-h-0 relative overflow-hidden z-10">
         
         {/* Floating Participant Card Sizing Slider (120px to 480px, maintaining strict 1:1 ratio) */}
-        <div className="absolute top-2.5 right-3 sm:right-5 z-20 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0d0d14]/90 backdrop-blur-md border border-white/[0.08] shadow-xl text-xs select-none">
-          <Sliders className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-          <span className="text-neutral-400 text-[11px] font-medium hidden sm:inline">Ventanas:</span>
+        <div className="absolute top-2.5 right-3 sm:right-5 z-20 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0a0d14]/90 backdrop-blur-md border border-yellow-500/20 shadow-xl text-xs select-none">
+          <Sliders className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
+          <span className="text-neutral-300 text-[11px] font-medium hidden sm:inline">Ventanas:</span>
           <input
             type="range"
             min={120}
@@ -272,17 +272,17 @@ export const RoomView: React.FC<RoomViewProps> = ({
             step={10}
             value={cardSize}
             onChange={(e) => handleCardSizeChange(Number(e.target.value))}
-            className="w-16 sm:w-28 h-1.5 accent-cyan-400 bg-neutral-800 rounded-lg cursor-pointer"
+            className="w-16 sm:w-28 h-1.5 accent-yellow-400 bg-neutral-800 rounded-lg cursor-pointer"
             title={`Dimensionar ventanas de participantes: ${cardSize}px (Mínimo: 120px, Máximo: 480px)`}
           />
-          <span className="font-mono text-cyan-300 text-[11px] min-w-[36px] text-right">
+          <span className="font-mono text-yellow-300 text-[11px] min-w-[36px] text-right font-bold">
             {cardSize}px
           </span>
           {cardSize !== 280 && (
             <button
               type="button"
               onClick={() => handleCardSizeChange(280)}
-              className="text-[10px] text-neutral-500 hover:text-cyan-300 transition cursor-pointer ml-0.5"
+              className="text-[10px] text-neutral-400 hover:text-yellow-300 transition cursor-pointer ml-0.5"
               title="Restablecer tamaño predeterminado (280px)"
             >
               ↺

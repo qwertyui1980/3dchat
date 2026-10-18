@@ -673,4 +673,24 @@ Para soportar identidad persistente manteniendo compatibilidad con despliegues e
 * **Diseño Adaptativo Interno:** Para tamaños compactos (<160px), las insignias secundarias se condensan automáticamente para mantener la legibilidad del nombre de usuario y los botones de moderación.
 * **Persistencia Local:** La preferencia de escala del usuario se guarda en `localStorage` (`xstreamx_participant_card_size`), con un botón de reinicio rápido al valor por defecto (280px).
 
+---
+
+## 13. Sistema de Diseño: Paleta de Colores Neón Armonizada
+
+Inspirado directamente en la identidad visual del rótulo de neón clásico de la marca, toda la interfaz de usuario de XStreamX (página de bienvenida, autenticación, registro, lobby de preparación, sala de videoconferencia 3D y paneles administrativos) adopta una paleta neón coordinada con teoría del color:
+
+1. **Amarillo Neón / Oro Eléctrico (`#ffe600` / `yellow-400`):**
+   * Color de acento primario y marquesina principal de la aplicación.
+   * Utilizado en botones CTA primarios ("Entrar al salón", "Ingresar al espacio", "Enviar mensaje"), controles activos de audio, barra de volumen en tiempo real, pestañas activas del lobby y deslizador de tamaño de ventanas.
+2. **Azul Neón / Cobalto Eléctrico (`#3b82f6` / `blue-500`):**
+   * Representa el estado activo de dispositivos y visión biomimética.
+   * Utilizado en el modo de animación **Gestos** (visión 100% cámara), botones de micrófono y cámara encendidos en sala, insignias de estado de tracking facial e indicadores secundarios.
+3. **Rojo Neón / Carmesí Neón (`#f43f5e` / `rose-500`):**
+   * Representa estados de silencio, peligro y modo alternativo.
+   * Utilizado en el modo **Lip Sync** (animación de boca por audio), botones y estados de micrófono/cámara apagados, alertas críticas y botón de salida de la sala.
+4. **Fondo Midnight Charcoal / Ladrillo Oscuro (`#08090d`, `#0b0e15`, `#121622`):**
+   * Evita grises planos y simula la textura y profundidad de una pared nocturna con halos difusos de neón (`box-shadow` y filtros blur).
+5. **Simplificación Visual y Limpieza de `/register`:**
+   * Eliminados los badges redundantes ("Nuevo Perfil de Usuario") y subtítulos explicativos extensos para presentar una cabecera minimalista y directa encabezada por el título *"Crea tu Perfil y Elige tu Avatar 3D"*.
+
 
