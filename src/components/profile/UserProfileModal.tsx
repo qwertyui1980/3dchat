@@ -151,11 +151,18 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
         createdAt: userAccount?.createdAt || Date.now(),
       });
 
+      // Save user-scoped selected avatar in localStorage
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`xstreamx_selected_avatar_${authUser.username.toLowerCase()}`, activeAvatar);
+        localStorage.setItem('xstreamx_selected_avatar', activeAvatar);
+      }
+
       // 3. Notify parent app
       if (onUserUpdated) {
         onUserUpdated({
           ...authUser,
           name: cleanName,
+          avatarId: activeAvatar,
         });
       }
 

@@ -35,6 +35,7 @@ import { AvatarCanvas } from '../avatars/AvatarCanvas';
 import { AudioWaveform } from '../common/AudioWaveform';
 import { AuthenticatedUser } from '../auth/Login';
 import { dbServiceSingleton, RoomRecord } from '../../services/dbService';
+import { indexedDbService } from '../../services/db/indexedDbService';
 import { getAvatarTrackingProfile, transformAvatarLandmark, registerAvatarTrackingProfile } from '../avatars/avatarTrackingProfiles';
 import { networkServiceSingleton } from '../../services/networkService';
 import { LegalDisclaimerModal } from '../common/LegalDisclaimerModal';
@@ -124,6 +125,8 @@ function generateRandomAlias(): string {
 }
 
 const STORAGE_AVATAR_KEY = 'xstreamx_selected_avatar';
+const getUserAvatarStorageKey = (username?: string) =>
+  username ? `xstreamx_selected_avatar_${username.toLowerCase()}` : STORAGE_AVATAR_KEY;
 const STORAGE_TRACKING_MODE_KEY = 'xstreamx_tracking_mode';
 const STORAGE_OFFSET_X_KEY = 'xstreamx_camera_offset_x';
 const STORAGE_OFFSET_Y_KEY = 'xstreamx_camera_offset_y';
@@ -194,13 +197,55 @@ export const Lobby: React.FC<LobbyProps> = ({
 
   const [selectedAvatarId, setSelectedAvatarId] = useState<AvatarId>(() => {
     if (typeof window !== 'undefined') {
+      const userKey = getUserAvatarStorageKey(authUser?.username);
+      const savedUser = localStorage.getItem(userKey) as AvatarId;
+      if (savedUser && avatarModelServiceSingleton.getAvatarById(savedUser)) {
+        return savedUser;
+      }
+      if (authUser?.avatarId && avatarModelServiceSingleton.getAvatarById(authUser.avatarId)) {
+        return authUser.avatarId as AvatarId;
+      }
       const saved = localStorage.getItem(STORAGE_AVATAR_KEY) as AvatarId;
-      if (saved && avatarModelServiceSingleton.getAvatarById(saved)) {
+      if (saved && saved !== 'three_robot' && avatarModelServiceSingleton.getAvatarById(saved)) {
         return saved;
       }
     }
-    return 'three_robot';
+    if (authUser?.avatarId && avatarModelServiceSingleton.getAvatarById(authUser.avatarId)) {
+      return authUser.avatarId as AvatarId;
+    }
+    return 'lincoln_3d';
   });
+
+  // Synchronize authenticated user profile & assigned 3D avatar
+  useEffect(() => {
+    if (!authUser) return;
+
+    if (authUser.name && authUser.name !== userName) {
+      setUserName(authUser.name);
+    }
+
+    let isMounted = true;
+    indexedDbService.getUser(authUser.username).then((acc) => {
+      if (!isMounted) return;
+      const userKey = getUserAvatarStorageKey(authUser.username);
+      const savedUserAvatar = typeof window !== 'undefined' ? (localStorage.getItem(userKey) as AvatarId) : null;
+
+      if (savedUserAvatar && avatarModelServiceSingleton.getAvatarById(savedUserAvatar)) {
+        setSelectedAvatarId(savedUserAvatar);
+      } else if (acc?.avatarId && avatarModelServiceSingleton.getAvatarById(acc.avatarId)) {
+        setSelectedAvatarId(acc.avatarId as AvatarId);
+        if (typeof window !== 'undefined') {
+          localStorage.setItem(userKey, acc.avatarId);
+        }
+      } else if (authUser.avatarId && avatarModelServiceSingleton.getAvatarById(authUser.avatarId)) {
+        setSelectedAvatarId(authUser.avatarId as AvatarId);
+      }
+    }).catch(() => {});
+
+    return () => {
+      isMounted = false;
+    };
+  }, [authUser?.username, authUser?.name, authUser?.avatarId]);
 
   // Tabs: 'predefined' (Modelos Predefinidos) vs 'custom' (Mis Avatares / 3D Masks en LocalStorage)
   const [avatarTab, setAvatarTab] = useState<'predefined' | 'custom'>(() => {
@@ -429,11 +474,20 @@ export const Lobby: React.FC<LobbyProps> = ({
     return () => clearInterval(interval);
   }, []);
 
-  // Handle avatar change & persist in localStorage
+  // Handle avatar change & persist in localStorage and user profile
   const handleSelectAvatar = (id: AvatarId) => {
     setSelectedAvatarId(id);
     if (typeof window !== 'undefined') {
+      const userKey = getUserAvatarStorageKey(authUser?.username);
+      localStorage.setItem(userKey, id);
       localStorage.setItem(STORAGE_AVATAR_KEY, id);
+    }
+    if (authUser?.username) {
+      indexedDbService.getUser(authUser.username).then((acc) => {
+        if (acc && acc.avatarId !== id) {
+          indexedDbService.saveUser({ ...acc, avatarId: id }).catch(() => {});
+        }
+      }).catch(() => {});
     }
   };
 

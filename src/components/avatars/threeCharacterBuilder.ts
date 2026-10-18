@@ -2506,7 +2506,7 @@ export function buildLincolnCharacter(gltf: GLTF): Character3DController {
   });
 
   const modelWrapper = new THREE.Group();
-  modelWrapper.rotation.y = Math.PI;
+  modelWrapper.rotation.y = 0;
   modelWrapper.add(model);
 
   const headPivot = new THREE.Group();

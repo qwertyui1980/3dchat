@@ -9,6 +9,7 @@ export interface AuthenticatedUser {
   username: string;
   name: string;
   role: 'admin' | 'participant';
+  avatarId?: string;
   provider?: 'local';
 }
 
@@ -63,6 +64,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
 
       const role: 'admin' | 'participant' = userAccount.role;
       const displayName = userAccount.name;
+      const targetAvatarId = userAccount.avatarId || (cleanUser === 'admin' ? 'lincoln_3d' : 'lincoln_3d');
 
       const userRecord = await dbServiceSingleton.upsertUser({
         id: `user_${cleanUser}`,
@@ -70,14 +72,21 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
         name: displayName,
         role: role,
         provider: 'local',
-        avatarId: (userAccount.avatarId as any) || (role === 'admin' ? 'three_robot' : 'cat_3d'),
+        avatarId: targetAvatarId as any,
         createdAt: Date.now(),
       });
+
+      // Save user-scoped selected avatar in localStorage to avoid collisions
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`xstreamx_selected_avatar_${cleanUser}`, targetAvatarId);
+        localStorage.setItem('xstreamx_selected_avatar', targetAvatarId);
+      }
 
       onLogin({
         username: userRecord.username,
         name: userRecord.name,
         role: userRecord.role,
+        avatarId: targetAvatarId,
         provider: 'local',
       });
     } catch (err: any) {

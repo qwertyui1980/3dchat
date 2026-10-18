@@ -159,4 +159,4 @@ export const AVATAR_LIST: AvatarDefinition[] = BASE_AVATAR_LIST.map((avatar) => 
   trackingProfile: getAvatarTrackingProfile(avatar.id),
 }));
 
-export const DEFAULT_AVATAR = AVATAR_LIST[0];
+export const DEFAULT_AVATAR = AVATAR_LIST.find((a) => a.id === 'lincoln_3d') || AVATAR_LIST[0];

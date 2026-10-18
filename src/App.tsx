@@ -28,6 +28,7 @@ import { RoomView } from './components/room/RoomView';
 import { Login, AuthenticatedUser } from './components/auth/Login';
 import { Register } from './components/auth/Register';
 import { UserProfileModal } from './components/profile/UserProfileModal';
+import { indexedDbService } from './services/db/indexedDbService';
 import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import { applyDynamicMode, normalizeTrackingMode, QuickGestureType } from './services/face3d/dynamicModeHelper';
 import { INITIAL_ROOM_MEDIA_STATE } from './utils/youtube';
@@ -57,6 +58,26 @@ export default function App() {
     }
     return null;
   });
+
+  // Ensure authenticated user carries their assigned avatarId from IndexedDB/Seed
+  useEffect(() => {
+    if (authenticatedUser && !authenticatedUser.avatarId) {
+      let isMounted = true;
+      indexedDbService.getUser(authenticatedUser.username).then((acc) => {
+        if (!isMounted || !acc) return;
+        const assignedAvatar = acc.avatarId || (authenticatedUser.role === 'admin' ? 'lincoln_3d' : 'lincoln_3d');
+        setAuthenticatedUser((prev) => (prev ? { ...prev, avatarId: assignedAvatar } : null));
+        if (typeof window !== 'undefined') {
+          const updated = { ...authenticatedUser, avatarId: assignedAvatar };
+          sessionStorage.setItem('xstreamx_auth', JSON.stringify(updated));
+          localStorage.setItem(`xstreamx_selected_avatar_${authenticatedUser.username.toLowerCase()}`, assignedAvatar);
+        }
+      }).catch(() => {});
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [authenticatedUser?.username, authenticatedUser?.avatarId]);
 
   // Client Routing (/register, /, etc.) & Profile Modal
   const [currentPath, setCurrentPath] = useState<string>(() => (typeof window !== 'undefined' ? window.location.pathname : '/'));
@@ -671,6 +692,10 @@ export default function App() {
     setAuthenticatedUser(user);
     if (typeof window !== 'undefined') {
       sessionStorage.setItem('xstreamx_auth', JSON.stringify(user));
+      if (user.avatarId) {
+        localStorage.setItem(`xstreamx_selected_avatar_${user.username.toLowerCase()}`, user.avatarId);
+        localStorage.setItem('xstreamx_selected_avatar', user.avatarId);
+      }
       const basePath = getBasePath();
       window.history.replaceState({ screen: 'lobby' }, '', `${basePath}/#lobby`);
     }

@@ -123,11 +123,18 @@ export const Register: React.FC<RegisterProps> = ({
         createdAt: now,
       });
 
+      // Save user-scoped selected avatar in localStorage to avoid collisions
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`xstreamx_selected_avatar_${cleanUser}`, selectedAvatarId);
+        localStorage.setItem('xstreamx_selected_avatar', selectedAvatarId);
+      }
+
       // 5. Direct sign in and notify parent app
       const authenticatedUser: AuthenticatedUser = {
         username: cleanUser,
         name: displayName,
         role: 'participant',
+        avatarId: selectedAvatarId,
         provider: 'local',
       };
 

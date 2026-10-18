@@ -279,7 +279,7 @@ interface ThreeAvatarCanvasProps {
 }
 
 export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
-  avatarId = 'three_robot',
+  avatarId = 'lincoln_3d',
   features,
   userName,
   isSpeaking = false,

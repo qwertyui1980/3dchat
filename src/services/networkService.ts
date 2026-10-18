@@ -122,6 +122,16 @@ export class NetworkService {
                   } else if (this.onError) {
                     this.onError(res.error);
                   }
+                } else if (res?.success && res.room && this.currentRoom) {
+                  if (Array.isArray(res.room.participants)) {
+                    this.currentRoom.participants = this.deduplicateParticipants(res.room.participants);
+                    if (this.onRoomJoined && this.currentUser) {
+                      this.onRoomJoined(this.currentRoom, this.currentUser);
+                    }
+                    res.room.participants.forEach((p: User) => {
+                      this.checkAndFetchMissingAvatar(p);
+                    });
+                  }
                 }
               }
             );
@@ -460,6 +470,16 @@ export class NetworkService {
               this.onKicked(res.error);
             } else if (this.onError) {
               this.onError(res.error);
+            }
+          } else if (res?.success && res.room && this.currentRoom) {
+            if (Array.isArray(res.room.participants)) {
+              this.currentRoom.participants = this.deduplicateParticipants(res.room.participants);
+              if (this.onRoomJoined && this.currentUser) {
+                this.onRoomJoined(this.currentRoom, this.currentUser);
+              }
+              res.room.participants.forEach((p: User) => {
+                this.checkAndFetchMissingAvatar(p);
+              });
             }
           }
         }

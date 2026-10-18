@@ -711,5 +711,27 @@ El Administrador cuenta con control total para inspeccionar y administrar todas 
   * **Nombre para Mostrar y Rol:** Permite ascender a Administrador o reasignar como Participante.
 * **Creación Directa y Eliminación de Cuentas:** El Admin puede crear nuevas cuentas directamente sin pasar por el formulario público de registro y eliminar cuentas en desuso (con protección de la cuenta raíz `admin`).
 
+---
+
+## 15. Resolución y Propagación de Modelos 3D de Usuarios en Sala
+
+### 15.1. Diagnóstico del Fallo de Carga (Fallback a Mecha Procedural)
+Anteriormente, al ingresar a la sala, los participantes mostraban el modelo de robot mecha procedural genérico (`three_robot`) debido a tres desconexiones en la cadena de estado:
+1. **Pérdida de `avatarId` en la Autenticación:** La interfaz `AuthenticatedUser` en [`Login.tsx`](file:///d:/Apps/xstreamx/src/components/auth/Login.tsx) y [`Register.tsx`](file:///d:/Apps/xstreamx/src/components/auth/Register.tsx) omitía la propiedad `avatarId`, por lo que al autenticar una cuenta predefinida (ej. `admin` con `lincoln_3d`, `presi1` con `lincoln_3d`, `presi2` con `biden_3d`) el objeto de sesión no retenía el avatar asignado.
+2. **Colisión de LocalStorage Compartido:** El Lobby leía una clave global única `xstreamx_selected_avatar`. Si esta clave estaba vacía o contenía `'three_robot'`, todos los usuarios en pestañas simultáneas sobreescribían o compartían el mismo fallback.
+3. **Omisión de Sincronización en Agradecimiento de Red (Socket Ack):** En [`networkService.ts`](file:///d:/Apps/xstreamx/src/services/networkService.ts), la respuesta del evento `join_room` devolvía la lista de participantes de la sala, pero el cliente no actualizaba `currentRoom.participants`, provocando que el usuario recién llegado no recibiera los avatares específicos de los usuarios que ya estaban dentro.
+
+### 15.2. Arquitectura de Resolución de Avatares Corregida
+* **Persistencia Aislada por Usuario:**
+  * Función selectora `getUserAvatarStorageKey(username)` genera claves individualizadas (`xstreamx_selected_avatar_${username}`).
+  * Al iniciar sesión o registrarse, la clave individual del usuario se almacena inmediatamente.
+  * El Lobby sincroniza en tiempo real con la cuenta del usuario en `IndexedDB` y actualiza `selectedAvatarId` si el usuario no tenía una preferencia explícita en su pestaña.
+* **Priorización de Modelos Presidenciales:**
+  * El fallback por defecto para usuarios presidenciales o sin avatar explícito es `lincoln_3d` en lugar de `three_robot`.
+  * La orientación angular en [`threeCharacterBuilder.ts`](file:///d:/Apps/xstreamx/src/components/avatars/threeCharacterBuilder.ts) (`buildLincolnCharacter`) fue corregida (`rotation.y = 0`) para que el busto 3D de Lincoln mire de frente directamente a la cámara y al resto de participantes en la sala.
+* **Propagación Completa en la Malla de Red:**
+  * Al ingresar a la sala mediante `joinRoom`, el callback de `server.ts` actualiza la lista deduplicada de participantes en `currentRoom.participants`, notifica a la aplicación mediante `onRoomJoined` y descarga automáticamente cualquier modelo 3D ausente vía `checkAndFetchMissingAvatar`.
+  * Al editar el perfil en [`UserProfileModal.tsx`](file:///d:/Apps/xstreamx/src/components/profile/UserProfileModal.tsx), el cambio de avatar se propaga al instante a la sesión activa (`sessionStorage`), a la base de datos local y a la sala mediante `updateAvatar()`.
+
 
 
