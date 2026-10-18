@@ -25,10 +25,18 @@ import {
   Camera,
   Image as ImageIcon,
   Sliders,
+  KeyRound,
+  Eye,
+  EyeOff,
+  Copy,
+  UserPlus,
+  Search,
 } from 'lucide-react';
 import { RoomInfo, User, AvatarDefinition } from '../../types';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
 import { FaceBlendshapeStudioModal } from '../admin/FaceBlendshapeStudioModal';
+import { indexedDbService, UserAccount } from '../../services/db/indexedDbService';
+import { dbServiceSingleton } from '../../services/dbService';
 
 interface AdminControlPanelProps {
   room: RoomInfo;
@@ -55,12 +63,40 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
   onSelectAvatar,
   onOpenFaceStudio,
 }) => {
-  const [activeTab, setActiveTab] = useState<'models' | 'room'>('models');
+  const [activeTab, setActiveTab] = useState<'models' | 'room' | 'users'>('models');
   const [avatars, setAvatars] = useState<AvatarDefinition[]>(() =>
     avatarModelServiceSingleton.getAllAvatars()
   );
   const [isFaceStudioModalOpen, setIsFaceStudioModalOpen] = useState(false);
   const [editingAvatarForStudio, setEditingAvatarForStudio] = useState<AvatarDefinition | null>(null);
+
+  // Users Directory State
+  const [userAccounts, setUserAccounts] = useState<UserAccount[]>([]);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
+  const [copiedUserId, setCopiedUserId] = useState<string | null>(null);
+
+  // Edit User State
+  const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
+  const [editUsername, setEditUsername] = useState('');
+  const [editPassword, setEditPassword] = useState('');
+  const [editName, setEditName] = useState('');
+  const [editRole, setEditRole] = useState<'admin' | 'participant'>('participant');
+  const [showEditPassword, setShowEditPassword] = useState(false);
+  const [isSavingUser, setIsSavingUser] = useState(false);
+
+  // Create User State
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [newUserName, setNewUserName] = useState('');
+  const [newUserUsername, setNewUserUsername] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserRole, setNewUserRole] = useState<'admin' | 'participant'>('participant');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+
+  // User Action Notifications
+  const [userSuccessMsg, setUserSuccessMsg] = useState<string | null>(null);
+  const [userErrorMsg, setUserErrorMsg] = useState<string | null>(null);
 
   // Upload Form State
   const [modelName, setModelName] = useState('');
@@ -101,12 +137,170 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
   const [editingAvatarId, setEditingAvatarId] = useState<string | null>(null);
   const [editingAvatarName, setEditingAvatarName] = useState<string>('');
 
+  const loadUsers = async () => {
+    try {
+      const list = await indexedDbService.getAllUsers();
+      setUserAccounts(list);
+    } catch (err) {
+      console.warn('Error cargando usuarios en AdminControlPanel:', err);
+    }
+  };
+
   useEffect(() => {
-    const unsub = avatarModelServiceSingleton.subscribe(() => {
-      setAvatars(avatarModelServiceSingleton.getAllAvatars());
+    if (isOpen) {
+      loadUsers();
+    }
+  }, [isOpen]);
+
+  const handleTogglePasswordVisibility = (username: string) => {
+    setVisiblePasswords((prev) => ({
+      ...prev,
+      [username]: !prev[username],
+    }));
+  };
+
+  const handleCopyPassword = (username: string, pass: string) => {
+    navigator.clipboard.writeText(pass).then(() => {
+      setCopiedUserId(username);
+      setTimeout(() => setCopiedUserId(null), 2000);
     });
-    return unsub;
-  }, []);
+  };
+
+  const handleStartEditUser = (user: UserAccount) => {
+    setEditingUser(user);
+    setEditUsername(user.username);
+    setEditPassword(user.password || '');
+    setEditName(user.name);
+    setEditRole(user.role);
+    setShowEditPassword(false);
+    setUserSuccessMsg(null);
+    setUserErrorMsg(null);
+    setShowCreateUser(false);
+  };
+
+  const handleSaveEditUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    if (!editUsername.trim()) {
+      setUserErrorMsg('El nombre de usuario no puede estar vacío.');
+      return;
+    }
+    if (!editPassword.trim()) {
+      setUserErrorMsg('La contraseña no puede estar vacía.');
+      return;
+    }
+
+    setIsSavingUser(true);
+    setUserSuccessMsg(null);
+    setUserErrorMsg(null);
+
+    try {
+      const cleanOld = editingUser.username.toLowerCase();
+      const cleanNew = editUsername.trim().toLowerCase();
+
+      await indexedDbService.adminUpdateUser(cleanOld, {
+        newUsername: cleanNew,
+        newPassword: editPassword.trim(),
+        newName: editName.trim() || cleanNew,
+        newRole: editRole,
+      });
+
+      await dbServiceSingleton.adminUpdateUser(cleanOld, {
+        newUsername: cleanNew,
+        newName: editName.trim() || cleanNew,
+        newRole: editRole,
+      });
+
+      await loadUsers();
+      setUserSuccessMsg(`¡Usuario @${cleanNew} actualizado exitosamente con su nueva contraseña y datos!`);
+      setEditingUser(null);
+    } catch (err: any) {
+      setUserErrorMsg(err?.message || 'Error al actualizar el usuario.');
+    } finally {
+      setIsSavingUser(false);
+    }
+  };
+
+  const handleDeleteUserAccount = async (targetUser: UserAccount) => {
+    if (targetUser.username === 'admin') {
+      alert('La cuenta principal de Administrador no puede ser eliminada.');
+      return;
+    }
+    if (!confirm(`¿Estás seguro de que deseas eliminar permanentemente al usuario @${targetUser.username} (${targetUser.name})?`)) {
+      return;
+    }
+
+    try {
+      await indexedDbService.deleteUser(targetUser.username);
+      await dbServiceSingleton.deleteUser(targetUser.username);
+      await loadUsers();
+      setUserSuccessMsg(`Usuario @${targetUser.username} eliminado correctamente.`);
+    } catch (err: any) {
+      setUserErrorMsg(err?.message || 'Error al eliminar el usuario.');
+    }
+  };
+
+  const handleCreateNewUserSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanUser = newUserUsername.trim().toLowerCase();
+    const cleanPass = newUserPassword.trim();
+    const cleanName = newUserName.trim() || cleanUser;
+
+    if (!cleanUser) {
+      setUserErrorMsg('Por favor escribe un nombre de usuario.');
+      return;
+    }
+    if (!cleanPass) {
+      setUserErrorMsg('Por favor escribe una contraseña.');
+      return;
+    }
+
+    setIsCreatingUser(true);
+    setUserSuccessMsg(null);
+    setUserErrorMsg(null);
+
+    try {
+      const existing = await indexedDbService.getUser(cleanUser);
+      if (existing) {
+        throw new Error(`El nombre de usuario '@${cleanUser}' ya existe.`);
+      }
+
+      const now = Date.now();
+      const newUserObj: UserAccount = {
+        id: `user_${cleanUser}_${now}`,
+        username: cleanUser,
+        name: cleanName,
+        password: cleanPass,
+        role: newUserRole,
+        avatarId: 'lincoln_3d',
+        createdAt: now,
+        createdAvatars: [],
+      };
+
+      await indexedDbService.saveUser(newUserObj);
+      await dbServiceSingleton.upsertUser({
+        id: newUserObj.id,
+        username: cleanUser,
+        name: cleanName,
+        role: newUserRole,
+        provider: 'local',
+        avatarId: 'lincoln_3d',
+        createdAt: now,
+        createdAvatars: [],
+      });
+
+      await loadUsers();
+      setUserSuccessMsg(`¡Nuevo usuario @${cleanUser} creado exitosamente!`);
+      setShowCreateUser(false);
+      setNewUserUsername('');
+      setNewUserPassword('');
+      setNewUserName('');
+    } catch (err: any) {
+      setUserErrorMsg(err?.message || 'Error al crear el nuevo usuario.');
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -245,6 +439,19 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
           >
             <Users className="w-4 h-4" />
             <span>Moderación de Espacio y Participantes</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('users')}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-t-xl text-xs font-bold transition border-b-2 cursor-pointer ${
+              activeTab === 'users'
+                ? 'border-yellow-400 text-yellow-300 bg-yellow-500/10'
+                : 'border-transparent text-neutral-400 hover:text-neutral-200 hover:bg-white/[0.03]'
+            }`}
+          >
+            <KeyRound className="w-4 h-4" />
+            <span>Usuarios y Contraseñas ({userAccounts.length})</span>
           </button>
         </div>
 
@@ -737,6 +944,425 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
                     ))
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'users' && (
+            <div className="space-y-6">
+              {/* Notifications */}
+              {userSuccessMsg && (
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-950/80 border border-emerald-500/50 text-emerald-200 text-xs font-semibold animate-in fade-in">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <span>{userSuccessMsg}</span>
+                  <button
+                    type="button"
+                    onClick={() => setUserSuccessMsg(null)}
+                    className="ml-auto text-emerald-400 hover:text-white p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {userErrorMsg && (
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-rose-950/80 border border-rose-500/50 text-rose-200 text-xs font-semibold animate-in fade-in">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{userErrorMsg}</span>
+                  <button
+                    type="button"
+                    onClick={() => setUserErrorMsg(null)}
+                    className="ml-auto text-rose-400 hover:text-white p-0.5 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Edit User Modal / Box */}
+              {editingUser && (
+                <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-[#161a29] to-[#0e1220] border-2 border-yellow-400/80 shadow-2xl space-y-4 animate-in fade-in">
+                  <div className="flex items-center justify-between pb-2 border-b border-white/[0.08]">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-yellow-400/20 text-yellow-300 flex items-center justify-center font-bold">
+                        <Pencil className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">
+                          Editar Usuario: <span className="text-yellow-400 font-mono">@{editingUser.username}</span>
+                        </h4>
+                        <p className="text-[11px] text-neutral-400">
+                          Modifica su nombre de usuario (alias), actualiza su contraseña o cambia su rol.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setEditingUser(null)}
+                      className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-white/[0.08] cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleSaveEditUser} className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      {/* Username (Alias) */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-neutral-300 mb-1">
+                          Nombre de Usuario (Alias único) *
+                        </label>
+                        <input
+                          type="text"
+                          value={editUsername}
+                          onChange={(e) => setEditUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                          placeholder="ej. nuevo_alias"
+                          className="w-full px-3 py-2 rounded-xl bg-black/50 border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 transition"
+                          required
+                        />
+                        <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                          Solo letras minúsculas, números, guiones y guiones bajos.
+                        </span>
+                      </div>
+
+                      {/* Password */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-neutral-300 mb-1">
+                          Contraseña (Password) *
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showEditPassword ? 'text' : 'password'}
+                            value={editPassword}
+                            onChange={(e) => setEditPassword(e.target.value)}
+                            placeholder="Nueva contraseña..."
+                            className="w-full px-3 py-2 pr-10 rounded-xl bg-black/50 border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 transition"
+                            required
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowEditPassword(!showEditPassword)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white cursor-pointer"
+                          >
+                            {showEditPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                        <span className="text-[10px] text-neutral-500 mt-0.5 block">
+                          Ingresa la nueva contraseña para este usuario.
+                        </span>
+                      </div>
+
+                      {/* Display Name */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-neutral-300 mb-1">
+                          Nombre para Mostrar
+                        </label>
+                        <input
+                          type="text"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          placeholder="ej. Juan Pérez"
+                          className="w-full px-3 py-2 rounded-xl bg-black/50 border border-white/10 text-white text-xs focus:outline-none focus:border-yellow-400 focus:ring-1 focus:ring-yellow-400 transition"
+                        />
+                      </div>
+
+                      {/* Role */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-neutral-300 mb-1">
+                          Rol en la Plataforma
+                        </label>
+                        <select
+                          value={editRole}
+                          onChange={(e) => setEditRole(e.target.value as any)}
+                          className="w-full px-3 py-2 rounded-xl bg-black/50 border border-white/10 text-white text-xs focus:outline-none focus:border-yellow-400 transition cursor-pointer"
+                        >
+                          <option value="participant">Participante (Estándar)</option>
+                          <option value="admin">Administrador (Control Total)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/[0.08]">
+                      <button
+                        type="button"
+                        onClick={() => setEditingUser(null)}
+                        className="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-neutral-300 text-xs font-semibold transition cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isSavingUser}
+                        className="px-5 py-2 rounded-xl bg-gradient-to-r from-yellow-400 to-amber-500 hover:brightness-110 text-black font-bold text-xs shadow-md shadow-yellow-950/40 transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Check className="w-4 h-4 text-black" />
+                        <span>{isSavingUser ? 'Guardando...' : 'Guardar Credenciales'}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* Create New User Modal / Box */}
+              {showCreateUser && (
+                <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-b from-[#161a29] to-[#0e1220] border border-blue-500/40 shadow-2xl space-y-4 animate-in fade-in">
+                  <div className="flex items-center justify-between pb-2 border-b border-white/[0.08]">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-300 flex items-center justify-center font-bold">
+                        <UserPlus className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-bold text-white">Crear Nuevo Usuario</h4>
+                        <p className="text-[11px] text-neutral-400">
+                          Registra un nuevo usuario con credenciales de acceso directo.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowCreateUser(false)}
+                      className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-white/[0.08] cursor-pointer"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <form onSubmit={handleCreateNewUserSubmit} className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                      <div>
+                        <label className="block text-[11px] font-bold text-neutral-300 mb-1">
+                          Nombre de Usuario (Alias único) *
+                        </label>
+                        <input
+                          type="text"
+                          value={newUserUsername}
+                          onChange={(e) => setNewUserUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, ''))}
+                          placeholder="ej. maria_3d"
+                          className="w-full px-3 py-2 rounded-xl bg-black/50 border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-neutral-300 mb-1">
+                          Contraseña (Password) *
+                        </label>
+                        <div className="relative">
+                          <input
+                            type={showNewPassword ? 'text' : 'password'}
+                            value={newUserPassword}
+                            onChange={(e) => setNewUserPassword(e.target.value)}
+                            placeholder="Mínimo 4 caracteres..."
+                            className="w-full px-3 py-2 pr-10 rounded-xl bg-black/50 border border-white/10 text-white font-mono text-xs focus:outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-400 transition"
+                            required
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowNewPassword(!showNewPassword)}
+                            className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white cursor-pointer"
+                          >
+                            {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-neutral-300 mb-1">
+                          Nombre Completo
+                        </label>
+                        <input
+                          type="text"
+                          value={newUserName}
+                          onChange={(e) => setNewUserName(e.target.value)}
+                          placeholder="ej. María González"
+                          className="w-full px-3 py-2 rounded-xl bg-black/50 border border-white/10 text-white text-xs focus:outline-none focus:border-blue-400 transition"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] font-bold text-neutral-300 mb-1">
+                          Rol
+                        </label>
+                        <select
+                          value={newUserRole}
+                          onChange={(e) => setNewUserRole(e.target.value as any)}
+                          className="w-full px-3 py-2 rounded-xl bg-black/50 border border-white/10 text-white text-xs focus:outline-none focus:border-blue-400 transition cursor-pointer"
+                        >
+                          <option value="participant">Participante (Estándar)</option>
+                          <option value="admin">Administrador</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-end gap-2 pt-2 border-t border-white/[0.08]">
+                      <button
+                        type="button"
+                        onClick={() => setShowCreateUser(false)}
+                        className="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/[0.1] text-neutral-300 text-xs font-semibold transition cursor-pointer"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={isCreatingUser}
+                        className="px-5 py-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs shadow-md transition active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>{isCreatingUser ? 'Creando...' : 'Crear Usuario'}</span>
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
+
+              {/* Search & Actions Bar */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="relative flex-1 max-w-sm">
+                  <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={userSearchQuery}
+                    onChange={(e) => setUserSearchQuery(e.target.value)}
+                    placeholder="Buscar por alias o nombre..."
+                    className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#0b0e18] border border-white/10 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-yellow-400 transition"
+                  />
+                  {userSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setUserSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {!showCreateUser && !editingUser && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCreateUser(true);
+                      setEditingUser(null);
+                    }}
+                    className="px-4 py-2 rounded-xl bg-blue-600/90 hover:bg-blue-500 text-white text-xs font-bold transition flex items-center justify-center gap-1.5 shadow-md shadow-blue-900/30 cursor-pointer shrink-0"
+                  >
+                    <UserPlus className="w-4 h-4" />
+                    <span>Crear Nuevo Usuario</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Users Cards Grid */}
+              <div className="space-y-2.5">
+                {userAccounts
+                  .filter((u) => {
+                    if (!userSearchQuery.trim()) return true;
+                    const q = userSearchQuery.toLowerCase();
+                    return u.username.toLowerCase().includes(q) || u.name.toLowerCase().includes(q);
+                  })
+                  .map((user) => {
+                    const isVisible = !!visiblePasswords[user.username];
+                    const isCopied = copiedUserId === user.username;
+                    const isCurrentAdmin = user.username === currentUser.id || user.username === 'admin';
+
+                    return (
+                      <div
+                        key={user.id || user.username}
+                        className={`flex flex-col md:flex-row items-start md:items-center justify-between p-3.5 rounded-2xl border transition gap-3 ${
+                          user.role === 'admin'
+                            ? 'bg-[#121422] border-yellow-500/30 hover:border-yellow-500/60 shadow-sm'
+                            : 'bg-[#0e111c] border-white/[0.08] hover:border-white/[0.18]'
+                        }`}
+                      >
+                        {/* Left: User Identity */}
+                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-yellow-500/20 to-blue-500/20 border border-white/10 flex items-center justify-center text-sm font-black text-white shrink-0 shadow-inner">
+                            {user.name.charAt(0).toUpperCase()}
+                          </div>
+
+                          <div className="min-w-0 truncate">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-white truncate">{user.name}</span>
+                              <span
+                                className={`text-[9px] font-mono px-1.5 py-0.5 rounded font-black uppercase ${
+                                  user.role === 'admin'
+                                    ? 'bg-yellow-400/20 text-yellow-300 border border-yellow-400/40'
+                                    : 'bg-blue-400/20 text-blue-300 border border-blue-400/40'
+                                }`}
+                              >
+                                {user.role === 'admin' ? 'ADMIN' : 'PARTICIPANTE'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5 text-[11px] text-neutral-400">
+                              <span className="font-mono text-yellow-300/90 font-semibold">@{user.username}</span>
+                              <span>•</span>
+                              <span className="text-[10px] text-neutral-500">
+                                {user.createdAt ? new Date(user.createdAt).toLocaleDateString() : 'Registrado'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Center: Password Display with Unmask & Copy */}
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/40 border border-white/[0.08] shrink-0 w-full md:w-auto justify-between md:justify-start">
+                          <div className="flex items-center gap-2">
+                            <KeyRound className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
+                            <span className="font-mono text-xs text-neutral-200 min-w-[80px] max-w-[140px] truncate select-all">
+                              {isVisible ? user.password : '••••••••••••'}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            {/* Toggle view password */}
+                            <button
+                              type="button"
+                              onClick={() => handleTogglePasswordVisibility(user.username)}
+                              title={isVisible ? 'Ocultar contraseña' : 'Ver contraseña'}
+                              className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-white/[0.08] transition cursor-pointer"
+                            >
+                              {isVisible ? <EyeOff className="w-3.5 h-3.5 text-yellow-400" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+
+                            {/* Copy password */}
+                            <button
+                              type="button"
+                              onClick={() => handleCopyPassword(user.username, user.password)}
+                              title="Copiar contraseña al portapapeles"
+                              className="p-1 rounded-lg text-neutral-400 hover:text-white hover:bg-white/[0.08] transition cursor-pointer"
+                            >
+                              {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Right: Actions (Edit & Delete) */}
+                        <div className="flex items-center gap-1.5 shrink-0 self-end md:self-auto">
+                          {/* Edit User & Password Button */}
+                          <button
+                            type="button"
+                            onClick={() => handleStartEditUser(user)}
+                            className="px-2.5 py-1.5 rounded-xl bg-yellow-950/60 hover:bg-yellow-900/80 border border-yellow-500/40 hover:border-yellow-400 text-yellow-300 text-xs font-semibold transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm"
+                            title="Cambiar nombre de usuario y contraseña"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                            <span>Editar</span>
+                          </button>
+
+                          {/* Delete User Button (not allowed for main admin) */}
+                          {!isCurrentAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUserAccount(user)}
+                              className="p-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/80 border border-rose-500/30 hover:border-rose-400 text-rose-300 transition active:scale-95 cursor-pointer"
+                              title="Eliminar usuario"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
               </div>
             </div>
           )}

@@ -693,4 +693,23 @@ Inspirado directamente en la identidad visual del rótulo de neón clásico de l
 5. **Simplificación Visual y Limpieza de `/register`:**
    * Eliminados los badges redundantes ("Nuevo Perfil de Usuario") y subtítulos explicativos extensos para presentar una cabecera minimalista y directa encabezada por el título *"Crea tu Perfil y Elige tu Avatar 3D"*.
 
+---
+
+## 14. Gestión Administrativa de Usuarios y Credenciales
+
+El Administrador cuenta con control total para inspeccionar y administrar todas las cuentas de usuario registradas en el sistema a través del panel [`AdminControlPanel.tsx`](file:///d:/Apps/xstreamx/src/components/room/AdminControlPanel.tsx) (accesible tanto desde el Lobby como dentro de salas activas):
+
+### 14.1. Visualización de Directorio y Contraseñas
+* **Pestaña Dedicada "Usuarios y Contraseñas":** Lista exhaustiva de todas las cuentas presentes en `IndexedDB` (`STORE_USERS`) y sincronizadas con `dbService` / Supabase.
+* **Inspección de Credenciales en Claro:** Cada tarjeta de usuario incluye un visor de contraseña enmascarado por defecto (`••••••••`), conmutador interactivo de visibilidad (ojo) para revelar la contraseña en claro y botón de copia rápida al portapapeles.
+* **Búsqueda en Tiempo Real:** Filtrado ágil por nombre para mostrar o nombre de usuario (`@alias`).
+
+### 14.2. Edición de Nombre de Usuario (Alias) y Contraseña (Password)
+* El Administrador puede seleccionar cualquier usuario y modificar:
+  * **Nombre de Usuario (Alias Único):** Cambia el identificador principal. El sistema verifica disponibilidad de inmediato, elimina la entrada indexada anterior en `IndexedDB` (`STORE_USERS`), registra la nueva clave y **migra automáticamente todos los modelos 3D y avatares** que pertenecían al usuario (`ownerId`), garantizando que conserve su inventario intacto.
+  * **Contraseña:** Reasigna instantáneamente una nueva contraseña a la cuenta para acceso inmediato desde `/` (Login).
+  * **Nombre para Mostrar y Rol:** Permite ascender a Administrador o reasignar como Participante.
+* **Creación Directa y Eliminación de Cuentas:** El Admin puede crear nuevas cuentas directamente sin pasar por el formulario público de registro y eliminar cuentas en desuso (con protección de la cuenta raíz `admin`).
+
+
 

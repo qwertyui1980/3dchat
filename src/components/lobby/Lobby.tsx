@@ -662,11 +662,22 @@ export const Lobby: React.FC<LobbyProps> = ({
           <div className="w-full max-w-md bg-[#0d0d12]/95 rounded-2xl border border-white/[0.08] p-5 shadow-2xl relative">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+                <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_8px_#ffe600]" />
                 <span className="text-xs font-bold uppercase tracking-wider text-neutral-300">
                   Elige tu avatar
                 </span>
               </div>
+              {isAdminUser && (
+                <button
+                  type="button"
+                  onClick={() => setIsAdminPanelOpen(true)}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-yellow-500/15 hover:bg-yellow-500/25 border border-yellow-500/40 text-yellow-300 text-[11px] font-bold transition active:scale-95 cursor-pointer shadow-sm shadow-yellow-950/40"
+                  title="Abrir Panel de Control del Administrador (Usuarios, Contraseñas y Modelos 3D)"
+                >
+                  <Shield className="w-3.5 h-3.5 text-yellow-400" />
+                  <span>Panel Admin</span>
+                </button>
+              )}
             </div>
 
             {/* Avatar Canvas */}

@@ -450,6 +450,85 @@ class IndexedDbService {
   }
 
   /**
+   * Elimina un usuario por su nombre de usuario
+   */
+  async deleteUser(username: string): Promise<void> {
+    try {
+      const cleanUser = username.trim().toLowerCase();
+      const { store, tx } = await this.getStore(STORE_USERS, 'readwrite');
+      store.delete(cleanUser);
+      return new Promise((resolve, reject) => {
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+      });
+    } catch (err) {
+      console.error(`[IndexedDbService] Error eliminando usuario '${username}':`, err);
+      throw err;
+    }
+  }
+
+  /**
+   * Actualiza las credenciales y datos de un usuario por el Administrador:
+   * Permite cambiar su username (alias), contraseña (password), nombre y rol.
+   * Si el username cambia:
+   * 1. Elimina la clave previa de STORE_USERS
+   * 2. Guarda el usuario bajo el nuevo username
+   * 3. Migra la propiedad ownerId de todos los modelos 3D asociados
+   */
+  async adminUpdateUser(
+    oldUsername: string,
+    updates: {
+      newUsername?: string;
+      newPassword?: string;
+      newName?: string;
+      newRole?: 'admin' | 'participant';
+    }
+  ): Promise<UserAccount> {
+    const cleanOld = oldUsername.trim().toLowerCase();
+    const existing = await this.getUser(cleanOld);
+    if (!existing) {
+      throw new Error(`El usuario '${oldUsername}' no existe en la base de datos.`);
+    }
+
+    const cleanNew = updates.newUsername ? updates.newUsername.trim().toLowerCase() : cleanOld;
+
+    if (cleanNew !== cleanOld) {
+      const alreadyTaken = await this.getUser(cleanNew);
+      if (alreadyTaken) {
+        throw new Error(`El nombre de usuario '${cleanNew}' ya está en uso.`);
+      }
+    }
+
+    const updatedUser: UserAccount = {
+      ...existing,
+      username: cleanNew,
+      name: updates.newName && updates.newName.trim() ? updates.newName.trim() : existing.name,
+      password: updates.newPassword && updates.newPassword.trim() ? updates.newPassword.trim() : existing.password,
+      role: updates.newRole || existing.role,
+    };
+
+    if (cleanNew !== cleanOld) {
+      await this.deleteUser(cleanOld);
+      await this.saveUser(updatedUser);
+
+      // Migrar los avatares que poseía este usuario al nuevo nombre de usuario
+      try {
+        const userModels = await this.getUserModels(cleanOld);
+        for (const m of userModels) {
+          m.ownerId = cleanNew;
+          await this.saveModel(m);
+        }
+      } catch (err) {
+        console.warn('[IndexedDbService] Error migrando modelos de usuario renombrado:', err);
+      }
+    } else {
+      await this.saveUser(updatedUser);
+    }
+
+    return updatedUser;
+  }
+
+  /**
    * Obtiene todos los usuarios registrados en la base de datos
    */
   async getAllUsers(): Promise<UserAccount[]> {

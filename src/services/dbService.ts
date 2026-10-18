@@ -465,6 +465,60 @@ class DatabaseService {
     return user;
   }
 
+  async adminUpdateUser(
+    oldUsername: string,
+    updates: {
+      newUsername?: string;
+      newName?: string;
+      newRole?: 'admin' | 'participant';
+    }
+  ): Promise<UserRecord | null> {
+    this.initLocal();
+    const cleanOld = oldUsername.trim().toLowerCase();
+    const existing = await this.getUserByUsername(cleanOld);
+    if (!existing) return null;
+
+    const cleanNew = updates.newUsername ? updates.newUsername.trim().toLowerCase() : cleanOld;
+    const updated: UserRecord = {
+      ...existing,
+      username: cleanNew,
+      name: updates.newName && updates.newName.trim() ? updates.newName.trim() : existing.name,
+      role: updates.newRole || existing.role,
+    };
+
+    if (cleanNew !== cleanOld) {
+      this.localUsers.delete(cleanOld);
+      this.localUsers.set(cleanNew, updated);
+    } else {
+      this.localUsers.set(cleanOld, updated);
+    }
+    this.saveLocalUsers();
+
+    // Supabase sync
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      if (cleanNew !== cleanOld) {
+        Promise.resolve(supabase.from('users').delete().eq('username', cleanOld)).catch(() => {});
+      }
+      this.upsertUser(updated).catch(() => {});
+    }
+
+    return updated;
+  }
+
+  async deleteUser(username: string): Promise<boolean> {
+    this.initLocal();
+    const cleanUser = username.trim().toLowerCase();
+    this.localUsers.delete(cleanUser);
+    this.saveLocalUsers();
+
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      Promise.resolve(supabase.from('users').delete().eq('username', cleanUser)).catch(() => {});
+    }
+    return true;
+  }
+
   // ==========================================
   // AVATARS (Supabase Cloud + Local Sync)
   // ==========================================
