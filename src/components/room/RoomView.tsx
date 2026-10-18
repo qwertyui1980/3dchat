@@ -12,6 +12,9 @@ import {
   DynamicTrackingMode,
 } from '../../types';
 import { Header } from '../common/Header';
+import {
+  AvatarDefinition,
+} from '../../types';
 import { ParticipantCard } from './ParticipantCard';
 import { CallControls } from './CallControls';
 import { ChatSidebar } from './ChatSidebar';
@@ -23,6 +26,8 @@ import { TvFloatingLauncher } from '../theater/TvFloatingLauncher';
 import { QueueModal } from '../theater/QueueModal';
 import { WhiteboardPanel } from '../whiteboard/WhiteboardPanel';
 import { AdminControlPanel } from './AdminControlPanel';
+import { RoomAvatarModal } from './RoomAvatarModal';
+import { FaceBlendshapeStudioModal } from '../admin/FaceBlendshapeStudioModal';
 import { Maximize2, Minimize2, Sliders } from 'lucide-react';
 import { QuickGestureType } from '../../services/face3d/dynamicModeHelper';
 
@@ -121,6 +126,9 @@ export const RoomView: React.FC<RoomViewProps> = ({
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
   const [isAdminPanelOpen, setIsAdminPanelOpen] = useState(false);
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const [isFaceStudioOpen, setIsFaceStudioOpen] = useState(false);
+  const [editingAvatarForStudio, setEditingAvatarForStudio] = useState<AvatarDefinition | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isTrackingPipVisible, setIsTrackingPipVisible] = useState(() => initialTrackingPip ?? true);
   const [lastReadMessageCount, setLastReadMessageCount] = useState(messages.length);
@@ -403,6 +411,37 @@ export const RoomView: React.FC<RoomViewProps> = ({
         />
       )}
 
+      {/* Room Avatar Selector Modal (Available Catalog, Admin, and Personal Collection) */}
+      <RoomAvatarModal
+        isOpen={isAvatarModalOpen}
+        onClose={() => setIsAvatarModalOpen(false)}
+        currentAvatarId={currentUser.avatarId}
+        onSelectAvatar={onSelectAvatar}
+        authUser={authUser}
+        onOpenStudio={(avatarToEdit) => {
+          setEditingAvatarForStudio(avatarToEdit || null);
+          setIsFaceStudioOpen(true);
+        }}
+      />
+
+      {/* 3D Face Masks Studio Modal inside the meeting room */}
+      {isFaceStudioOpen && (
+        <FaceBlendshapeStudioModal
+          isOpen={isFaceStudioOpen}
+          onClose={() => {
+            setIsFaceStudioOpen(false);
+            setEditingAvatarForStudio(null);
+          }}
+          onSelectAvatar={(newAvatarId) => {
+            onSelectAvatar(newAvatarId);
+            setIsFaceStudioOpen(false);
+            setEditingAvatarForStudio(null);
+          }}
+          isAdmin={isAdmin}
+          editingAvatar={editingAvatarForStudio}
+        />
+      )}
+
       {/* Bottom Controls Bar (Hidden in Fullscreen mode) */}
       {!isFullscreen && (
         <CallControls
@@ -419,6 +458,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
           onToggleMic={onToggleMic}
           onToggleCamera={onToggleCamera}
           onSelectAvatar={onSelectAvatar}
+          onOpenAvatarModal={() => setIsAvatarModalOpen(true)}
           onToggleChat={handleToggleChat}
           onLeaveCall={onLeaveCall}
           onOpenTheater={() => setIsTheaterOpen((prev) => !prev)}

@@ -56,6 +56,7 @@ interface CallControlsProps {
   onToggleFullscreen?: () => void;
   activeGesture?: QuickGestureType | null;
   onTriggerGesture?: (gesture: QuickGestureType) => void;
+  onOpenAvatarModal?: () => void;
 }
 
 export const CallControls: React.FC<CallControlsProps> = ({
@@ -85,6 +86,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
   onToggleFullscreen,
   activeGesture,
   onTriggerGesture,
+  onOpenAvatarModal,
 }) => {
   const [showModePicker, setShowModePicker] = React.useState(false);
   const [showGesturesPicker, setShowGesturesPicker] = React.useState(false);
@@ -170,6 +172,19 @@ export const CallControls: React.FC<CallControlsProps> = ({
         >
           {isCameraActive ? <Video className="w-5 h-5 text-white" /> : <VideoOff className="w-5 h-5 text-rose-400" />}
         </button>
+
+        {/* 3D Avatar Switcher Button */}
+        {onOpenAvatarModal && (
+          <button
+            type="button"
+            onClick={onOpenAvatarModal}
+            className="p-3 sm:p-3.5 rounded-2xl bg-cyan-950/70 hover:bg-cyan-900/80 text-cyan-300 border border-cyan-500/40 transition active:scale-95 shadow-sm shadow-cyan-950/40 cursor-pointer flex items-center gap-1.5"
+            title="Cambiar mi Avatar 3D (Modelos Disponibles, Admin y Mi Colección)"
+          >
+            <Sparkles className="w-5 h-5 text-cyan-400" />
+            <span className="hidden xl:inline text-xs font-semibold">Avatar</span>
+          </button>
+        )}
 
         {/* Dynamic Mode Quick Switcher Popover */}
         <div className="relative">

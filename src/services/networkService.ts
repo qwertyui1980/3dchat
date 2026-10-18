@@ -1389,6 +1389,7 @@ export class NetworkService {
                 p.id === payload.user.id ? payload.user : p
               );
             }
+            this.checkAndFetchMissingAvatar(payload.user);
             if (this.onUserUpdated) {
               this.onUserUpdated(payload.user);
             }
@@ -1484,6 +1485,7 @@ export class NetworkService {
             this.currentRoom.participants = Array.from(map.values());
             if (this.onUserJoined) {
               remoteUsers.forEach((u) => {
+                this.checkAndFetchMissingAvatar(u);
                 this.onUserJoined?.(u, this.currentRoom!.participants);
               });
             }
@@ -1494,6 +1496,7 @@ export class NetworkService {
             if (p.user && p.user.id !== this.currentUser?.id && this.currentRoom) {
               if (!this.currentRoom.participants.some((u) => u.id === p.user.id)) {
                 this.currentRoom.participants = [...this.currentRoom.participants, p.user];
+                this.checkAndFetchMissingAvatar(p.user);
                 this.onUserJoined?.(p.user, this.currentRoom.participants);
               }
             }
@@ -2461,6 +2464,7 @@ export class NetworkService {
           if (!exists) {
             const nextList = this.deduplicateParticipants([...this.currentRoom.participants, msg.user]);
             this.currentRoom.participants = nextList;
+            this.checkAndFetchMissingAvatar(msg.user);
             if (this.onUserJoined) {
               this.onUserJoined(msg.user, nextList);
             }
@@ -2508,6 +2512,7 @@ export class NetworkService {
             p.id === msg.user.id ? msg.user : p
           );
           this.currentRoom.participants = nextList;
+          this.checkAndFetchMissingAvatar(msg.user);
           if (this.onUserUpdated) {
             this.onUserUpdated(msg.user);
           }
@@ -2921,6 +2926,9 @@ export class NetworkService {
           buffer,
         });
         console.info(`[XStreamX Network] Modelo 3D (${user.avatarId}) de ${user.name} descargado exitosamente desde Supabase Cloud.`);
+        if (this.onUserUpdated) {
+          this.onUserUpdated(user);
+        }
         return;
       }
     } catch (err) {

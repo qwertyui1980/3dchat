@@ -261,14 +261,23 @@ export const Lobby: React.FC<LobbyProps> = ({
     return 'predefined';
   });
 
-  const predefinedAvatars = useMemo(() => avatars.filter((a) => !a.isCustom), [avatars]);
-  const customAvatars = useMemo(() => {
+  const predefinedAvatars = useMemo(() => {
     return avatars.filter((a) => {
-      if (!a.isCustom) return false;
-      if (authUser?.username && !isAdminUser) {
-        return a.ownerId === authUser.username || !a.ownerId;
+      if (!a.isCustom) return true;
+      if (a.isPublic) return true;
+      if ((a.ownerId || '').trim().toLowerCase() === 'admin') return true;
+      return false;
+    });
+  }, [avatars]);
+
+  const customAvatars = useMemo(() => {
+    const cleanUser = (authUser?.username || '').trim().toLowerCase();
+    return avatars.filter((a) => {
+      const owner = (a.ownerId || '').trim().toLowerCase();
+      if (isAdminUser) {
+        return owner === 'admin' || (!owner && a.isCustom);
       }
-      return true;
+      return cleanUser && owner === cleanUser;
     });
   }, [avatars, authUser?.username, isAdminUser]);
 

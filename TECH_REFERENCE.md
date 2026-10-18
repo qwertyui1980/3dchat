@@ -751,5 +751,32 @@ Anteriormente, al ingresar a la sala, los participantes mostraban el modelo de r
 * **Mapeo y Fallback de Bundles CSS Antiguos:** Para prevenir errores 404 cuando clientes con caché residual o pestañas activas solicitan hashes anteriores de hojas de estilo (ej. `index-BD_-xWaB.css`), se incorporó en [`server.ts`](file:///d:/Apps/xstreamx/server.ts) un middleware de resolución que entrega la hoja de estilos activa con tipo MIME `text/css`, manteniendo compatibilidad con sesiones abiertas.
 * **Disponibilidad Dual de Binarios MediaPipe WASM (`vision_wasm_internal.*`):** Los binarios y scripts del runtime de visión (`vision_wasm_internal.js`, `vision_wasm_internal.wasm`, `face_landmarker.task`) se encuentran disponibilizados tanto en `/wasm/` como en la raíz pública `/` de la aplicación. Esto previene fallos de resolución (`Error processing: Event`) emitidos por Web Workers o por `FilesetResolver.forVisionTasks()` en [`FaceBlendshapeStudioModal.tsx`](file:///d:/Apps/xstreamx/src/components/admin/FaceBlendshapeStudioModal.tsx) y [`mediapipeService.ts`](file:///d:/Apps/xstreamx/src/services/mediapipeService.ts).
 
+---
+
+## 16. Ecosistema de Modelos 3D y Telepresencia en Sala (3D Masks & Catálogo Compartido)
+
+Para asegurar que todos los participantes puedan usar tanto los modelos estándar como los creados por el Administrador y los generados por cada usuario en su colección personal, se implementó una arquitectura unificada de persistencia en la nube (Supabase) y gestión interactiva en tiempo real:
+
+### 16.1. Diagnóstico de Carga de Modelos 3D Mask
+1. **Persistencia Desconectada de la Nube:** Anteriormente, [`addCustomModel`](file:///d:/Apps/xstreamx/src/services/avatarModelService.ts) y [`updateCustomModel`](file:///d:/Apps/xstreamx/src/services/avatarModelService.ts) solo almacenaban el binario GLB en el IndexedDB local del navegador donde se creaba. No se invocaba la persistencia a Supabase Cloud (`saveAvatarRecord`), por lo que otros clientes recibían `null` al consultar el modelo en la sala.
+2. **Ciclo Incompleto en ThreeAvatarCanvas:** Cuando un cliente remoto solicitaba un avatar mediante [`fetchAndCacheAvatarFromCloud`](file:///d:/Apps/xstreamx/src/components/avatars/ThreeAvatarCanvas.tsx), al completarse la promesa exitosamente no se invocaba la reactivación del ciclo de vida (`setAvatarRevision`), dejando el canvas en estado de carga indefinida (`isLoading: true`).
+3. **Filtros Rígidos de Propietario en el Lobby:** En [`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx), la pestaña `predefinedAvatars` excluía cualquier avatar con `isCustom: true`, lo que impedía que los usuarios visualizaran los modelos creados por el Admin o modelos públicos.
+
+### 16.2. Arquitectura de Sincronización y Acceso en Reunión
+* **Persistencia Nube Inmediata (Dual Base64 + Blob):**
+  * Al guardar un avatar en [`FaceBlendshapeStudioModal.tsx`](file:///d:/Apps/xstreamx/src/components/admin/FaceBlendshapeStudioModal.tsx) o subir un archivo `.glb`/`.obj`/`.stl`, [`avatarModelService.ts`](file:///d:/Apps/xstreamx/src/services/avatarModelService.ts) convierte el archivo a Base64 data URL y lo persiste directamente en la tabla `avatars` de Supabase Cloud vinculándolo al usuario en `users.avatar_ids`.
+  * Los clientes remotos descargan el modelo bajo demanda vía `fetchAndCacheAvatarFromCloud()` y lo almacenan en su IndexedDB local para acceso instantáneo a 60 FPS.
+* **Recarga Reactiva en Three.js:**
+  * Al completarse la descarga del modelo en la nube en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/components/avatars/ThreeAvatarCanvas.tsx), se dispara `setAvatarRevision((r) => r + 1)`, montando el modelo GLTF/OBJ/STL en el grafo de escena Three.js sin requerir recargar la página.
+* **Componente `RoomAvatarModal.tsx`:**
+  * Modal accesible durante la reunión desde la barra de controles [`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx).
+  * **Pestaña "Disponibles y Admin":** Reúne todos los modelos de fábrica (`lincoln_3d`, `biden_3d`, `obama_3d`, `trump_3d`, `three_robot`, `mipipi_3d`, `fox_sensei`, etc.), los modelos públicos del catálogo y los creados por el Administrador (`ownerId === 'admin'`).
+  * **Pestaña "Mi Colección":** Muestra los modelos biomiméticos pertenecientes a la cuenta del usuario activo (`ownerId === cleanUser`), con soporte de cuota y acceso rápido.
+  * **Acciones en Llamada:**
+    * Botón **"+ Crear con 3D Masks"**: Despliega [`FaceBlendshapeStudioModal.tsx`](file:///d:/Apps/xstreamx/src/components/admin/FaceBlendshapeStudioModal.tsx) dentro de la sala para crear o ajustar avatares desde fotos y ponérselos de inmediato.
+    * Botón **"Subir Modelo (.glb/.obj)"**: Permite importar archivos tridimensionales locales directamente durante la llamada.
+* **Propagación en Tiempo Real:**
+  * Al seleccionar un nuevo avatar en el modal de la sala, `handleSelectAvatar()` en [`App.tsx`](file:///d:/Apps/xstreamx/src/App.tsx) actualiza el estado local, persiste la preferencia en `localStorage`, y transmite el cambio a la red (`networkService.updateAvatar()`), logrando que todos los participantes en la videollamada actualicen su visualización en Three.js automáticamente.
+
 
 

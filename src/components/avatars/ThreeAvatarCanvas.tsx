@@ -839,7 +839,7 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
     } else if (avatarDef && (avatarDef.modelUrl || avatarDef.fileData)) {
       // Custom Uploaded 3D Model (GLB / GLTF / VRM / OBJ / STL from 3ds Max / Blender / CAD)
       setIsLoading(true);
-      const modelSource = avatarDef.fileData || avatarDef.modelUrl || '';
+      const modelSource = avatarDef.modelUrl || avatarDef.fileData || '';
       const fmt = (avatarDef.format || '').toLowerCase();
       const nameLower = (avatarDef.name || '').toLowerCase();
       const isObj = fmt === 'obj' || nameLower.endsWith('.obj') || modelSource.startsWith('data:text/plain') || modelSource.includes('.obj');
@@ -1788,12 +1788,15 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             .fetchAndCacheAvatarFromCloud(avatarId)
             .then((fetched) => {
               if (isDisposed) return;
-              if (!fetched || (!fetched.modelUrl && !fetched.fileData)) {
+              if (fetched && (fetched.modelUrl || fetched.fileData)) {
                 setIsLoading(false);
-                const fallback = buildProceduralRobotCharacter('mecha');
-                characterControllerRef.current = fallback;
-                scene.add(fallback.group);
+                setAvatarRevision((r) => r + 1);
+                return;
               }
+              setIsLoading(false);
+              const fallback = buildProceduralRobotCharacter('mecha');
+              characterControllerRef.current = fallback;
+              scene.add(fallback.group);
             })
             .catch(() => {
               if (!isDisposed) {
@@ -2233,7 +2236,7 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
         renderer.dispose();
       } catch (_) {}
     };
-  }, [avatarId, restoreCount, avatarRevision, avatarDef?.modelUrl]);
+  }, [avatarId, restoreCount, avatarRevision, avatarDef?.modelUrl, avatarDef?.fileData]);
 
   return (
     <div

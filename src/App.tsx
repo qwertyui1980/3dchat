@@ -947,6 +947,12 @@ export default function App() {
       setCurrentUser((prev) => (prev ? { ...prev, avatarId } : null));
     }
     networkServiceSingleton.updateAvatar(avatarId);
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('xstreamx_selected_avatar', avatarId);
+      if (authenticatedUser?.username) {
+        localStorage.setItem(`xstreamx_selected_avatar_${authenticatedUser.username.toLowerCase()}`, avatarId);
+      }
+    }
   };
 
   // Chat message send
