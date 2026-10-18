@@ -339,10 +339,13 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
     };
   }, [avatarId, avatarRevision]);
 
-  // Auto-request missing custom model from room peers via P2P / WebSocket mesh
+  // Auto-request missing custom model from Supabase Cloud and room peers
   useEffect(() => {
     const isStd = AVATAR_LIST.some((a) => a.id === avatarId);
     if (!isStd && !avatarDef.modelUrl && !avatarDef.fileData) {
+      avatarModelServiceSingleton.fetchAndCacheAvatarFromCloud(avatarId).catch((err) => {
+        console.warn('[ThreeAvatarCanvas] Error recuperando avatar de Supabase:', err);
+      });
       networkServiceSingleton.requestAvatarModel('', avatarId);
     }
   }, [avatarId, avatarDef.modelUrl, avatarDef.fileData]);
@@ -1777,6 +1780,31 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
       } else if (avatarId === 'pixel_punk') {
         controller = buildProceduralRobotCharacter('punk');
       } else {
+        const isStd = AVATAR_LIST.some((a) => a.id === avatarId);
+        if (!isStd) {
+          // Custom avatar whose model is being fetched from Supabase Cloud
+          setIsLoading(true);
+          avatarModelServiceSingleton
+            .fetchAndCacheAvatarFromCloud(avatarId)
+            .then((fetched) => {
+              if (isDisposed) return;
+              if (!fetched || (!fetched.modelUrl && !fetched.fileData)) {
+                setIsLoading(false);
+                const fallback = buildProceduralRobotCharacter('mecha');
+                characterControllerRef.current = fallback;
+                scene.add(fallback.group);
+              }
+            })
+            .catch(() => {
+              if (!isDisposed) {
+                setIsLoading(false);
+                const fallback = buildProceduralRobotCharacter('mecha');
+                characterControllerRef.current = fallback;
+                scene.add(fallback.group);
+              }
+            });
+          return;
+        }
         controller = buildProceduralRobotCharacter('mecha');
       }
 

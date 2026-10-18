@@ -28,6 +28,7 @@ import { RoomView } from './components/room/RoomView';
 import { Login, AuthenticatedUser } from './components/auth/Login';
 import { Register } from './components/auth/Register';
 import { UserProfileModal } from './components/profile/UserProfileModal';
+import { dbServiceSingleton } from './services/dbService';
 import { indexedDbService } from './services/db/indexedDbService';
 import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
 import { applyDynamicMode, normalizeTrackingMode, QuickGestureType } from './services/face3d/dynamicModeHelper';
@@ -59,11 +60,16 @@ export default function App() {
     return null;
   });
 
-  // Ensure authenticated user carries their assigned avatarId from IndexedDB/Seed
+  // Ensure authenticated user carries their assigned avatarId from Supabase/Seed & sync avatars
   useEffect(() => {
+    if (authenticatedUser?.username) {
+      avatarModelServiceSingleton.syncUserCloudAvatars(authenticatedUser.username).catch(() => {});
+      dbServiceSingleton.ensureSeedUsersInCloud().catch(() => {});
+    }
+
     if (authenticatedUser && !authenticatedUser.avatarId) {
       let isMounted = true;
-      indexedDbService.getUser(authenticatedUser.username).then((acc) => {
+      dbServiceSingleton.getUser(authenticatedUser.username).then((acc) => {
         if (!isMounted || !acc) return;
         const assignedAvatar = acc.avatarId || (authenticatedUser.role === 'admin' ? 'lincoln_3d' : 'lincoln_3d');
         setAuthenticatedUser((prev) => (prev ? { ...prev, avatarId: assignedAvatar } : null));

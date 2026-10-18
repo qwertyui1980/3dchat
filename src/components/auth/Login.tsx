@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, User, Eye, EyeOff, ArrowRight, AlertCircle, ArrowLeft, X } from 'lucide-react';
 import { dbServiceSingleton } from '../../services/dbService';
-import { indexedDbService } from '../../services/db/indexedDbService';
+import { avatarModelServiceSingleton } from '../../services/avatarModelService';
 import { LegalDisclaimerModal } from '../common/LegalDisclaimerModal';
 import { PresidentesNeonHome } from '../home/PresidentesNeonHome';
 
@@ -47,8 +47,8 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
     setIsLoading(true);
 
     try {
-      // Validate credentials against IndexedDB user accounts
-      const userAccount = await indexedDbService.authenticateUser(cleanUser, trimmedPass);
+      // Validate credentials against centralized online Supabase DB
+      const userAccount = await dbServiceSingleton.authenticateUser(cleanUser, trimmedPass);
 
       if (!userAccount) {
         if (cleanUser === 'admin') {
@@ -72,9 +72,13 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister }) => {
         name: displayName,
         role: role,
         provider: 'local',
+        password: trimmedPass,
         avatarId: targetAvatarId as any,
-        createdAt: Date.now(),
+        createdAt: userAccount.createdAt || Date.now(),
       });
+
+      // Synchronize all custom avatars created by this user from Supabase online
+      avatarModelServiceSingleton.syncUserCloudAvatars(cleanUser).catch(() => {});
 
       // Save user-scoped selected avatar in localStorage to avoid collisions
       if (typeof window !== 'undefined') {

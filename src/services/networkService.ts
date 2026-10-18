@@ -2893,7 +2893,6 @@ export class NetworkService {
    */
   public async checkAndFetchMissingAvatar(user: User) {
     if (!user || !user.avatarId || !this.currentUser) return;
-    if (user.id === this.currentUser.id) return;
 
     // Si es un avatar estándar conocido del catálogo incorporado, no hace falta pedirlo
     const isStandard = AVATAR_LIST.some((a) => a.id === user.avatarId);
@@ -2929,7 +2928,9 @@ export class NetworkService {
     }
 
     // 2. Si no estaba en Supabase o falló, solicitar el modelo 3D al participante vía Mesh P2P
-    this.requestAvatarModel(user.id, user.avatarId);
+    if (user.id !== this.currentUser.id) {
+      this.requestAvatarModel(user.id, user.avatarId);
+    }
   }
 
   /**

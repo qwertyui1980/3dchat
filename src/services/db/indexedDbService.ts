@@ -9,6 +9,7 @@
  */
 
 import { PREDEFINED_AVATAR_THUMBNAILS } from './avatarThumbnails';
+import { dbServiceSingleton } from '../dbService';
 
 export interface StoredCustomModel {
   id: string;
@@ -41,6 +42,7 @@ export interface UserAccount {
   username: string;
   name: string;
   role: 'admin' | 'participant';
+  provider: 'local';
   password: string;
   avatarId: string;
   createdAt: number;
@@ -54,6 +56,7 @@ export const SEED_USERS: UserAccount[] = [
     username: 'admin',
     name: 'Administrador Presidencial',
     role: 'admin',
+    provider: 'local',
     password: 'Pr3siZ2027',
     avatarId: 'lincoln_3d',
     createdAt: Date.now(),
@@ -63,6 +66,7 @@ export const SEED_USERS: UserAccount[] = [
     username: 'presi1',
     name: 'Presidente 1 (Lincoln)',
     role: 'participant',
+    provider: 'local',
     password: 'Avatar1',
     avatarId: 'lincoln_3d',
     createdAt: Date.now(),
@@ -72,6 +76,7 @@ export const SEED_USERS: UserAccount[] = [
     username: 'presi2',
     name: 'Presidente 2 (Biden)',
     role: 'participant',
+    provider: 'local',
     password: 'Avatar2',
     avatarId: 'biden_3d',
     createdAt: Date.now(),
@@ -81,6 +86,7 @@ export const SEED_USERS: UserAccount[] = [
     username: 'presi3',
     name: 'Presidente 3 (Obama)',
     role: 'participant',
+    provider: 'local',
     password: 'Avatar3',
     avatarId: 'obama_3d',
     createdAt: Date.now(),
@@ -90,6 +96,7 @@ export const SEED_USERS: UserAccount[] = [
     username: 'presi4',
     name: 'Presidente 4 (Trump)',
     role: 'participant',
+    provider: 'local',
     password: 'Avatar4',
     avatarId: 'trump_3d',
     createdAt: Date.now(),
@@ -99,6 +106,7 @@ export const SEED_USERS: UserAccount[] = [
     username: 'presi5',
     name: 'Presidente 5 (Cyber)',
     role: 'participant',
+    provider: 'local',
     password: 'Avatar5',
     avatarId: 'neon_holo',
     createdAt: Date.now(),
@@ -108,6 +116,7 @@ export const SEED_USERS: UserAccount[] = [
     username: 'presi6',
     name: 'Presidente 6 (Robot)',
     role: 'participant',
+    provider: 'local',
     password: 'Avatar6',
     avatarId: 'three_robot',
     createdAt: Date.now(),
@@ -411,20 +420,38 @@ class IndexedDbService {
   // ==========================================
 
   /**
-   * Guarda o actualiza un usuario en la base de datos
+   * Guarda o actualiza un usuario en la base de datos (Supabase Cloud + Local Cache)
    */
   async saveUser(user: UserAccount): Promise<void> {
     try {
-      const { store, tx } = await this.getStore(STORE_USERS, 'readwrite');
       const normalized = {
         ...user,
         username: user.username.trim().toLowerCase(),
       };
-      store.put(normalized);
-      return new Promise((resolve, reject) => {
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
+
+      // 1. Persist directly in online Supabase centralized DB
+      await dbServiceSingleton.upsertUser({
+        id: normalized.id,
+        username: normalized.username,
+        name: normalized.name,
+        role: normalized.role,
+        provider: 'local',
+        password: normalized.password,
+        avatarId: normalized.avatarId as any,
+        bio: normalized.bio,
+        createdAvatars: normalized.createdAvatars,
+        createdAt: normalized.createdAt,
       });
+
+      // 2. Update local store
+      try {
+        const { store, tx } = await this.getStore(STORE_USERS, 'readwrite');
+        store.put(normalized);
+        await new Promise<void>((resolve, reject) => {
+          tx.oncomplete = () => resolve();
+          tx.onerror = () => reject(tx.error);
+        });
+      } catch (_) {}
     } catch (err) {
       console.error('[IndexedDbService] Error guardando usuario:', err);
       throw err;
@@ -432,11 +459,21 @@ class IndexedDbService {
   }
 
   /**
-   * Obtiene un usuario por su nombre de usuario
+   * Obtiene un usuario por su nombre de usuario desde Supabase Cloud con fallback local
    */
   async getUser(username: string): Promise<UserAccount | null> {
+    const cleanUser = username.trim().toLowerCase();
+
+    // 1. Consultar Supabase DB
     try {
-      const cleanUser = username.trim().toLowerCase();
+      const cloud = await dbServiceSingleton.getUserByUsername(cleanUser);
+      if (cloud) {
+        return cloud as unknown as UserAccount;
+      }
+    } catch (_) {}
+
+    // 2. Fallback local store
+    try {
       const { store, tx } = await this.getStore(STORE_USERS, 'readonly');
       const request = store.get(cleanUser);
       return new Promise((resolve, reject) => {
@@ -450,11 +487,18 @@ class IndexedDbService {
   }
 
   /**
-   * Elimina un usuario por su nombre de usuario
+   * Elimina un usuario por su nombre de usuario en Supabase y localmente
    */
   async deleteUser(username: string): Promise<void> {
+    const cleanUser = username.trim().toLowerCase();
+
     try {
-      const cleanUser = username.trim().toLowerCase();
+      await dbServiceSingleton.deleteUser(cleanUser);
+    } catch (e) {
+      console.warn('[IndexedDbService] Error eliminando usuario de Supabase:', e);
+    }
+
+    try {
       const { store, tx } = await this.getStore(STORE_USERS, 'readwrite');
       store.delete(cleanUser);
       return new Promise((resolve, reject) => {
@@ -463,17 +507,11 @@ class IndexedDbService {
       });
     } catch (err) {
       console.error(`[IndexedDbService] Error eliminando usuario '${username}':`, err);
-      throw err;
     }
   }
 
   /**
-   * Actualiza las credenciales y datos de un usuario por el Administrador:
-   * Permite cambiar su username (alias), contraseña (password), nombre y rol.
-   * Si el username cambia:
-   * 1. Elimina la clave previa de STORE_USERS
-   * 2. Guarda el usuario bajo el nuevo username
-   * 3. Migra la propiedad ownerId de todos los modelos 3D asociados
+   * Actualiza las credenciales y datos de un usuario por el Administrador en Supabase y localmente
    */
   async adminUpdateUser(
     oldUsername: string,
@@ -507,31 +545,49 @@ class IndexedDbService {
       role: updates.newRole || existing.role,
     };
 
-    if (cleanNew !== cleanOld) {
-      await this.deleteUser(cleanOld);
-      await this.saveUser(updatedUser);
+    // Actualizar en Supabase
+    await dbServiceSingleton.adminUpdateUser(cleanOld, {
+      newUsername: cleanNew,
+      newPassword: updatedUser.password,
+      newName: updatedUser.name,
+      newRole: updatedUser.role,
+    });
 
-      // Migrar los avatares que poseía este usuario al nuevo nombre de usuario
+    if (cleanNew !== cleanOld) {
       try {
-        const userModels = await this.getUserModels(cleanOld);
-        for (const m of userModels) {
-          m.ownerId = cleanNew;
-          await this.saveModel(m);
-        }
-      } catch (err) {
-        console.warn('[IndexedDbService] Error migrando modelos de usuario renombrado:', err);
-      }
+        const { store, tx } = await this.getStore(STORE_USERS, 'readwrite');
+        store.delete(cleanOld);
+        store.put(updatedUser);
+        await new Promise<void>((res, rej) => {
+          tx.oncomplete = () => res();
+          tx.onerror = () => rej(tx.error);
+        });
+      } catch (_) {}
     } else {
-      await this.saveUser(updatedUser);
+      try {
+        const { store, tx } = await this.getStore(STORE_USERS, 'readwrite');
+        store.put(updatedUser);
+        await new Promise<void>((res, rej) => {
+          tx.oncomplete = () => res();
+          tx.onerror = () => rej(tx.error);
+        });
+      } catch (_) {}
     }
 
     return updatedUser;
   }
 
   /**
-   * Obtiene todos los usuarios registrados en la base de datos
+   * Obtiene todos los usuarios registrados en Supabase Cloud con fallback
    */
   async getAllUsers(): Promise<UserAccount[]> {
+    try {
+      const cloudUsers = await dbServiceSingleton.getAllUsers();
+      if (cloudUsers && cloudUsers.length > 0) {
+        return cloudUsers as unknown as UserAccount[];
+      }
+    } catch (_) {}
+
     try {
       const { store, tx } = await this.getStore(STORE_USERS, 'readonly');
       const request = store.getAll();
@@ -553,13 +609,21 @@ class IndexedDbService {
   }
 
   /**
-   * Autentica credenciales contra la base de datos IndexedDB con fallback de memoria
+   * Autentica credenciales contra la base de datos Supabase Online con fallback de memoria
    */
   async authenticateUser(username: string, password: string): Promise<UserAccount | null> {
     const cleanUser = username.trim().toLowerCase();
     const cleanPass = password.trim();
 
-    // 1. Intentar validar en IndexedDB
+    // 1. Supabase online authentication
+    try {
+      const cloudAuth = await dbServiceSingleton.authenticateUser(cleanUser, cleanPass);
+      if (cloudAuth) {
+        return cloudAuth as unknown as UserAccount;
+      }
+    } catch (_) {}
+
+    // 2. Intentar validar en local store
     try {
       const user = await this.getUser(cleanUser);
       if (user && user.password === cleanPass) {
@@ -567,7 +631,7 @@ class IndexedDbService {
       }
     } catch (_) {}
 
-    // 2. Fallback con la lista semilla instantánea (0ms)
+    // 3. Fallback con la lista semilla instantánea (0ms)
     const seedMatch = SEED_USERS.find(
       (u) => u.username.toLowerCase() === cleanUser && u.password === cleanPass
     );
@@ -579,7 +643,7 @@ class IndexedDbService {
   }
 
   /**
-   * Asocia un ID de avatar creado a la cuenta del usuario
+   * Asocia un ID de avatar creado a la cuenta del usuario en Supabase y localmente
    */
   async addAvatarToUser(username: string, avatarId: string): Promise<UserAccount | null> {
     const user = await this.getUser(username);

@@ -139,8 +139,8 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
 
   const loadUsers = async () => {
     try {
-      const list = await indexedDbService.getAllUsers();
-      setUserAccounts(list);
+      const list = await dbServiceSingleton.getAllUsers();
+      setUserAccounts(list as unknown as UserAccount[]);
     } catch (err) {
       console.warn('Error cargando usuarios en AdminControlPanel:', err);
     }
@@ -198,15 +198,9 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
       const cleanOld = editingUser.username.toLowerCase();
       const cleanNew = editUsername.trim().toLowerCase();
 
-      await indexedDbService.adminUpdateUser(cleanOld, {
-        newUsername: cleanNew,
-        newPassword: editPassword.trim(),
-        newName: editName.trim() || cleanNew,
-        newRole: editRole,
-      });
-
       await dbServiceSingleton.adminUpdateUser(cleanOld, {
         newUsername: cleanNew,
+        newPassword: editPassword.trim(),
         newName: editName.trim() || cleanNew,
         newRole: editRole,
       });
@@ -231,7 +225,6 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
     }
 
     try {
-      await indexedDbService.deleteUser(targetUser.username);
       await dbServiceSingleton.deleteUser(targetUser.username);
       await loadUsers();
       setUserSuccessMsg(`Usuario @${targetUser.username} eliminado correctamente.`);
@@ -260,7 +253,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
     setUserErrorMsg(null);
 
     try {
-      const existing = await indexedDbService.getUser(cleanUser);
+      const existing = await dbServiceSingleton.getUser(cleanUser);
       if (existing) {
         throw new Error(`El nombre de usuario '@${cleanUser}' ya existe.`);
       }
@@ -272,22 +265,13 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
         name: cleanName,
         password: cleanPass,
         role: newUserRole,
+        provider: 'local',
         avatarId: 'lincoln_3d',
         createdAt: now,
         createdAvatars: [],
       };
 
-      await indexedDbService.saveUser(newUserObj);
-      await dbServiceSingleton.upsertUser({
-        id: newUserObj.id,
-        username: cleanUser,
-        name: cleanName,
-        role: newUserRole,
-        provider: 'local',
-        avatarId: 'lincoln_3d',
-        createdAt: now,
-        createdAvatars: [],
-      });
+      await dbServiceSingleton.saveUser(newUserObj);
 
       await loadUsers();
       setUserSuccessMsg(`¡Nuevo usuario @${cleanUser} creado exitosamente!`);

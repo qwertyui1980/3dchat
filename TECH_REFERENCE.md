@@ -101,7 +101,20 @@ graph LR
 * **Ingesta Dinámica e Invocación en Caliente:**
   * El cliente receptor registra el modelo en caliente con `avatarModelServiceSingleton.registerRemoteAvatar`, generando un `Blob` de objeto en memoria, guardando en caché local en IndexedDB y disparando el listener reactivo de `ThreeAvatarCanvas`, que carga y anima inmediatamente el avatar en pantalla sin requerir reinicio de la llamada.
 
+### 3.2. Centralización en la Nube con Supabase DB (`public.users`, `public.avatars`, `public.rooms`)
+* **Migración de Backend Local a Supabase Online:**
+  * Toda la persistencia de usuarios (`UserRecord`), credenciales con contraseñas (`password`), roles administrativos, metadatos y modelos 3D se ha migrado a la base de datos centralizada de Supabase (`https://zhlhyasefzwnecszazlf.supabase.co`).
+  * `src/services/dbService.ts` actúa como la autoridad central y única fuente de verdad para autenticación (`authenticateUser`), gestión de perfiles (`saveUser`), salas en vivo (`saveRoom`) y catálogos de avatares (`saveAvatarRecord`).
+  * `src/services/db/indexedDbService.ts` delega transparentemente todas las operaciones a `dbServiceSingleton`, manteniendo únicamente una caché de memoria de latencia cero para resiliencia offline.
+* **Disponibilidad Universal de Avatares Creados en la Sala (`#espacio/main`):**
+  * Al guardar un avatar en el Estudio 3D (`FaceBlendshapeStudioModal`) o en el perfil de usuario, el binario codificado en Base64/DataURL se almacena directamente en la tabla `public.avatars` con su `owner_id`, `format`, `preview_image` y `debug_params`.
+  * Al entrar en la sala `#espacio/main`, cualquier participante (tanto el usuario creador como los observadores remotos) resuelve automáticamente el modelo 3D ausente invocando `avatarModelServiceSingleton.fetchAndCacheAvatarFromCloud(avatarId)`.
+  * `ThreeAvatarCanvas.tsx` mantiene un estado de carga reactivo y evita el parpadeo o fallback a robot de mecha procedural, montando de forma inmediata el archivo `.glb`/`.obj`/`.stl` en cuanto se descarga desde Supabase.
+* **Cuota de Creación por Cuenta:**
+  * Cada usuario normal puede crear y guardar hasta un máximo de 4 avatares 3D personalizados en su cuenta. La cuenta maestra de Administrador (`admin`) no tiene límite de creación.
+
 ---
+
 
 ## 4. Pipeline de Visión por Computadora y Animación Facial
 
@@ -732,6 +745,11 @@ Anteriormente, al ingresar a la sala, los participantes mostraban el modelo de r
 * **Propagación Completa en la Malla de Red:**
   * Al ingresar a la sala mediante `joinRoom`, el callback de `server.ts` actualiza la lista deduplicada de participantes en `currentRoom.participants`, notifica a la aplicación mediante `onRoomJoined` y descarga automáticamente cualquier modelo 3D ausente vía `checkAndFetchMissingAvatar`.
   * Al editar el perfil en [`UserProfileModal.tsx`](file:///d:/Apps/xstreamx/src/components/profile/UserProfileModal.tsx), el cambio de avatar se propaga al instante a la sesión activa (`sessionStorage`), a la base de datos local y a la sala mediante `updateAvatar()`.
+
+### 15.3. Manejo Resiliente de Favicon y Caché de Activos Estáticos (`favicon.ico` y `*.css`)
+* **Favicon Multi-Resolución Nativo:** Se generó `public/favicon.ico` (resoluciones 16x16, 32x32, 48x48 y 64x64 con compresión ICO) y se vincularon explícitamente en el `<head>` de [`index.html`](file:///d:/Apps/xstreamx/index.html) tanto el formato SVG vectorial (`favicon.svg`) como el binario `.ico`, eliminando el error 404 nativo emitido por navegadores basados en Chromium.
+* **Mapeo y Fallback de Bundles CSS Antiguos:** Para prevenir errores 404 cuando clientes con caché residual o pestañas activas solicitan hashes anteriores de hojas de estilo (ej. `index-BD_-xWaB.css`), se incorporó en [`server.ts`](file:///d:/Apps/xstreamx/server.ts) un middleware de resolución que entrega la hoja de estilos activa con tipo MIME `text/css`, manteniendo compatibilidad con sesiones abiertas.
+* **Disponibilidad Dual de Binarios MediaPipe WASM (`vision_wasm_internal.*`):** Los binarios y scripts del runtime de visión (`vision_wasm_internal.js`, `vision_wasm_internal.wasm`, `face_landmarker.task`) se encuentran disponibilizados tanto en `/wasm/` como en la raíz pública `/` de la aplicación. Esto previene fallos de resolución (`Error processing: Event`) emitidos por Web Workers o por `FilesetResolver.forVisionTasks()` en [`FaceBlendshapeStudioModal.tsx`](file:///d:/Apps/xstreamx/src/components/admin/FaceBlendshapeStudioModal.tsx) y [`mediapipeService.ts`](file:///d:/Apps/xstreamx/src/services/mediapipeService.ts).
 
 
 

@@ -80,11 +80,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
 
     let isMounted = true;
 
-    // Load full user details from IndexedDB
-    indexedDbService.getUser(authUser.username).then((acc) => {
+    // Load full user details from centralized online Supabase DB
+    dbServiceSingleton.getUser(authUser.username).then((acc) => {
       if (!isMounted) return;
       if (acc) {
-        setUserAccount(acc);
+        setUserAccount(acc as unknown as UserAccount);
         setDisplayName(acc.name);
         setBio(acc.bio || '');
         if (acc.avatarId) setActiveAvatar(acc.avatarId);
@@ -126,7 +126,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
       const cleanName = displayName.trim() || authUser.username;
       const cleanBio = bio.trim();
 
-      // 1. Update IndexedDB
+      // 1. Update Centralized Supabase DB
       if (userAccount) {
         const updatedAcc: UserAccount = {
           ...userAccount,
@@ -134,7 +134,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           bio: cleanBio,
           avatarId: activeAvatar,
         };
-        await indexedDbService.saveUser(updatedAcc);
+        await dbServiceSingleton.saveUser(updatedAcc as any);
         setUserAccount(updatedAcc);
       }
 

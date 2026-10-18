@@ -21,12 +21,19 @@ CREATE TABLE IF NOT EXISTS public.users (
     name TEXT NOT NULL,
     role TEXT DEFAULT 'participant',
     provider TEXT DEFAULT 'local',
+    password TEXT DEFAULT '',
     avatar_id TEXT DEFAULT 'three_robot',
     bio TEXT DEFAULT '',
     created_avatars JSONB DEFAULT '[]'::jsonb,
     created_at BIGINT DEFAULT (EXTRACT(epoch FROM NOW()) * 1000)::BIGINT,
     updated_at BIGINT DEFAULT (EXTRACT(epoch FROM NOW()) * 1000)::BIGINT
 );
+
+-- Migrations for existing setups:
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS password TEXT DEFAULT '';
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT '';
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS created_avatars JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.users ADD COLUMN IF NOT EXISTS avatar_id TEXT DEFAULT 'three_robot';
 
 -- 3. Create 'avatars' table (for user-created and custom 3D avatars)
 CREATE TABLE IF NOT EXISTS public.avatars (
@@ -97,5 +104,21 @@ VALUES
 ('trump_3d', 'Trump 3D', 'Busto 3D presidencial estilizado con traje, corbata y seguimiento en vivo', 'Líderes', '#e11d48', '#f59e0b', '3D GLB', 'system', '', 'glb', true, 1700000000000),
 ('mipipi', 'Mipipi 3D', 'Personaje 3D con morph targets faciales, parpadeo y sincronización de voz', 'Character', '#10b981', '#34d399', '3D MORPH', 'system', '', 'glb', true, 1700000000000)
 ON CONFLICT (id) DO NOTHING;
+
+-- 8. Insert initial default users into public.users table
+INSERT INTO public.users (id, username, name, role, provider, password, avatar_id, bio, created_avatars, created_at)
+VALUES
+('user_admin', 'admin', 'Administrador Presidencial', 'admin', 'local', 'Pr3siZ2027', 'lincoln_3d', 'Cuenta Maestra de Administración XStreamX', '[]'::jsonb, 1700000000000),
+('user_presi1', 'presi1', 'Presidente 1 (Lincoln)', 'participant', 'local', 'Avatar1', 'lincoln_3d', 'Sala Presidencial XStreamX', '[]'::jsonb, 1700000000000),
+('user_presi2', 'presi2', 'Presidente 2 (Biden)', 'participant', 'local', 'Avatar2', 'biden_3d', 'Sala Presidencial XStreamX', '[]'::jsonb, 1700000000000),
+('user_presi3', 'presi3', 'Presidente 3 (Obama)', 'participant', 'local', 'Avatar3', 'obama_3d', 'Sala Presidencial XStreamX', '[]'::jsonb, 1700000000000),
+('user_presi4', 'presi4', 'Presidente 4 (Trump)', 'participant', 'local', 'Avatar4', 'trump_3d', 'Sala Presidencial XStreamX', '[]'::jsonb, 1700000000000),
+('user_presi5', 'presi5', 'Presidente 5 (Cyber)', 'participant', 'local', 'Avatar5', 'neon_holo', 'Sala Presidencial XStreamX', '[]'::jsonb, 1700000000000),
+('user_presi6', 'presi6', 'Presidente 6 (Robot)', 'participant', 'local', 'Avatar6', 'three_robot', 'Sala Presidencial XStreamX', '[]'::jsonb, 1700000000000)
+ON CONFLICT (id) DO UPDATE SET
+  password = EXCLUDED.password,
+  name = EXCLUDED.name,
+  role = EXCLUDED.role;
+
 
 

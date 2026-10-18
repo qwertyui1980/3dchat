@@ -225,7 +225,9 @@ export const Lobby: React.FC<LobbyProps> = ({
     }
 
     let isMounted = true;
-    indexedDbService.getUser(authUser.username).then((acc) => {
+    avatarModelServiceSingleton.syncUserCloudAvatars(authUser.username).catch(() => {});
+
+    dbServiceSingleton.getUser(authUser.username).then((acc) => {
       if (!isMounted) return;
       const userKey = getUserAvatarStorageKey(authUser.username);
       const savedUserAvatar = typeof window !== 'undefined' ? (localStorage.getItem(userKey) as AvatarId) : null;
@@ -483,9 +485,9 @@ export const Lobby: React.FC<LobbyProps> = ({
       localStorage.setItem(STORAGE_AVATAR_KEY, id);
     }
     if (authUser?.username) {
-      indexedDbService.getUser(authUser.username).then((acc) => {
+      dbServiceSingleton.getUser(authUser.username).then((acc) => {
         if (acc && acc.avatarId !== id) {
-          indexedDbService.saveUser({ ...acc, avatarId: id }).catch(() => {});
+          dbServiceSingleton.saveUser({ ...acc, avatarId: id }).catch(() => {});
         }
       }).catch(() => {});
     }

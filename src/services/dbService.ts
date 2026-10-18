@@ -8,10 +8,13 @@ export interface UserRecord {
   role: 'admin' | 'participant';
   provider: 'local';
   avatarId: AvatarId;
+  password?: string;
   createdAt: number;
   bio?: string;
   createdAvatars?: string[];
 }
+
+export type UserAccount = UserRecord;
 
 export interface RoomRecord {
   id: string;
@@ -36,6 +39,7 @@ const DEFAULT_USERS: UserRecord[] = [
     name: 'Administrador Presidencial',
     role: 'admin',
     provider: 'local',
+    password: 'Pr3siZ2027',
     avatarId: 'lincoln_3d',
     createdAt: Date.now(),
   },
@@ -45,6 +49,7 @@ const DEFAULT_USERS: UserRecord[] = [
     name: 'Presidente 1 (Lincoln)',
     role: 'participant',
     provider: 'local',
+    password: 'Avatar1',
     avatarId: 'lincoln_3d',
     createdAt: Date.now(),
   },
@@ -54,6 +59,7 @@ const DEFAULT_USERS: UserRecord[] = [
     name: 'Presidente 2 (Biden)',
     role: 'participant',
     provider: 'local',
+    password: 'Avatar2',
     avatarId: 'biden_3d',
     createdAt: Date.now(),
   },
@@ -63,6 +69,7 @@ const DEFAULT_USERS: UserRecord[] = [
     name: 'Presidente 3 (Obama)',
     role: 'participant',
     provider: 'local',
+    password: 'Avatar3',
     avatarId: 'obama_3d',
     createdAt: Date.now(),
   },
@@ -72,6 +79,7 @@ const DEFAULT_USERS: UserRecord[] = [
     name: 'Presidente 4 (Trump)',
     role: 'participant',
     provider: 'local',
+    password: 'Avatar4',
     avatarId: 'trump_3d',
     createdAt: Date.now(),
   },
@@ -81,6 +89,7 @@ const DEFAULT_USERS: UserRecord[] = [
     name: 'Presidente 5 (Cyber)',
     role: 'participant',
     provider: 'local',
+    password: 'Avatar5',
     avatarId: 'neon_holo',
     createdAt: Date.now(),
   },
@@ -90,6 +99,7 @@ const DEFAULT_USERS: UserRecord[] = [
     name: 'Presidente 6 (Robot)',
     role: 'participant',
     provider: 'local',
+    password: 'Avatar6',
     avatarId: 'three_robot',
     createdAt: Date.now(),
   },
@@ -347,7 +357,7 @@ class DatabaseService {
   }
 
   // ==========================================
-  // USERS (Supabase Cloud + Local Fallback)
+  // USERS (Supabase Cloud + Local Cache)
   // ==========================================
   async getUserByUsername(username: string): Promise<UserRecord | null> {
     this.initLocal();
@@ -355,9 +365,6 @@ class DatabaseService {
 
     // Check local memory first for instant 0ms response
     const local = this.localUsers.get(cleanUsername);
-    if (local) {
-      return local;
-    }
 
     const supabase = getSupabaseClient();
     if (supabase) {
@@ -375,6 +382,7 @@ class DatabaseService {
             name: data.name,
             role: data.role || 'participant',
             provider: data.provider || 'local',
+            password: data.password || local?.password || '',
             avatarId: data.avatar_id || 'three_robot',
             createdAt: data.created_at || Date.now(),
             bio: data.bio || '',
@@ -387,6 +395,39 @@ class DatabaseService {
       } catch (err) {
         console.warn('[Supabase] Error fetching user:', err);
       }
+    }
+
+    return local || null;
+  }
+
+  async getUser(username: string): Promise<UserRecord | null> {
+    return this.getUserByUsername(username);
+  }
+
+  async authenticateUser(username: string, password: string): Promise<UserRecord | null> {
+    this.initLocal();
+    const cleanUser = username.trim().toLowerCase();
+    const trimmedPass = password.trim();
+
+    // 1. Fetch user from Supabase or local cache
+    const user = await this.getUserByUsername(cleanUser);
+    if (!user) return null;
+
+    // 2. Validate password
+    // First, check if stored password matches
+    if (user.password && user.password === trimmedPass) {
+      return user;
+    }
+
+    // Check against DEFAULT_USERS seed fallback (e.g. if Supabase record had empty password)
+    const seed = DEFAULT_USERS.find((u) => u.username.toLowerCase() === cleanUser);
+    if (seed && seed.password === trimmedPass) {
+      // Update password in Supabase and cache if missing
+      if (!user.password) {
+        user.password = trimmedPass;
+        this.upsertUser(user).catch(() => {});
+      }
+      return user;
     }
 
     return null;
@@ -404,12 +445,14 @@ class DatabaseService {
 
         if (!error && data && data.length > 0) {
           data.forEach((row: any) => {
+            const existingLocal = this.localUsers.get(row.username.toLowerCase());
             const u: UserRecord = {
               id: row.id,
               username: row.username,
               name: row.name,
               role: row.role || 'participant',
               provider: row.provider || 'local',
+              password: row.password || existingLocal?.password || '',
               avatarId: row.avatar_id || 'three_robot',
               createdAt: row.created_at || Date.now(),
               bio: row.bio || '',
@@ -437,38 +480,52 @@ class DatabaseService {
     const cleanUsername = user.username.trim().toLowerCase();
 
     // 1. Save to local cache immediately
-    this.localUsers.set(cleanUsername, user);
+    const recordToSave: UserRecord = {
+      ...user,
+      username: cleanUsername,
+      password: user.password || this.localUsers.get(cleanUsername)?.password || '',
+    };
+    this.localUsers.set(cleanUsername, recordToSave);
     this.saveLocalUsers();
 
-    // 2. Non-blocking async persist to Supabase
+    // 2. Persist to Supabase
     const supabase = getSupabaseClient();
     if (supabase) {
-      Promise.resolve(
-        supabase.from('users').upsert({
-          id: user.id,
+      try {
+        const { error } = await supabase.from('users').upsert({
+          id: recordToSave.id,
           username: cleanUsername,
-          name: user.name,
-          role: user.role,
-          provider: user.provider,
-          avatar_id: user.avatarId,
-          bio: user.bio || '',
-          created_avatars: user.createdAvatars || [],
-          created_at: user.createdAt,
-        })
-      )
-        .then(({ error }: any) => {
-          if (error) console.warn('[Supabase] Non-blocking user sync notice:', error.message);
-        })
-        .catch(() => {});
+          name: recordToSave.name,
+          role: recordToSave.role,
+          provider: recordToSave.provider,
+          password: recordToSave.password || '',
+          avatar_id: recordToSave.avatarId,
+          bio: recordToSave.bio || '',
+          created_avatars: recordToSave.createdAvatars || [],
+          created_at: recordToSave.createdAt,
+          updated_at: Date.now(),
+        });
+
+        if (error) {
+          console.warn('[Supabase] User upsert notice:', error.message);
+        }
+      } catch (err) {
+        console.warn('[Supabase] Error saving user to Supabase:', err);
+      }
     }
 
-    return user;
+    return recordToSave;
+  }
+
+  async saveUser(user: UserRecord): Promise<UserRecord> {
+    return this.upsertUser(user);
   }
 
   async adminUpdateUser(
     oldUsername: string,
     updates: {
       newUsername?: string;
+      newPassword?: string;
       newName?: string;
       newRole?: 'admin' | 'participant';
     }
@@ -482,6 +539,7 @@ class DatabaseService {
     const updated: UserRecord = {
       ...existing,
       username: cleanNew,
+      password: updates.newPassword !== undefined ? updates.newPassword : existing.password,
       name: updates.newName && updates.newName.trim() ? updates.newName.trim() : existing.name,
       role: updates.newRole || existing.role,
     };
@@ -497,10 +555,14 @@ class DatabaseService {
     // Supabase sync
     const supabase = getSupabaseClient();
     if (supabase) {
-      if (cleanNew !== cleanOld) {
-        Promise.resolve(supabase.from('users').delete().eq('username', cleanOld)).catch(() => {});
+      try {
+        if (cleanNew !== cleanOld) {
+          await supabase.from('users').delete().eq('username', cleanOld);
+        }
+        await this.upsertUser(updated);
+      } catch (e) {
+        console.warn('[Supabase] Error updating user in adminUpdateUser:', e);
       }
-      this.upsertUser(updated).catch(() => {});
     }
 
     return updated;
@@ -514,9 +576,79 @@ class DatabaseService {
 
     const supabase = getSupabaseClient();
     if (supabase) {
-      Promise.resolve(supabase.from('users').delete().eq('username', cleanUser)).catch(() => {});
+      try {
+        await supabase.from('users').delete().eq('username', cleanUser);
+      } catch (err) {
+        console.warn('[Supabase] Error deleting user:', err);
+      }
     }
     return true;
+  }
+
+  async addAvatarToUser(username: string, avatarId: string): Promise<void> {
+    const user = await this.getUserByUsername(username);
+    if (!user) return;
+
+    const existingList = Array.isArray(user.createdAvatars) ? user.createdAvatars : [];
+    if (!existingList.includes(avatarId)) {
+      user.createdAvatars = [...existingList, avatarId];
+    }
+    user.avatarId = avatarId as AvatarId;
+    await this.upsertUser(user);
+  }
+
+  async deleteAvatar(avatarId: string): Promise<void> {
+    const supabase = getSupabaseClient();
+    if (supabase) {
+      try {
+        await supabase.from('avatars').delete().eq('id', avatarId);
+      } catch (err) {
+        console.warn('[Supabase] Error deleting avatar from cloud:', err);
+      }
+    }
+
+    // Also update any user having this in createdAvatars
+    for (const [username, u] of this.localUsers.entries()) {
+      if (u.createdAvatars && u.createdAvatars.includes(avatarId)) {
+        u.createdAvatars = u.createdAvatars.filter((id) => id !== avatarId);
+        if (u.avatarId === avatarId) {
+          u.avatarId = 'lincoln_3d';
+        }
+        this.upsertUser(u).catch(() => {});
+      }
+    }
+  }
+
+  async ensureSeedUsersInCloud(): Promise<void> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return;
+
+    try {
+      for (const seed of DEFAULT_USERS) {
+        const { data } = await supabase
+          .from('users')
+          .select('id')
+          .eq('username', seed.username.toLowerCase())
+          .maybeSingle();
+
+        if (!data) {
+          await supabase.from('users').insert({
+            id: seed.id,
+            username: seed.username.toLowerCase(),
+            name: seed.name,
+            role: seed.role,
+            provider: seed.provider,
+            password: seed.password || '',
+            avatar_id: seed.avatarId,
+            bio: seed.bio || '',
+            created_avatars: seed.createdAvatars || [],
+            created_at: seed.createdAt,
+          });
+        }
+      }
+    } catch (e) {
+      console.warn('[Supabase] Notice ensuring seed users in cloud:', e);
+    }
   }
 
   // ==========================================

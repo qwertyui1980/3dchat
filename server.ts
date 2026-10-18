@@ -671,6 +671,44 @@ async function startServer() {
   const isProd = process.env.NODE_ENV === 'production';
   const distPath = path.resolve(__dirname, 'dist');
 
+  // Favicon handler: ensure /favicon.ico always returns 200 OK
+  app.get('/favicon.ico', (req, res) => {
+    const icoPath = path.resolve(__dirname, 'public', 'favicon.ico');
+    if (fs.existsSync(icoPath)) {
+      res.type('image/x-icon').sendFile(icoPath);
+    } else {
+      const svgPath = path.resolve(__dirname, 'public', 'favicon.svg');
+      if (fs.existsSync(svgPath)) {
+        res.type('image/svg+xml').sendFile(svgPath);
+      } else {
+        res.status(204).end();
+      }
+    }
+  });
+
+  // Handle stale cached CSS/JS bundle requests gracefully (e.g. index-BD_-xWaB.css)
+  app.get(['/assets/:file', '/:file'], (req, res, next) => {
+    const file = req.params.file;
+    if (file && (file.endsWith('.css') || file.endsWith('.js'))) {
+      const directDist = path.resolve(distPath, 'assets', file);
+      if (fs.existsSync(directDist)) {
+        return res.sendFile(directDist);
+      }
+      // If a stale hashed CSS bundle was requested, serve current active stylesheet
+      if (file.endsWith('.css') && file.startsWith('index-')) {
+        const assetsDir = path.resolve(distPath, 'assets');
+        if (fs.existsSync(assetsDir)) {
+          const files = fs.readdirSync(assetsDir);
+          const currentCss = files.find((f) => f.startsWith('index-') && f.endsWith('.css'));
+          if (currentCss) {
+            return res.type('text/css').sendFile(path.resolve(assetsDir, currentCss));
+          }
+        }
+      }
+    }
+    next();
+  });
+
   if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({

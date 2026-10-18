@@ -78,14 +78,7 @@ export const Register: React.FC<RegisterProps> = ({
     setIsLoading(true);
 
     try {
-      // 2. Check username availability in IndexedDB and Supabase
-      const existingInIdb = await indexedDbService.getUser(cleanUser);
-      if (existingInIdb) {
-        setUsernameError(`El usuario "${cleanUser}" ya está registrado. Por favor elige otro.`);
-        setIsLoading(false);
-        return;
-      }
-
+      // 2. Check username availability in Supabase Cloud
       const isAvailableInCloud = await dbServiceSingleton.isUsernameAvailable(cleanUser);
       if (!isAvailableInCloud) {
         setUsernameError(`El usuario "${cleanUser}" ya existe en la base de datos Supabase. Elige otro alias.`);
@@ -93,7 +86,7 @@ export const Register: React.FC<RegisterProps> = ({
         return;
       }
 
-      // 3. Save User Account to IndexedDB
+      // 3. Save User Account directly into centralized Supabase DB
       const now = Date.now();
       const displayName = cleanUser;
       const userAccount: UserAccount = {
@@ -101,6 +94,7 @@ export const Register: React.FC<RegisterProps> = ({
         username: cleanUser,
         name: displayName,
         role: 'participant',
+        provider: 'local',
         password: cleanPass,
         avatarId: selectedAvatarId,
         bio: '',
@@ -108,20 +102,7 @@ export const Register: React.FC<RegisterProps> = ({
         createdAt: now,
       };
 
-      await indexedDbService.saveUser(userAccount);
-
-      // 4. Persist User in Supabase Cloud
-      await dbServiceSingleton.upsertUser({
-        id: `user_${cleanUser}`,
-        username: cleanUser,
-        name: displayName,
-        role: 'participant',
-        provider: 'local',
-        avatarId: selectedAvatarId,
-        bio: '',
-        createdAvatars: [],
-        createdAt: now,
-      });
+      await dbServiceSingleton.saveUser(userAccount);
 
       // Save user-scoped selected avatar in localStorage to avoid collisions
       if (typeof window !== 'undefined') {
