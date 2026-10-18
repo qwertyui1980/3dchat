@@ -267,6 +267,29 @@ function checkIsMobile(): boolean {
   return isMobileUA || (isTouch && isSmallScreen);
 }
 
+function getValidModelSource(source?: any): string | null {
+  if (!source) return null;
+  let str = '';
+  if (typeof source === 'string') {
+    str = source.trim();
+  } else if (typeof source === 'object') {
+    str = (source.data || source.url || source.fileData || '').toString().trim();
+  }
+  if (!str || str === '[object Object]' || str === 'undefined' || str === 'null') {
+    return null;
+  }
+  if (
+    str.startsWith('blob:') ||
+    str.startsWith('data:') ||
+    str.startsWith('http://') ||
+    str.startsWith('https://') ||
+    str.startsWith('/')
+  ) {
+    return str;
+  }
+  return null;
+}
+
 interface ThreeAvatarCanvasProps {
   avatarId?: AvatarId;
   features: FaceFeatures;
@@ -836,10 +859,10 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             setLoadError('Error al cargar Mipipi 3D');
           }
         });
-    } else if (avatarDef && (avatarDef.modelUrl || avatarDef.fileData)) {
+    } else if (avatarDef && (getValidModelSource(avatarDef.modelUrl) || getValidModelSource(avatarDef.fileData))) {
       // Custom Uploaded 3D Model (GLB / GLTF / VRM / OBJ / STL from 3ds Max / Blender / CAD)
       setIsLoading(true);
-      const modelSource = avatarDef.modelUrl || avatarDef.fileData || '';
+      const modelSource = (getValidModelSource(avatarDef.modelUrl) || getValidModelSource(avatarDef.fileData))!;
       const fmt = (avatarDef.format || '').toLowerCase();
       const nameLower = (avatarDef.name || '').toLowerCase();
       const isObj = fmt === 'obj' || nameLower.endsWith('.obj') || modelSource.startsWith('data:text/plain') || modelSource.includes('.obj');

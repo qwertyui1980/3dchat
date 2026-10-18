@@ -355,15 +355,31 @@ class AvatarModelService {
 
       let hasNew = false;
       for (const cloudItem of uniqueCloud) {
+        if (!cloudItem || !cloudItem.id) continue;
         if (this.deletedIds.has(cloudItem.id)) continue;
+        // Los avatares predefinidos de fábrica se manejan mediante sus propios módulos GLTF/Three.js especializados
+        const isPredefined = DEFAULT_AVATARS.some((d) => d.id === cloudItem.id);
+        if (isPredefined) continue;
+
         const existing = this.customAvatars.find((a) => a.id === cloudItem.id);
         if (existing && existing.modelUrl && existing.fileData) continue;
 
         let blob: Blob | null = null;
         let modelUrl = existing?.modelUrl || '';
-        if (cloudItem.model_data) {
+        let modelDataStr = '';
+        if (typeof cloudItem.model_data === 'string') {
+          modelDataStr = cloudItem.model_data.trim();
+        } else if (cloudItem.model_data && typeof cloudItem.model_data === 'object') {
+          modelDataStr = (cloudItem.model_data.data || cloudItem.model_data.url || '').toString().trim();
+        }
+
+        if (
+          modelDataStr &&
+          modelDataStr !== '[object Object]' &&
+          (modelDataStr.startsWith('data:') || modelDataStr.startsWith('blob:') || modelDataStr.startsWith('http'))
+        ) {
           try {
-            const res = await fetch(cloudItem.model_data);
+            const res = await fetch(modelDataStr);
             blob = await res.blob();
             modelUrl = URL.createObjectURL(blob);
           } catch (_) {}
@@ -462,9 +478,20 @@ class AvatarModelService {
 
       let blob: Blob | null = null;
       let modelUrl = '';
-      if (cloudItem.model_data) {
+      let modelDataStr = '';
+      if (typeof cloudItem.model_data === 'string') {
+        modelDataStr = cloudItem.model_data.trim();
+      } else if (cloudItem.model_data && typeof cloudItem.model_data === 'object') {
+        modelDataStr = (cloudItem.model_data.data || cloudItem.model_data.url || '').toString().trim();
+      }
+
+      if (
+        modelDataStr &&
+        modelDataStr !== '[object Object]' &&
+        (modelDataStr.startsWith('data:') || modelDataStr.startsWith('blob:') || modelDataStr.startsWith('http'))
+      ) {
         try {
-          const res = await fetch(cloudItem.model_data);
+          const res = await fetch(modelDataStr);
           blob = await res.blob();
           modelUrl = URL.createObjectURL(blob);
         } catch (e) {

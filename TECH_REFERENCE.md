@@ -778,5 +778,11 @@ Para asegurar que todos los participantes puedan usar tanto los modelos estánda
 * **Propagación en Tiempo Real:**
   * Al seleccionar un nuevo avatar en el modal de la sala, `handleSelectAvatar()` en [`App.tsx`](file:///d:/Apps/xstreamx/src/App.tsx) actualiza el estado local, persiste la preferencia en `localStorage`, y transmite el cambio a la red (`networkService.updateAvatar()`), logrando que todos los participantes en la videollamada actualicen su visualización en Three.js automáticamente.
 
+### 16.3. Protección y Sanitización de Fuentes 3D (Eliminación de SyntaxError: "[object Object]")
+* **Causa Raíz:** En cargas bajo demanda o sincronizaciones de Supabase donde `model_data` no contenía un Data URL o Blob URL válido sino una estructura de objeto o vacía, la llamada `fetch(model_data)` se invocaba con el string coercion `"[object Object]"`. El navegador intentaba consultar la ruta `http://localhost:3000/[object Object]`, recibiendo el documento `index.html` del servidor SPA, el cual al ser pasado a `GLTFLoader.parse()` detonaba el error `SyntaxError: "[object Object]" is not valid JSON`.
+* **Solución Implementada:**
+  1. Se implementó la función selectora `getValidModelSource()` en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/components/avatars/ThreeAvatarCanvas.tsx) que rechaza de forma estricta cualquier valor que no inicie con protocolos legítimos (`blob:`, `data:`, `http:`, `https:` o `/`) o que contenga `"[object Object]"`. Si la fuente no es válida, la escena utiliza el fallback procedural mecha sin arrojar errores a la consola.
+  2. En [`avatarModelService.ts`](file:///d:/Apps/xstreamx/src/services/avatarModelService.ts) (`syncUserCloudAvatars` y `fetchAndCacheAvatarFromCloud`), se agregaron filtros que excluyen los avatares de fábrica (`DEFAULT_AVATARS`) de la colección dinámica de usuario para no sobreescribir sus loaders nativos y se valida que `modelDataStr` sea un Data URL o URL web válida antes de invocar `fetch()`.
+
 
 
