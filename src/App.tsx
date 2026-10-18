@@ -29,6 +29,8 @@ import { Login, AuthenticatedUser } from './components/auth/Login';
 import { Register } from './components/auth/Register';
 import { UserProfileModal } from './components/profile/UserProfileModal';
 import { FaceBlendshapeStudioModal } from './components/admin/FaceBlendshapeStudioModal';
+import { DiagnosticLogsModal } from './components/admin/DiagnosticLogsModal';
+import { diagnosticLogServiceSingleton } from './services/telemetry/diagnosticLogService';
 import { dbServiceSingleton } from './services/dbService';
 import { indexedDbService } from './services/db/indexedDbService';
 import { AlertCircle, CheckCircle2, Info } from 'lucide-react';
@@ -47,6 +49,17 @@ const isFacesRoute = (pathname: string, hash: string = ''): boolean => {
     cleanHash === 'faces' ||
     cleanHash === '3dmask' ||
     cleanHash === '3dmasks'
+  );
+};
+
+const isDiagnosticsRoute = (pathname: string, hash: string = ''): boolean => {
+  const cleanPath = (pathname || '').toLowerCase().replace(/\/+$/, '');
+  const cleanHash = (hash || '').toLowerCase().replace(/^#\/?/, '').replace(/\/+$/, '');
+  return (
+    cleanPath === '/3dchat/diagnostics' ||
+    cleanPath === '/diagnostics' ||
+    cleanHash === '3dchat/diagnostics' ||
+    cleanHash === 'diagnostics'
   );
 };
 
@@ -87,7 +100,7 @@ export default function App() {
       let isMounted = true;
       dbServiceSingleton.getUser(authenticatedUser.username).then((acc) => {
         if (!isMounted || !acc) return;
-        const assignedAvatar = acc.avatarId || (authenticatedUser.role === 'admin' ? 'lincoln_3d' : 'lincoln_3d');
+        const assignedAvatar = acc.avatarId || (authenticatedUser.role === 'admin' ? 'face_cap' : 'face_cap');
         setAuthenticatedUser((prev) => (prev ? { ...prev, avatarId: assignedAvatar } : null));
         if (typeof window !== 'undefined') {
           const updated = { ...authenticatedUser, avatarId: assignedAvatar };
@@ -105,8 +118,10 @@ export default function App() {
   const [currentPath, setCurrentPath] = useState<string>(() => (typeof window !== 'undefined' ? window.location.pathname : '/'));
   const [currentHash, setCurrentHash] = useState<string>(() => (typeof window !== 'undefined' ? window.location.hash : ''));
   const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+  const [isDiagnosticsModalOpen, setIsDiagnosticsModalOpen] = useState<boolean>(false);
 
   const navigateTo = useCallback((path: string) => {
+    diagnosticLogServiceSingleton.addBreadcrumb('navigation', `Navegó a ${path}`);
     if (typeof window !== 'undefined') {
       if (window.location.pathname !== path) {
         window.history.pushState(null, '', path);
@@ -201,6 +216,30 @@ export default function App() {
   activeGestureRef.current = activeGesture;
 
   const [isTrackingPipVisible, setIsTrackingPipVisible] = useState<boolean>(true);
+
+  // Sincronizar contexto global para telemetría y diagnóstico de IA
+  useEffect(() => {
+    diagnosticLogServiceSingleton.updateContext({
+      userId: authenticatedUser?.username,
+      userName: authenticatedUser?.name,
+      userRole: authenticatedUser?.role,
+      avatarId: currentUser?.avatarId || authenticatedUser?.avatarId,
+      roomId: room?.id,
+      trackingMode,
+      isMicActive,
+      isCameraActive,
+    });
+  }, [
+    authenticatedUser?.username,
+    authenticatedUser?.name,
+    authenticatedUser?.role,
+    authenticatedUser?.avatarId,
+    currentUser?.avatarId,
+    room?.id,
+    trackingMode,
+    isMicActive,
+    isCameraActive,
+  ]);
 
   // Master tracking video element & camera stream
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -617,10 +656,25 @@ export default function App() {
           'warning'
         );
       } else {
+        // Admin unmuted participants: reactivate local microphone and update states
         setIsAdminMuted(false);
-        setRoom((prev) => (prev ? { ...prev, isAllMuted: false } : prev));
+        setIsMicActive(true);
+        audioServiceSingleton.setMute(false);
+        networkServiceSingleton.toggleMute(false);
+        networkServiceSingleton.resumeAllRemoteAudio();
+        setCurrentUser((prev) => (prev ? { ...prev, isMuted: false } : null));
+        setRoom((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            isAllMuted: false,
+            participants: prev.participants.map((p) =>
+              p.role !== 'admin' ? { ...p, isMuted: false } : p
+            ),
+          };
+        });
         addToast(
-          'El administrador ha desbloqueado los micrófonos. Ya puedes activar tu micrófono cuando lo desees.',
+          'El administrador ha desbloqueado y reactivado los micrófonos de la sala.',
           'info'
         );
       }
@@ -969,6 +1023,15 @@ export default function App() {
     if (currentUser) {
       setCurrentUser((prev) => (prev ? { ...prev, avatarId } : null));
     }
+    setRoom((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        participants: prev.participants.map((p) =>
+          p.id === currentUser?.id ? { ...p, avatarId } : p
+        ),
+      };
+    });
     networkServiceSingleton.updateAvatar(avatarId);
     if (typeof window !== 'undefined') {
       localStorage.setItem('xstreamx_selected_avatar', avatarId);
@@ -1009,7 +1072,12 @@ export default function App() {
 
   const handleMuteAll = () => {
     if (!room || !currentUser) return;
-    const isCurrentlyAllMuted = !!room.isAllMuted;
+    const otherParticipants = room.participants.filter(
+      (p) => p.id !== currentUser.id && p.role !== 'admin'
+    );
+    const areAllParticipantsMuted =
+      otherParticipants.length > 0 && otherParticipants.every((p) => p.isMuted);
+    const isCurrentlyAllMuted = !!room.isAllMuted || areAllParticipantsMuted;
     const targetMuteState = !isCurrentlyAllMuted;
 
     networkServiceSingleton.adminMuteAll(targetMuteState);
@@ -1025,6 +1093,9 @@ export default function App() {
         ),
       };
     });
+    if (!targetMuteState) {
+      networkServiceSingleton.resumeAllRemoteAudio();
+    }
     addToast(
       targetMuteState
         ? 'Todos los participantes han sido silenciados y sus micrófonos han sido bloqueados'
@@ -1121,28 +1192,44 @@ export default function App() {
 
       {/* Screen Routing: 3D Mask Studio (/3dchat/faces) -> Register (/register) -> Login (/) -> Lobby -> Active Room */}
       {isFacesRoute(currentPath, currentHash) ? (
-        <div className="flex-1 flex flex-col min-h-0 relative w-full h-full bg-[#08080c] overflow-hidden">
-          <FaceBlendshapeStudioModal
-            isOpen={true}
-            onClose={() => {
-              if (isInRoom && room && currentUser) {
-                navigateTo('/espacio/main');
-              } else {
-                navigateTo('/');
-              }
-            }}
-            isAdmin={authenticatedUser ? authenticatedUser.role === 'admin' : true}
-            onSelectAvatar={(avatarId) => {
-              handleSelectAvatar(avatarId);
-              addToast('¡Avatar 3D guardado y seleccionado con éxito!', 'success');
-              if (isInRoom && room && currentUser) {
-                navigateTo('/espacio/main');
-              } else {
-                navigateTo('/');
-              }
-            }}
-          />
-        </div>
+        authenticatedUser && authenticatedUser.role !== 'admin' ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-[#08080c] text-neutral-200">
+            <h2 className="text-xl font-bold text-amber-400 mb-2">Acceso Reservado</h2>
+            <p className="text-sm text-neutral-400 mb-4 max-w-md">
+              El estudio de máscaras 3D avanzadas está disponible exclusivamente para administradores. Los usuarios pueden subir su foto directamente desde el Lobby para generar su avatar 3D.
+            </p>
+            <button
+              type="button"
+              onClick={() => navigateTo('/')}
+              className="px-4 py-2 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-bold text-xs rounded-xl transition cursor-pointer"
+            >
+              Volver al Lobby
+            </button>
+          </div>
+        ) : (
+          <div className="flex-1 flex flex-col min-h-0 relative w-full h-full bg-[#08080c] overflow-hidden">
+            <FaceBlendshapeStudioModal
+              isOpen={true}
+              onClose={() => {
+                if (isInRoom && room && currentUser) {
+                  navigateTo('/espacio/main');
+                } else {
+                  navigateTo('/');
+                }
+              }}
+              isAdmin={authenticatedUser ? authenticatedUser.role === 'admin' : true}
+              onSelectAvatar={(avatarId) => {
+                handleSelectAvatar(avatarId);
+                addToast('¡Avatar 3D guardado y seleccionado con éxito!', 'success');
+                if (isInRoom && room && currentUser) {
+                  navigateTo('/espacio/main');
+                } else {
+                  navigateTo('/');
+                }
+              }}
+            />
+          </div>
+        )
       ) : currentPath === '/register' ? (
         <Register
           onRegisterSuccess={(newUser) => {
@@ -1156,7 +1243,6 @@ export default function App() {
         <Login
           onLogin={handleLogin}
           onOpenRegister={() => navigateTo('/register')}
-          onOpenFaces={() => navigateTo('/3dchat/faces')}
         />
       ) : !isInRoom || !room || !currentUser ? (
         <div className="flex-1 flex flex-col min-h-0">
@@ -1167,7 +1253,8 @@ export default function App() {
             authUser={authenticatedUser}
             onLogout={handleLogout}
             onOpenProfile={() => setIsProfileModalOpen(true)}
-            onOpenFaces={() => navigateTo('/3dchat/faces')}
+            onOpenFaces={authenticatedUser.role === 'admin' ? () => navigateTo('/3dchat/faces') : undefined}
+            onOpenDiagnostics={() => setIsDiagnosticsModalOpen(true)}
           />
           <Lobby
             onJoinRoom={handleJoinRoom}
@@ -1242,7 +1329,8 @@ export default function App() {
           remoteStroke={remoteStroke}
           remoteClearTimestamp={remoteClearTimestamp}
           onOpenProfile={() => setIsProfileModalOpen(true)}
-          onOpenFaces={() => navigateTo('/3dchat/faces')}
+          onOpenFaces={authenticatedUser.role === 'admin' ? () => navigateTo('/3dchat/faces') : undefined}
+          onOpenDiagnostics={() => setIsDiagnosticsModalOpen(true)}
         />
       )}
 
@@ -1260,12 +1348,23 @@ export default function App() {
           onSelectAvatar={handleSelectAvatar}
           currentAvatarId={currentUser?.avatarId}
           onOpenRegister={() => navigateTo('/register')}
-          onOpenFaces={() => {
+          onOpenFaces={authenticatedUser.role === 'admin' ? () => {
             setIsProfileModalOpen(false);
             navigateTo('/3dchat/faces');
-          }}
+          } : undefined}
         />
       )}
+
+      {/* AI Telemetry & Diagnostic Logs Modal */}
+      <DiagnosticLogsModal
+        isOpen={isDiagnosticsModalOpen || isDiagnosticsRoute(currentPath, currentHash)}
+        onClose={() => {
+          setIsDiagnosticsModalOpen(false);
+          if (isDiagnosticsRoute(currentPath, currentHash)) {
+            navigateTo('/');
+          }
+        }}
+      />
     </div>
   );
 }

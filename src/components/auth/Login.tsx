@@ -65,7 +65,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin, onOpenRegister, onOpenFac
 
       const role: 'admin' | 'participant' = userAccount.role;
       const displayName = userAccount.name;
-      const targetAvatarId = userAccount.avatarId || (cleanUser === 'admin' ? 'lincoln_3d' : 'lincoln_3d');
+      const targetAvatarId = userAccount.avatarId || (cleanUser === 'admin' ? 'face_cap' : 'face_cap');
 
       const userRecord = await dbServiceSingleton.upsertUser({
         id: `user_${cleanUser}`,

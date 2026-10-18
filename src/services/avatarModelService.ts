@@ -15,11 +15,11 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
-const STORAGE_CUSTOM_AVATARS = 'xstreamx_custom_avatars_v1';
-const STORAGE_DISABLED_AVATARS = 'xstreamx_disabled_avatars_v1';
-const STORAGE_DELETED_AVATARS = 'xstreamx_deleted_avatars_v1';
-const STORAGE_RENAMED_AVATARS = 'xstreamx_renamed_avatars_v1';
-const STORAGE_PREVIEWS_AVATARS = 'xstreamx_avatar_previews_v1';
+const LEGACY_STORAGE_CUSTOM_AVATARS = 'xstreamx_custom_avatars_v1';
+const LEGACY_STORAGE_DISABLED_AVATARS = 'xstreamx_disabled_avatars_v1';
+const LEGACY_STORAGE_DELETED_AVATARS = 'xstreamx_deleted_avatars_v1';
+const LEGACY_STORAGE_RENAMED_AVATARS = 'xstreamx_renamed_avatars_v1';
+const LEGACY_STORAGE_PREVIEWS_AVATARS = 'xstreamx_avatar_previews_v1';
 
 export const MAX_USER_AVATARS = 4;
 
@@ -35,63 +35,60 @@ class AvatarModelService {
   private isInitialized = false;
 
   constructor() {
-    this.loadInitialFromLocalStorage();
+    this.purgeLocalStorageModels();
     this.initAsyncDb();
   }
 
   /**
-   * Carga sincrónica inicial de metadatos ligeros desde LocalStorage
-   * para disponibilidad inmediata en el primer render de React.
+   * Purgado de LocalStorage: Elimina cualquier residuo de modelos o metadatos de LocalStorage.
+   * La plataforma basa el 100% de los modelos en la nube (Supabase Cloud / Online) + predefinidos.
    */
-  private loadInitialFromLocalStorage() {
+  private purgeLocalStorageModels() {
     if (typeof window === 'undefined') return;
 
     try {
-      const storedDisabled = localStorage.getItem(STORAGE_DISABLED_AVATARS);
-      if (storedDisabled) {
-        this.disabledIds = new Set(JSON.parse(storedDisabled));
-      }
+      localStorage.removeItem(LEGACY_STORAGE_CUSTOM_AVATARS);
+      localStorage.removeItem(LEGACY_STORAGE_DISABLED_AVATARS);
+      localStorage.removeItem(LEGACY_STORAGE_DELETED_AVATARS);
+      localStorage.removeItem(LEGACY_STORAGE_RENAMED_AVATARS);
+      localStorage.removeItem(LEGACY_STORAGE_PREVIEWS_AVATARS);
+      localStorage.removeItem('xstreamx_custom_avatars');
+      localStorage.removeItem('xstreamx_models');
 
-      const storedDeleted = localStorage.getItem(STORAGE_DELETED_AVATARS);
-      if (storedDeleted) {
-        this.deletedIds = new Set(JSON.parse(storedDeleted));
-      }
-
-      const storedRenamed = localStorage.getItem(STORAGE_RENAMED_AVATARS);
-      if (storedRenamed) {
-        this.renamedNames = JSON.parse(storedRenamed);
-      }
-
-      const storedPreviews = localStorage.getItem(STORAGE_PREVIEWS_AVATARS);
-      if (storedPreviews) {
-        this.modelPreviews = JSON.parse(storedPreviews);
-      }
-
-      // Carga temporal de avatares guardados en LocalStorage (si aún no han sido migrados)
-      const storedCustom = localStorage.getItem(STORAGE_CUSTOM_AVATARS);
-      if (storedCustom) {
-        const parsed = JSON.parse(storedCustom);
-        if (Array.isArray(parsed)) {
-          this.customAvatars = parsed.map((p) => ({
-            ...p,
-            previewImage: p.previewImage || this.modelPreviews[p.id] || getAvatarThumbnail(p.id),
-          }));
+      // Limpieza proactiva de cualquier clave residual de modelos en localStorage
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('xstreamx_custom_avatar') || key.startsWith('xstreamx_model_'))) {
+          keysToRemove.push(key);
         }
       }
-    } catch (e) {
-      console.warn('[AvatarModelService] Error cargando estado inicial de LocalStorage:', e);
-    }
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    } catch (_) {}
   }
 
   /**
-   * Conexión asíncrona con IndexedDB y migración automática de datos existentes.
+   * Conexión asíncrona con la base de datos: Carga metadatos y sincroniza
+   * el catálogo completo directamente desde Supabase Cloud (Modelos Online).
    */
   private async initAsyncDb() {
     if (typeof window === 'undefined') return;
 
     try {
-      // 1. Migrar modelos de LocalStorage a IndexedDB si existían previamente
-      await indexedDbService.migrateFromLocalStorage(STORAGE_CUSTOM_AVATARS);
+      // 1. Purgar cualquier dato residual en LocalStorage
+      this.purgeLocalStorageModels();
+
+      // 2. Cargar metadatos desde IndexedDB si existen
+      try {
+        const disabled = await indexedDbService.getMetadata<string[]>('disabled_avatars');
+        if (Array.isArray(disabled)) this.disabledIds = new Set(disabled);
+        const deleted = await indexedDbService.getMetadata<string[]>('deleted_avatars');
+        if (Array.isArray(deleted)) this.deletedIds = new Set(deleted);
+        const renamed = await indexedDbService.getMetadata<Record<string, string>>('renamed_avatars');
+        if (renamed && typeof renamed === 'object') this.renamedNames = renamed;
+        const previews = await indexedDbService.getMetadata<Record<string, string>>('avatar_previews');
+        if (previews && typeof previews === 'object') this.modelPreviews = previews;
+      } catch (_) {}
 
       // 2. Cargar todos los modelos 3D almacenados en IndexedDB
       const storedModels = await indexedDbService.getAllModels();
@@ -327,20 +324,20 @@ class AvatarModelService {
     try {
       const cleanOwner = (ownerId || '').trim().toLowerCase();
 
-      // 1. Obtener catálogo público de Supabase
-      const publicCloudAvatars = await dbServiceSingleton.getPublicAvatarsFromCloud().catch(() => []);
+      // 1. Obtener TODOS los modelos 3D persistidos en la base de datos de Supabase Cloud
+      let allCloud = await dbServiceSingleton.getAllAvatarsFromCloud().catch(() => []);
 
-      // 2. Obtener modelos creados por el Administrador (disponibles en la sala para todos)
-      const adminCloudAvatars = await dbServiceSingleton.getUserAvatarsFromCloud('admin').catch(() => []);
-
-      // 3. Obtener modelos de la cuenta del usuario actual
-      let userCloudAvatars: any[] = [];
-      if (cleanOwner && cleanOwner !== 'admin') {
-        userCloudAvatars = await dbServiceSingleton.getUserAvatarsFromCloud(cleanOwner).catch(() => []);
+      // Fallback a endpoints específicos si getAllAvatarsFromCloud no arrojó resultados
+      if (!allCloud || allCloud.length === 0) {
+        const publicCloudAvatars = await dbServiceSingleton.getPublicAvatarsFromCloud().catch(() => []);
+        const adminCloudAvatars = await dbServiceSingleton.getUserAvatarsFromCloud('admin').catch(() => []);
+        let userCloudAvatars: any[] = [];
+        if (cleanOwner && cleanOwner !== 'admin') {
+          userCloudAvatars = await dbServiceSingleton.getUserAvatarsFromCloud(cleanOwner).catch(() => []);
+        }
+        allCloud = [...(publicCloudAvatars || []), ...(adminCloudAvatars || []), ...(userCloudAvatars || [])];
       }
 
-      // 4. Unir todos los modelos y deduplicar por id
-      const allCloud = [...(publicCloudAvatars || []), ...(adminCloudAvatars || []), ...(userCloudAvatars || [])];
       const seenIds = new Set<string>();
       const uniqueCloud: any[] = [];
       for (const item of allCloud) {
@@ -388,19 +385,20 @@ class AvatarModelService {
         const previewImage =
           cloudItem.preview_image || this.modelPreviews[cloudItem.id] || getAvatarThumbnail(cloudItem.id);
         const format = cloudItem.format || 'glb';
-        const isPublic = !!cloudItem.is_public;
+        const isOwner = cleanOwner && cloudItem.owner_id && cloudItem.owner_id.trim().toLowerCase() === cleanOwner;
+        const isPublic = !!cloudItem.is_public || !cloudItem.owner_id || cloudItem.owner_id === 'admin' || !isOwner;
 
         const def: AvatarDefinition = {
           id: cloudItem.id,
           name: this.renamedNames[cloudItem.id] || cloudItem.name || 'Avatar 3D',
-          tagline: cloudItem.tagline || (isPublic ? 'Avatar 3D del Catálogo Público con seguimiento facial' : 'Avatar 3D biomimético guardado en la colección'),
+          tagline: cloudItem.tagline || (isPublic ? 'Avatar 3D del Catálogo con seguimiento facial' : 'Avatar 3D biomimético guardado en la colección'),
           category: cloudItem.category || (isPublic ? 'Catálogo Público' : 'Mis Avatares'),
           themeColor: cloudItem.theme_color || '#06b6d4',
           accentColor: cloudItem.accent_color || '#3b82f6',
           badge: cloudItem.badge || (isPublic ? 'PÚBLICO' : '3D MASK'),
           emoji: '✨',
           isCustom: !isPublic,
-          isPublic,
+          isPublic: isPublic,
           modelUrl: modelUrl || undefined,
           fileData: cloudItem.model_data || undefined,
           previewImage,
@@ -443,7 +441,7 @@ class AvatarModelService {
               fileData: cloudItem.model_data,
               format,
               previewImage,
-              isPublic: !!cloudItem.is_public,
+              isPublic: isPublic,
               ownerId: cloudItem.owner_id ? cloudItem.owner_id.trim().toLowerCase() : undefined,
               debugParams: cloudItem.debug_params,
             })
@@ -474,7 +472,66 @@ class AvatarModelService {
 
     try {
       const cloudItem = await dbServiceSingleton.getAvatarByIdFromCloud(avatarId);
-      if (!cloudItem) return null;
+      if (!cloudItem) {
+        // Fallback resiliente: consultar IndexedDB local si Supabase no está configurado o el modelo no está en la nube
+        try {
+          const stored = await indexedDbService.getModel(avatarId);
+          if (stored && (stored.blob || stored.fileData)) {
+            let blob: Blob | null = stored.blob || null;
+            let modelUrl = '';
+            if (blob) {
+              modelUrl = URL.createObjectURL(blob);
+            } else if (stored.fileData) {
+              modelUrl = stored.fileData;
+            }
+            const previewImage =
+              stored.previewImage || this.modelPreviews[stored.id] || getAvatarThumbnail(stored.id);
+            const format = stored.format || 'glb';
+            const isPublic = !!stored.isPublic;
+
+            const def: AvatarDefinition = {
+              id: stored.id,
+              name: this.renamedNames[stored.id] || stored.name || 'Avatar 3D',
+              tagline: stored.tagline || 'Avatar 3D con seguimiento facial en tiempo real',
+              category: stored.category || (isPublic ? 'Catálogo Público' : 'Personalizados'),
+              themeColor: stored.themeColor || '#06b6d4',
+              accentColor: stored.accentColor || '#38bdf8',
+              badge: stored.badge || (isPublic ? 'PÚBLICO' : '3D MASK'),
+              emoji: '✨',
+              isCustom: !isPublic,
+              isPublic,
+              modelUrl: modelUrl || undefined,
+              fileData: stored.fileData || undefined,
+              previewImage,
+              format,
+              createdAt: stored.createdAt || Date.now(),
+              ownerId: stored.ownerId ? stored.ownerId.trim().toLowerCase() : undefined,
+              debugParams: stored.debugParams,
+              trackingProfile: (() => {
+                const density = (stored.debugParams?.calibration?.density as LandmarkDensity) || 32;
+                const prof = buildCustomAvatarTrackingProfile({
+                  avatarId: stored.id,
+                  name: stored.name,
+                  density,
+                  themeColor: stored.themeColor || '#06b6d4',
+                  activeIndices: stored.debugParams?.calibration?.activeIndices,
+                });
+                registerAvatarTrackingProfile(stored.id, prof);
+                return prof;
+              })(),
+            };
+
+            if (existing) {
+              Object.assign(existing, def);
+            } else {
+              this.customAvatars.push(def);
+            }
+            this.notify();
+            return def;
+          }
+        } catch (_) {}
+        return null;
+      }
 
       let blob: Blob | null = null;
       let modelUrl = '';
@@ -576,24 +633,7 @@ class AvatarModelService {
     if (typeof window === 'undefined') return;
 
     try {
-      localStorage.setItem(
-        STORAGE_DISABLED_AVATARS,
-        JSON.stringify(Array.from(this.disabledIds))
-      );
-      localStorage.setItem(
-        STORAGE_DELETED_AVATARS,
-        JSON.stringify(Array.from(this.deletedIds))
-      );
-      localStorage.setItem(
-        STORAGE_RENAMED_AVATARS,
-        JSON.stringify(this.renamedNames)
-      );
-      localStorage.setItem(
-        STORAGE_PREVIEWS_AVATARS,
-        JSON.stringify(this.modelPreviews)
-      );
-
-      // También sincronizamos metadatos en IndexedDB
+      // Metadatos sincronizados exclusivamente en IndexedDB (cero almacenamiento en LocalStorage)
       indexedDbService.setMetadata('disabled_avatars', Array.from(this.disabledIds)).catch(() => {});
       indexedDbService.setMetadata('deleted_avatars', Array.from(this.deletedIds)).catch(() => {});
       indexedDbService.setMetadata('renamed_avatars', this.renamedNames).catch(() => {});
@@ -1179,6 +1219,7 @@ class AvatarModelService {
     trackingProfile?: any;
     debugParams?: any;
     buffer: ArrayBuffer;
+    fileData?: string;
   } | null> {
     const avatar = this.getAvatarById(avatarId);
     if (!avatar) return null;
@@ -1207,13 +1248,21 @@ class AvatarModelService {
       console.warn('[AvatarModelService] Error reading from IndexedDB:', e);
     }
 
-    // 2. Si no se encontró en IndexedDB pero tiene modelUrl
+    // 2. Si no se encontró en IndexedDB pero tiene modelUrl o fileData en memoria
     if (!buffer && avatar.modelUrl) {
       try {
         const res = await fetch(avatar.modelUrl);
         buffer = await res.arrayBuffer();
       } catch (e) {
         console.warn('[AvatarModelService] Error fetching modelUrl:', e);
+      }
+    }
+    if (!buffer && avatar.fileData) {
+      try {
+        const res = await fetch(avatar.fileData);
+        buffer = await res.arrayBuffer();
+      } catch (e) {
+        console.warn('[AvatarModelService] Error fetching fileData:', e);
       }
     }
 
@@ -1242,6 +1291,29 @@ class AvatarModelService {
       else if (nameLower.endsWith('.vrm')) format = 'vrm';
     }
 
+    let mimeType = 'model/gltf-binary';
+    if (format === 'obj') mimeType = 'text/plain';
+    else if (format === 'stl') mimeType = 'model/stl';
+    else if (format === 'gltf') mimeType = 'model/gltf+json';
+
+    // Garantizar que siempre haya fileData (base64 DataURL) para persistencia y serialización JSON sin pérdida
+    let fileData = avatar.fileData;
+    if (!fileData && buffer) {
+      try {
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const len = bytes.byteLength;
+        const chunkSize = 8192;
+        for (let i = 0; i < len; i += chunkSize) {
+          const chunk = bytes.subarray(i, Math.min(i + chunkSize, len));
+          binary += String.fromCharCode.apply(null, chunk as unknown as number[]);
+        }
+        fileData = `data:${mimeType};base64,${btoa(binary)}`;
+      } catch (err) {
+        console.warn('[AvatarModelService] Error generating fileData from buffer:', err);
+      }
+    }
+
     return {
       avatarId: avatar.id,
       name: avatar.name,
@@ -1252,6 +1324,7 @@ class AvatarModelService {
       trackingProfile: avatar.trackingProfile,
       debugParams: avatar.debugParams,
       buffer,
+      fileData,
     };
   }
 
@@ -1267,17 +1340,57 @@ class AvatarModelService {
     previewImage?: string;
     trackingProfile?: any;
     debugParams?: any;
-    buffer: ArrayBuffer;
-  }): Promise<AvatarDefinition> {
-    const { avatarId, name, format, themeColor, accentColor, previewImage, trackingProfile, debugParams, buffer } = packet;
+    buffer?: ArrayBuffer | any;
+    fileData?: string;
+    dataUrl?: string;
+  }): Promise<AvatarDefinition | null> {
+    const { avatarId, name, format, themeColor, accentColor, previewImage, trackingProfile, debugParams } = packet;
+    if (!avatarId) return null;
 
     let mimeType = 'model/gltf-binary';
     if (format === 'obj') mimeType = 'text/plain';
     else if (format === 'stl') mimeType = 'model/stl';
     else if (format === 'gltf') mimeType = 'model/gltf+json';
 
-    const blob = new Blob([buffer], { type: mimeType });
-    const modelUrl = URL.createObjectURL(blob);
+    let finalBlob: Blob | null = null;
+    const rawBuffer = packet.buffer;
+    const fileDataStr = packet.fileData || packet.dataUrl || (typeof rawBuffer === 'string' ? rawBuffer : '');
+
+    // 1. Extraer buffer binario si es un ArrayBuffer o Uint8Array válido
+    if (rawBuffer instanceof ArrayBuffer && rawBuffer.byteLength > 0) {
+      finalBlob = new Blob([rawBuffer], { type: mimeType });
+    } else if (rawBuffer instanceof Uint8Array && rawBuffer.byteLength > 0) {
+      finalBlob = new Blob([rawBuffer as unknown as BlobPart], { type: mimeType });
+    } else if (rawBuffer && typeof rawBuffer === 'object' && Array.isArray((rawBuffer as any).data) && (rawBuffer as any).data.length > 0) {
+      // Node.js Buffer deserializado desde JSON { type: 'Buffer', data: [byte, ...] }
+      const u8 = new Uint8Array((rawBuffer as any).data);
+      finalBlob = new Blob([u8 as unknown as BlobPart], { type: mimeType });
+    }
+
+    // 2. Si no hay buffer binario válido, decodificar Base64 DataURL (inmune a fallos de serialización JSON)
+    if (!finalBlob && fileDataStr && fileDataStr.startsWith('data:')) {
+      try {
+        const commaIdx = fileDataStr.indexOf(',');
+        if (commaIdx !== -1) {
+          const base64Data = fileDataStr.slice(commaIdx + 1);
+          const rawBin = atob(base64Data);
+          const u8 = new Uint8Array(rawBin.length);
+          for (let i = 0; i < rawBin.length; i++) {
+            u8[i] = rawBin.charCodeAt(i);
+          }
+          finalBlob = new Blob([u8 as unknown as BlobPart], { type: mimeType });
+        }
+      } catch (e) {
+        console.warn('[AvatarModelService] Error decodificando DataURL base64:', e);
+      }
+    }
+
+    if (!finalBlob || finalBlob.size === 0) {
+      console.warn(`[AvatarModelService] Rechazado registro de modelo remoto "${avatarId}": no contiene buffer ni DataURL válido.`);
+      return null;
+    }
+
+    const modelUrl = URL.createObjectURL(finalBlob);
 
     const remoteAvatar: AvatarDefinition = {
       id: avatarId,
@@ -1291,6 +1404,7 @@ class AvatarModelService {
       isCustom: true,
       format,
       modelUrl,
+      fileData: fileDataStr || undefined,
       previewImage: previewImage || getAvatarThumbnail(avatarId),
       trackingProfile,
       debugParams,
@@ -1320,7 +1434,8 @@ class AvatarModelService {
         accentColor: remoteAvatar.accentColor,
         badge: remoteAvatar.badge,
         createdAt: remoteAvatar.createdAt || Date.now(),
-        blob,
+        blob: finalBlob,
+        fileData: fileDataStr || undefined,
         format,
         previewImage: remoteAvatar.previewImage,
         debugParams,
@@ -1329,6 +1444,31 @@ class AvatarModelService {
 
     this.notify();
     return remoteAvatar;
+  }
+
+  /**
+   * Registra temporalmente en memoria un modelo generado desde foto para activarlo
+   * inmediatamente en el visor 3D antes de la confirmación de guardado.
+   */
+  registerLiveAvatar(avatar: AvatarDefinition) {
+    const existingIndex = this.customAvatars.findIndex((a) => a.id === avatar.id);
+    if (existingIndex >= 0) {
+      this.customAvatars[existingIndex] = avatar;
+    } else {
+      this.customAvatars.push(avatar);
+    }
+    if (avatar.trackingProfile) {
+      registerAvatarTrackingProfile(avatar.id, avatar.trackingProfile);
+    }
+    this.notify();
+  }
+
+  /**
+   * Elimina un avatar temporal en vivo si el usuario descarta el guardado
+   */
+  removeLiveAvatar(avatarId: string) {
+    this.customAvatars = this.customAvatars.filter((a) => a.id !== avatarId);
+    this.notify();
   }
 }
 

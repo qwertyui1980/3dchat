@@ -4,6 +4,7 @@ import { ThreeAvatarCanvas } from './ThreeAvatarCanvas';
 
 interface AvatarCanvasProps {
   avatarId: AvatarId;
+  userId?: string;
   features: FaceFeatures;
   userName?: string;
   isSpeaking?: boolean;
@@ -15,6 +16,7 @@ interface AvatarCanvasProps {
 
 export const AvatarCanvas: React.FC<AvatarCanvasProps> = ({
   avatarId,
+  userId,
   features,
   userName,
   isSpeaking = false,
@@ -26,6 +28,7 @@ export const AvatarCanvas: React.FC<AvatarCanvasProps> = ({
   return (
     <ThreeAvatarCanvas
       avatarId={avatarId}
+      userId={userId}
       features={features}
       userName={userName}
       isSpeaking={isSpeaking}

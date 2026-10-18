@@ -49,24 +49,15 @@ export class MediaPipeFaceTracker {
     this.loadError = null;
 
     try {
-      // Load wasm files: prioritize local public wasm relative to app base URL, with pinned CDN fallback
-      const base = import.meta.env.BASE_URL || '/';
-      const localWasmPath = base.endsWith('/') ? `${base}wasm` : `${base}/wasm`;
-      let vision;
-      try {
-        vision = await FilesetResolver.forVisionTasks(localWasmPath);
-      } catch (localWasmErr) {
-        console.warn('[MediaPipe] Failed to load local wasm at', localWasmPath, 'falling back to CDN:', localWasmErr);
-        vision = await FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm'
-        );
-      }
-
+      const localWasmPath = getAssetUrl('wasm');
+      const cdnWasmPath = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm';
       const localModelPath = getAssetUrl('wasm/face_landmarker.task');
       const remoteModelPath = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
 
+      // Stage 1: Try Local WASM with Local Model (GPU)
       try {
-        this.landmarker = await FaceLandmarker.createFromOptions(vision, {
+        const localVision = await FilesetResolver.forVisionTasks(localWasmPath);
+        this.landmarker = await FaceLandmarker.createFromOptions(localVision, {
           baseOptions: {
             modelAssetPath: localModelPath,
             delegate: 'GPU',
@@ -76,9 +67,17 @@ export class MediaPipeFaceTracker {
           runningMode: 'VIDEO',
           numFaces: 1,
         });
-      } catch (localGpuErr) {
-        console.warn('[MediaPipe] Local task GPU failed, trying remote CDN...', localGpuErr);
-        this.landmarker = await FaceLandmarker.createFromOptions(vision, {
+        this.isModelLoaded = true;
+        this.isInitializing = false;
+        return true;
+      } catch (err1) {
+        console.warn('[MediaPipe] Stage 1 (Local WASM + Local Model GPU) failed:', err1);
+      }
+
+      // Stage 2: Try Local WASM with Remote Model (GPU)
+      try {
+        const localVision = await FilesetResolver.forVisionTasks(localWasmPath);
+        this.landmarker = await FaceLandmarker.createFromOptions(localVision, {
           baseOptions: {
             modelAssetPath: remoteModelPath,
             delegate: 'GPU',
@@ -88,59 +87,55 @@ export class MediaPipeFaceTracker {
           runningMode: 'VIDEO',
           numFaces: 1,
         });
+        this.isModelLoaded = true;
+        this.isInitializing = false;
+        return true;
+      } catch (err2) {
+        console.warn('[MediaPipe] Stage 2 (Local WASM + Remote Model GPU) failed:', err2);
       }
+
+      // Stage 3: Fallback to Official Google/JsDelivr CDN WASM + Remote Model (GPU)
+      try {
+        console.log('[MediaPipe] Switching to CDN WASM resolver...');
+        const cdnVision = await FilesetResolver.forVisionTasks(cdnWasmPath);
+        this.landmarker = await FaceLandmarker.createFromOptions(cdnVision, {
+          baseOptions: {
+            modelAssetPath: remoteModelPath,
+            delegate: 'GPU',
+          },
+          outputFaceBlendshapes: true,
+          outputFacialTransformationMatrixes: true,
+          runningMode: 'VIDEO',
+          numFaces: 1,
+        });
+        this.isModelLoaded = true;
+        this.isInitializing = false;
+        return true;
+      } catch (err3) {
+        console.warn('[MediaPipe] Stage 3 (CDN WASM GPU) failed, attempting CPU fallback:', err3);
+      }
+
+      // Stage 4: CDN WASM + Remote Model (CPU Fallback)
+      const cdnVision = await FilesetResolver.forVisionTasks(cdnWasmPath);
+      this.landmarker = await FaceLandmarker.createFromOptions(cdnVision, {
+        baseOptions: {
+          modelAssetPath: remoteModelPath,
+          delegate: 'CPU',
+        },
+        outputFaceBlendshapes: true,
+        outputFacialTransformationMatrixes: true,
+        runningMode: 'VIDEO',
+        numFaces: 1,
+      });
 
       this.isModelLoaded = true;
       this.isInitializing = false;
       return true;
-    } catch (err: any) {
-      console.warn('[MediaPipe] Failed to load GPU landmarker, trying CPU fallback:', err);
-      try {
-        const base = import.meta.env.BASE_URL || '/';
-        const localWasmPath = base.endsWith('/') ? `${base}wasm` : `${base}/wasm`;
-        let vision;
-        try {
-          vision = await FilesetResolver.forVisionTasks(localWasmPath);
-        } catch {
-          vision = await FilesetResolver.forVisionTasks(
-            'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm'
-          );
-        }
-        const localModelPath = getAssetUrl('wasm/face_landmarker.task');
-        const remoteModelPath = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task';
-
-        try {
-          this.landmarker = await FaceLandmarker.createFromOptions(vision, {
-            baseOptions: {
-              modelAssetPath: localModelPath,
-              delegate: 'CPU',
-            },
-            outputFaceBlendshapes: true,
-            outputFacialTransformationMatrixes: true,
-            runningMode: 'VIDEO',
-            numFaces: 1,
-          });
-        } catch {
-          this.landmarker = await FaceLandmarker.createFromOptions(vision, {
-            baseOptions: {
-              modelAssetPath: remoteModelPath,
-              delegate: 'CPU',
-            },
-            outputFaceBlendshapes: true,
-            outputFacialTransformationMatrixes: true,
-            runningMode: 'VIDEO',
-            numFaces: 1,
-          });
-        }
-        this.isModelLoaded = true;
-        this.isInitializing = false;
-        return true;
-      } catch (errFallback: any) {
-        this.loadError = errFallback?.message || 'Error al inicializar el modelo de MediaPipe';
-        console.error('[MediaPipe] Model load failed:', errFallback);
-        this.isInitializing = false;
-        return false;
-      }
+    } catch (errFallback: any) {
+      this.loadError = errFallback?.message || 'Error al inicializar el modelo de MediaPipe';
+      console.error('[MediaPipe] Model load failed:', errFallback);
+      this.isInitializing = false;
+      return false;
     }
   }
 

@@ -63,13 +63,14 @@ export const RoomAvatarModal: React.FC<RoomAvatarModalProps> = ({
     return unsub;
   }, [isAdmin]);
 
-  // Modelos Disponibles: Predefinidos de fábrica + Modelos creados por Admin + Públicos
+  // Modelos Disponibles: Predefinidos de fábrica + Modelos creados en 3D Mask + Públicos de la BD
   const availableAvatars = useMemo(() => {
     return allAvatars.filter((a) => {
       if (!a.isCustom) return true;
       if (a.isPublic) return true;
-      if ((a.ownerId || '').trim().toLowerCase() === 'admin') return true;
-      return false;
+      const owner = (a.ownerId || '').trim().toLowerCase();
+      if (!owner || owner === 'admin') return true;
+      return true; // Todos los modelos de la base de datos están disponibles en la reunión
     });
   }, [allAvatars]);
 
@@ -78,9 +79,12 @@ export const RoomAvatarModal: React.FC<RoomAvatarModalProps> = ({
     return allAvatars.filter((a) => {
       const owner = (a.ownerId || '').trim().toLowerCase();
       if (isAdmin) {
-        return owner === 'admin' || (!owner && a.isCustom);
+        return owner === 'admin' || (!owner && a.isCustom) || a.isCustom;
       }
-      return cleanUsername && owner === cleanUsername;
+      if (cleanUsername) {
+        return owner === cleanUsername || (!owner && a.isCustom);
+      }
+      return a.isCustom || a.id.startsWith('custom_') || !owner;
     });
   }, [allAvatars, cleanUsername, isAdmin]);
 
@@ -233,18 +237,20 @@ export const RoomAvatarModal: React.FC<RoomAvatarModalProps> = ({
         {/* Action Bar: Crear con 3D Masks / Subir Modelo */}
         <div className="px-4 py-2.5 bg-[#0e131d] border-b border-white/[0.06] flex items-center justify-between gap-2 text-xs">
           <div className="flex items-center gap-2">
-            {/* Botón Crear con 3D Masks */}
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                onOpenStudio(null);
-              }}
-              className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold flex items-center gap-1.5 shadow-md shadow-cyan-600/20 transition cursor-pointer active:scale-95 text-xs"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-cyan-200" />
-              <span>+ Crear con 3D Masks</span>
-            </button>
+            {/* Botón Crear con 3D Masks (Solo Admin) */}
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  onOpenStudio(null);
+                }}
+                className="px-3 py-1.5 rounded-xl bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-semibold flex items-center gap-1.5 shadow-md shadow-cyan-600/20 transition cursor-pointer active:scale-95 text-xs"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-cyan-200" />
+                <span>+ Crear con 3D Masks</span>
+              </button>
+            )}
 
             {/* Input oculto y botón para subir archivo 3D */}
             <input
@@ -379,16 +385,18 @@ export const RoomAvatarModal: React.FC<RoomAvatarModalProps> = ({
                     Puedes crear tu propio avatar 3D facial con 52 blendshapes desde una foto con IA o subir un archivo .glb/.obj.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    onOpenStudio(null);
-                  }}
-                  className="mt-2 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-md transition cursor-pointer"
-                >
-                  + Crear con 3D Masks Ahora
-                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      onOpenStudio(null);
+                    }}
+                    className="mt-2 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs shadow-md transition cursor-pointer"
+                  >
+                    + Crear con 3D Masks Ahora
+                  </button>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -442,19 +450,21 @@ export const RoomAvatarModal: React.FC<RoomAvatarModalProps> = ({
                         </div>
                       )}
 
-                      {/* Botón: Volver a Editar con 3D Mask */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onClose();
-                          onOpenStudio(avatar);
-                        }}
-                        className="absolute top-2 right-2 w-6 h-6 rounded-full bg-slate-900/90 hover:bg-blue-600 text-slate-400 hover:text-white border border-slate-700 hover:border-blue-400 flex items-center justify-center transition shadow-md z-10 cursor-pointer"
-                        title={`Editar "${avatar.name}" con 3D Masks`}
-                      >
-                        <Sliders className="w-3 h-3 text-blue-400 group-hover:text-white" />
-                      </button>
+                      {/* Botón: Volver a Editar con 3D Mask (Solo Admin) */}
+                      {isAdmin && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onClose();
+                            onOpenStudio(avatar);
+                          }}
+                          className="absolute top-2 right-2 w-6 h-6 rounded-full bg-slate-900/90 hover:bg-blue-600 text-slate-400 hover:text-white border border-slate-700 hover:border-blue-400 flex items-center justify-center transition shadow-md z-10 cursor-pointer"
+                          title={`Editar "${avatar.name}" con 3D Masks`}
+                        >
+                          <Sliders className="w-3 h-3 text-blue-400 group-hover:text-white" />
+                        </button>
+                      )}
                     </div>
                   );
                 })}

@@ -117,6 +117,7 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
       {/* Avatar Canvas Rendering */}
       <AvatarCanvas
         avatarId={user.avatarId}
+        userId={user.id}
         features={effectiveFeatures}
         userName=""
         isSpeaking={isSpeaking}

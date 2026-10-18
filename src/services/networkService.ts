@@ -6,7 +6,7 @@ import { User, RoomInfo, FaceFeatures, ChatMessage, AvatarId, VideoQueueItem, Ro
 import { getSupabaseClient } from './supabaseClient';
 import { INITIAL_ROOM_MEDIA_STATE } from '../utils/youtube';
 import { avatarModelServiceSingleton } from './avatarModelService';
-import { AVATAR_LIST } from '../components/avatars/avatarConfigs';
+import { AVATAR_LIST, ALL_KNOWN_BUILTIN_IDS } from '../components/avatars/avatarConfigs';
 import { dbServiceSingleton } from './dbService';
 
 const PUBLIC_MQTT_BROKERS = [
@@ -218,6 +218,9 @@ export class NetworkService {
           if (this.currentUser && this.currentUser.id === user.id) {
             this.currentUser = user;
           }
+          if (user.id !== this.currentUser?.id) {
+            this.checkAndFetchMissingAvatar(user);
+          }
           if (this.onUserUpdated) this.onUserUpdated(user);
         });
 
@@ -266,6 +269,9 @@ export class NetworkService {
               return p;
             });
             this.updateAllRemoteAudioMuteState(isMuted);
+            if (!isMuted) {
+              this.resumeAllRemoteAudio();
+            }
           }
           if (this.currentUser && this.currentUser.role !== 'admin') {
             if (this.currentUser) this.currentUser.isMuted = isMuted;
@@ -302,8 +308,14 @@ export class NetworkService {
         );
 
         this.socket.on('avatar_model_data', async (modelPacket: any) => {
-          if (modelPacket && modelPacket.avatarId && modelPacket.buffer) {
-            await avatarModelServiceSingleton.registerRemoteAvatar(modelPacket);
+          if (modelPacket && modelPacket.avatarId && (modelPacket.buffer || modelPacket.fileData)) {
+            const registered = await avatarModelServiceSingleton.registerRemoteAvatar(modelPacket);
+            if (registered && this.currentRoom) {
+              const userWithThisAvatar = this.currentRoom.participants.find((p) => p.avatarId === modelPacket.avatarId);
+              if (userWithThisAvatar && this.onUserUpdated) {
+                this.onUserUpdated(userWithThisAvatar);
+              }
+            }
           }
         });
 
@@ -748,7 +760,14 @@ export class NetworkService {
       } else if (data.type === 'request_avatar_model' && data.avatarId) {
         this.handleAvatarModelRequest(data.avatarId, data.fromUserId, undefined, conn);
       } else if (data.type === 'avatar_model_data' && data.modelPacket) {
-        avatarModelServiceSingleton.registerRemoteAvatar(data.modelPacket);
+        avatarModelServiceSingleton.registerRemoteAvatar(data.modelPacket).then((registered) => {
+          if (registered && this.currentRoom) {
+            const userWithThisAvatar = this.currentRoom.participants.find((p) => p.avatarId === data.modelPacket.avatarId);
+            if (userWithThisAvatar && this.onUserUpdated) {
+              this.onUserUpdated(userWithThisAvatar);
+            }
+          }
+        });
       } else if (data.type === 'room_closed') {
         console.log('[Room Teardown] Room closed via PeerJS P2P data connection.');
         this.cleanup();
@@ -1148,6 +1167,7 @@ export class NetworkService {
             p.id === msg.user.id ? msg.user : p
           );
           this.currentRoom.participants = nextList;
+          this.checkAndFetchMissingAvatar(msg.user);
           if (this.onUserUpdated) {
             this.onUserUpdated(msg.user);
           }
@@ -1670,6 +1690,33 @@ export class NetworkService {
         roomId: this.currentRoom.id,
         user: this.currentUser,
       });
+    }
+
+    // Si el nuevo avatar es un modelo personalizado (3D Masks/Catálogo), compartirlo proactivamente
+    const isStandard = ALL_KNOWN_BUILTIN_IDS.includes(avatarId) || AVATAR_LIST.some((a) => a.id === avatarId);
+    if (!isStandard) {
+      avatarModelServiceSingleton.getModelDataForSync(avatarId).then((modelData) => {
+        if (modelData) {
+          this.socket?.emit('share_avatar_model', modelData);
+          // 1. Enviar directamente a compañeros de sala por conexión P2P WebRTC
+          this.peerDataConnections.forEach((conn) => {
+            if (conn && conn.open) {
+              try {
+                conn.send({
+                  type: 'avatar_model_data',
+                  modelPacket: modelData,
+                });
+              } catch (_) {}
+            }
+          });
+          // 2. Broadcast local multi-pestaña
+          this.broadcastChannel?.postMessage({
+            type: 'tab_avatar_model_data',
+            roomId: this.currentRoom?.id,
+            modelPacket: modelData,
+          });
+        }
+      }).catch(() => {});
     }
   }
 
@@ -2520,6 +2567,22 @@ export class NetworkService {
         break;
       }
 
+      case 'tab_request_avatar_model': {
+        if (msg.avatarId && msg.fromUserId !== this.currentUser?.id) {
+          if (!msg.targetUserId || msg.targetUserId === this.currentUser?.id) {
+            this.handleAvatarModelRequest(msg.avatarId, msg.fromUserId);
+          }
+        }
+        break;
+      }
+
+      case 'tab_avatar_model_data': {
+        if (msg.modelPacket && msg.modelPacket.avatarId && (msg.modelPacket.buffer || msg.modelPacket.fileData)) {
+          avatarModelServiceSingleton.registerRemoteAvatar(msg.modelPacket);
+        }
+        break;
+      }
+
       case 'tab_peer_face_data': {
         if (msg.userId && msg.userId !== this.currentUser.id) {
           if (this.onPeerFaceData) {
@@ -2900,7 +2963,7 @@ export class NetworkService {
     if (!user || !user.avatarId || !this.currentUser) return;
 
     // Si es un avatar estándar conocido del catálogo incorporado, no hace falta pedirlo
-    const isStandard = AVATAR_LIST.some((a) => a.id === user.avatarId);
+    const isStandard = ALL_KNOWN_BUILTIN_IDS.includes(user.avatarId) || AVATAR_LIST.some((a) => a.id === user.avatarId);
     if (isStandard) return;
 
     // Verificar si ya existe en memoria o almacenamiento local
@@ -2909,33 +2972,21 @@ export class NetworkService {
       return;
     }
 
-    // 1. Intentar cargar inmediatamente desde Supabase Cloud (catálogo público o persistido)
+    // 1. Intentar cargar inmediatamente desde Supabase Cloud o IndexedDB local
     try {
-      const cloudItem = await dbServiceSingleton.getAvatarByIdFromCloud(user.avatarId);
-      if (cloudItem && cloudItem.model_data) {
-        const res = await fetch(cloudItem.model_data);
-        const buffer = await res.arrayBuffer();
-        await avatarModelServiceSingleton.registerRemoteAvatar({
-          avatarId: cloudItem.id,
-          name: cloudItem.name,
-          format: cloudItem.format || 'glb',
-          themeColor: cloudItem.theme_color,
-          accentColor: cloudItem.accent_color,
-          previewImage: cloudItem.preview_image,
-          debugParams: cloudItem.debug_params,
-          buffer,
-        });
-        console.info(`[XStreamX Network] Modelo 3D (${user.avatarId}) de ${user.name} descargado exitosamente desde Supabase Cloud.`);
+      const resolved = await avatarModelServiceSingleton.fetchAndCacheAvatarFromCloud(user.avatarId);
+      if (resolved && (resolved.modelUrl || resolved.fileData)) {
+        console.info(`[XStreamX Network] Modelo 3D (${user.avatarId}) de ${user.name} resuelto exitosamente.`);
         if (this.onUserUpdated) {
           this.onUserUpdated(user);
         }
         return;
       }
     } catch (err) {
-      console.warn('[XStreamX Network] Aviso consultando avatar en Supabase:', err);
+      console.warn('[XStreamX Network] Aviso consultando avatar en almacenamiento:', err);
     }
 
-    // 2. Si no estaba en Supabase o falló, solicitar el modelo 3D al participante vía Mesh P2P
+    // 2. Si no estaba localmente o en Supabase, solicitar el modelo 3D al participante vía Mesh P2P / Socket Relay
     if (user.id !== this.currentUser.id) {
       this.requestAvatarModel(user.id, user.avatarId);
     }
@@ -2952,19 +3003,19 @@ export class NetworkService {
       return;
     }
 
-    // Rate-limiting de solicitudes para evitar congestión (1 solicitud cada 6s por modelo)
+    // Rate-limiting de solicitudes para evitar congestión (1 solicitud cada 4s por modelo)
     const now = Date.now();
     const lastReq = this.pendingAvatarRequests.get(avatarId) || 0;
-    if (now - lastReq < 6000) {
+    if (now - lastReq < 4000) {
       return;
     }
     this.pendingAvatarRequests.set(avatarId, now);
 
-    console.info(`[XStreamX Network] Solicitando modelo 3D (${avatarId}) a peer ${targetUserId}...`);
+    console.info(`[XStreamX Network] Solicitando modelo 3D (${avatarId}) a peer ${targetUserId || 'broadcast'}...`);
 
     // 1. Intentar enviar vía conexión P2P WebRTC directa
     let sentViaP2P = false;
-    if (this.currentRoom) {
+    if (this.currentRoom && targetUserId) {
       const peerId = this.getPeerJsId(this.currentRoom.id, targetUserId);
       const conn = this.peerDataConnections.get(peerId);
       if (conn && conn.open) {
@@ -2979,7 +3030,7 @@ export class NetworkService {
       }
     }
 
-    // 2. Enviar vía Socket.io de señalización
+    // 2. Enviar vía Socket.io de señalización (el servidor puede resolver de inmediato desde avatarModelCache)
     if (this.socket && this.socket.connected) {
       this.socket.emit('request_avatar_model', {
         targetUserId,
@@ -2987,7 +3038,16 @@ export class NetworkService {
       });
     }
 
-    // 3. Respaldo vía MQTT WebSockets Mesh
+    // 3. Multi-pestaña local vía BroadcastChannel
+    this.broadcastChannel?.postMessage({
+      type: 'tab_request_avatar_model',
+      roomId: this.currentRoom?.id,
+      targetUserId,
+      avatarId,
+      fromUserId: this.currentUser.id,
+    });
+
+    // 4. Respaldo vía MQTT WebSockets Mesh
     if (!sentViaP2P) {
       this.publishMeshMessage({
         type: 'request_avatar_model',
@@ -3014,7 +3074,14 @@ export class NetworkService {
     const modelData = await avatarModelServiceSingleton.getModelDataForSync(avatarId);
     if (!modelData) return;
 
-    console.info(`[XStreamX Network] Enviando paquete de modelo 3D (${avatarId}) a ${fromUserId}...`);
+    console.info(`[XStreamX Network] Enviando paquete de modelo 3D (${avatarId}) a ${fromUserId || 'mesh'}...`);
+
+    // Sincronizar en BroadcastChannel local para pestañas en la misma máquina
+    this.broadcastChannel?.postMessage({
+      type: 'tab_avatar_model_data',
+      roomId: this.currentRoom?.id,
+      modelPacket: modelData,
+    });
 
     // 1. Si hay conexión directa P2P abierta, enviar por WebRTC DataConnection
     if (directConn && directConn.open) {
@@ -3023,11 +3090,10 @@ export class NetworkService {
           type: 'avatar_model_data',
           modelPacket: modelData,
         });
-        return;
       } catch (_) {}
     }
 
-    if (this.currentRoom) {
+    if (this.currentRoom && fromUserId) {
       const peerId = this.getPeerJsId(this.currentRoom.id, fromUserId);
       const conn = this.peerDataConnections.get(peerId);
       if (conn && conn.open) {
@@ -3036,19 +3102,17 @@ export class NetworkService {
             type: 'avatar_model_data',
             modelPacket: modelData,
           });
-          return;
         } catch (_) {}
       }
     }
 
-    // 2. Enviar por Socket.io
+    // 2. Enviar por Socket.io (almacena en avatarModelCache del servidor y distribuye)
     if (this.socket && this.socket.connected) {
       this.socket.emit('send_avatar_model', {
         targetSocketId: fromSocketId,
         targetUserId: fromUserId,
         modelPacket: modelData,
       });
-      return;
     }
 
     // 3. Fallback a Mqtt mesh

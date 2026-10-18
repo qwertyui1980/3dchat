@@ -30,7 +30,7 @@ export const Register: React.FC<RegisterProps> = ({
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [selectedAvatarId, setSelectedAvatarId] = useState<AvatarId>('lincoln_3d');
+  const [selectedAvatarId, setSelectedAvatarId] = useState<AvatarId>('face_cap');
 
   // UI States
   const [avatarsList, setAvatarsList] = useState<AvatarDefinition[]>([]);

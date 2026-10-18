@@ -29,6 +29,7 @@ export type {
 export {
   DEFAULT_GESTURE_PARAMS,
   DEFAULT_MOUTH_PARAMS,
+  DEFAULT_EYE_OPTIONS,
   createTrackingPointsMesh,
 };
 
@@ -144,22 +145,15 @@ export class FaceToBlendshapeService {
 
     this.isInitializing = true;
     try {
-      let vision;
-      const base = import.meta.env.BASE_URL || '/';
-      const localWasmPath = base.endsWith('/') ? `${base}wasm` : `${base}/wasm`;
-      try {
-        vision = await FilesetResolver.forVisionTasks(localWasmPath);
-      } catch (localWasmErr) {
-        console.warn('[FaceToBlendshapeService] Failed to load local wasm at', localWasmPath, 'falling back to CDN:', localWasmErr);
-        vision = await FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm'
-        );
-      }
+      const localWasmPath = getAssetUrl('wasm');
+      const cdnWasmPath = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm';
       const localTaskPath = getAssetUrl('wasm/face_landmarker.task');
       const remoteTaskPath = 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task';
 
+      // Stage 1: Try Local WASM with Local Model (GPU)
       try {
-        this.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+        const localVision = await FilesetResolver.forVisionTasks(localWasmPath);
+        this.faceLandmarker = await FaceLandmarker.createFromOptions(localVision, {
           baseOptions: {
             modelAssetPath: localTaskPath,
             delegate: 'GPU',
@@ -169,8 +163,15 @@ export class FaceToBlendshapeService {
           runningMode: 'IMAGE',
           numFaces: 1,
         });
-      } catch {
-        this.faceLandmarker = await FaceLandmarker.createFromOptions(vision, {
+        return this.faceLandmarker;
+      } catch (err1) {
+        console.warn('[FaceToBlendshapeService] Stage 1 (Local WASM + Local Model) failed:', err1);
+      }
+
+      // Stage 2: Try Local WASM with Remote Model (GPU)
+      try {
+        const localVision = await FilesetResolver.forVisionTasks(localWasmPath);
+        this.faceLandmarker = await FaceLandmarker.createFromOptions(localVision, {
           baseOptions: {
             modelAssetPath: remoteTaskPath,
             delegate: 'GPU',
@@ -180,7 +181,43 @@ export class FaceToBlendshapeService {
           runningMode: 'IMAGE',
           numFaces: 1,
         });
+        return this.faceLandmarker;
+      } catch (err2) {
+        console.warn('[FaceToBlendshapeService] Stage 2 (Local WASM + Remote Model) failed:', err2);
       }
+
+      // Stage 3: Fallback to Official Google/JsDelivr CDN WASM + Remote Model (GPU)
+      try {
+        console.log('[FaceToBlendshapeService] Switching to CDN WASM resolver...');
+        const cdnVision = await FilesetResolver.forVisionTasks(cdnWasmPath);
+        this.faceLandmarker = await FaceLandmarker.createFromOptions(cdnVision, {
+          baseOptions: {
+            modelAssetPath: remoteTaskPath,
+            delegate: 'GPU',
+          },
+          outputFaceBlendshapes: true,
+          outputFacialTransformationMatrixes: true,
+          runningMode: 'IMAGE',
+          numFaces: 1,
+        });
+        return this.faceLandmarker;
+      } catch (err3) {
+        console.warn('[FaceToBlendshapeService] Stage 3 (CDN WASM GPU) failed, attempting CPU fallback:', err3);
+      }
+
+      // Stage 4: CDN WASM + Remote Model (CPU Fallback)
+      const cdnVision = await FilesetResolver.forVisionTasks(cdnWasmPath);
+      this.faceLandmarker = await FaceLandmarker.createFromOptions(cdnVision, {
+        baseOptions: {
+          modelAssetPath: remoteTaskPath,
+          delegate: 'CPU',
+        },
+        outputFaceBlendshapes: true,
+        outputFacialTransformationMatrixes: true,
+        runningMode: 'IMAGE',
+        numFaces: 1,
+      });
+
       return this.faceLandmarker;
     } finally {
       this.isInitializing = false;

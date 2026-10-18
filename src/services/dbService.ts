@@ -612,7 +612,7 @@ class DatabaseService {
       if (u.createdAvatars && u.createdAvatars.includes(avatarId)) {
         u.createdAvatars = u.createdAvatars.filter((id) => id !== avatarId);
         if (u.avatarId === avatarId) {
-          u.avatarId = 'lincoln_3d';
+          u.avatarId = 'face_cap';
         }
         this.upsertUser(u).catch(() => {});
       }
@@ -723,6 +723,25 @@ class DatabaseService {
       }
     } catch (err) {
       console.warn('[Supabase] Error fetching public avatars from cloud:', err);
+    }
+    return [];
+  }
+
+  async getAllAvatarsFromCloud(): Promise<any[]> {
+    const supabase = getSupabaseClient();
+    if (!supabase) return [];
+
+    try {
+      const { data, error } = await supabase
+        .from('avatars')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && data) {
+        return data;
+      }
+    } catch (err) {
+      console.warn('[Supabase] Error fetching all avatars from cloud:', err);
     }
     return [];
   }

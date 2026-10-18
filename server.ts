@@ -81,6 +81,9 @@ rooms.set('main', {
   createdAt: Date.now(),
 });
 
+// Cache en memoria para paquetes de modelos 3D personalizados (distribución instantánea sin cuellos de botella)
+const avatarModelCache = new Map<string, any>();
+
 async function startServer() {
   const app = express();
   const httpServer = createServer(app);
@@ -118,26 +121,227 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Serve public static assets (favicon.svg, models, etc.)
+  // Serve public static assets (favicon.svg, models, wasm, etc.)
   app.use(express.static(path.resolve(__dirname, 'public')));
+  app.use('/wasm', express.static(path.resolve(__dirname, 'public/wasm')));
+  app.use('/3dchat', express.static(path.resolve(__dirname, 'public')));
+  app.use('/3dchat/wasm', express.static(path.resolve(__dirname, 'public/wasm')));
 
   // Static 3D model assets
   app.use('/models', express.static(path.resolve(__dirname, 'public/models')));
   app.use('/models', express.static(path.resolve(__dirname, 'models')));
+  app.use('/3dchat/models', express.static(path.resolve(__dirname, 'public/models')));
+  app.use('/3dchat/models', express.static(path.resolve(__dirname, 'models')));
 
   // Explicit favicon handler to prevent 404s on /favicon.ico and /favicon.svg
-  app.get(['/favicon.ico', '/favicon.svg'], (_req, res) => {
-    const svgPath = path.resolve(__dirname, 'public/favicon.svg');
-    if (fs.existsSync(svgPath)) {
-      res.type('image/svg+xml').sendFile(svgPath);
+  app.get(['/favicon.ico', '/favicon.svg', '/3dchat/favicon.ico', '/3dchat/favicon.svg'], (req, res) => {
+    const isIco = req.path.endsWith('.ico');
+    const filePath = isIco
+      ? path.resolve(__dirname, 'public/favicon.ico')
+      : path.resolve(__dirname, 'public/favicon.svg');
+    if (fs.existsSync(filePath)) {
+      res.type(isIco ? 'image/x-icon' : 'image/svg+xml').sendFile(filePath);
     } else {
       res.status(204).end();
     }
   });
 
+  // --- TELEMETRY & PRODUCTION ERROR LOGGING SYSTEM (AI-CONSUMABLE) ---
+  const logsDir = path.resolve(__dirname, 'logs');
+  if (!fs.existsSync(logsDir)) {
+    fs.mkdirSync(logsDir, { recursive: true });
+  }
+  const jsonlLogPath = path.join(logsDir, 'production_errors.jsonl');
+  const aiDigestPath = path.join(logsDir, 'ai_error_digest.md');
+
+  // In-memory ring buffer (last 200 production error events)
+  const serverErrorTelemetry: any[] = [];
+
+  // Restore recent logs from disk on startup if available
+  try {
+    if (fs.existsSync(jsonlLogPath)) {
+      const lines = fs.readFileSync(jsonlLogPath, 'utf-8').trim().split('\n').filter(Boolean);
+      for (const line of lines.slice(-100)) {
+        try {
+          serverErrorTelemetry.unshift(JSON.parse(line));
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+
+  function generateAiDigestMarkdown(logs: any[]): string {
+    const now = new Date().toISOString();
+    const total = logs.length;
+    const categories: Record<string, number> = {};
+    const severities: Record<string, number> = {};
+
+    logs.forEach((l) => {
+      const cat = l.category || 'general';
+      const sev = l.severity || 'error';
+      categories[cat] = (categories[cat] || 0) + (l.count || 1);
+      severities[sev] = (severities[sev] || 0) + (l.count || 1);
+    });
+
+    let md = `# Reporte Unificado de Errores en Producción (XStreamX AI Diagnostic Digest)\n\n`;
+    md += `> **Generado:** ${now}  \n`;
+    md += `> **Total de Incidentes:** ${total} eventos  \n`;
+    md += `> **Estado Global:** ${total === 0 ? '🟢 Normal / Sin Fallos' : severities['fatal'] ? '🔴 Crítico' : '🟡 Alertas Activas'}  \n\n`;
+
+    md += `## 1. Desglose por Componente\n\n`;
+    md += `| Módulo | Eventos | Severidad Predominante |\n`;
+    md += `| :--- | :--- | :--- |\n`;
+    for (const [cat, count] of Object.entries(categories)) {
+      md += `| **${cat.toUpperCase()}** | ${count} | \`${logs.find((l) => l.category === cat)?.severity || 'error'}\` |\n`;
+    }
+
+    md += `\n---\n\n## 2. Clúster de Errores Recientes (Para Inspección de la IA)\n\n`;
+    if (logs.length === 0) {
+      md += `*No hay errores registrados en producción actualmente.*\n`;
+    } else {
+      logs.slice(0, 25).forEach((err, i) => {
+        md += `### [${i + 1}] [${(err.severity || 'ERROR').toUpperCase()}] [${(err.category || 'GENERAL').toUpperCase()}] ${String(err.message || '').slice(0, 140)}\n\n`;
+        md += `* **Ocurrencias:** ${err.count || 1}  \n`;
+        md += `* **Marca de Tiempo:** ${err.isoTime || new Date(err.timestamp || Date.now()).toISOString()}  \n`;
+        if (err.route) md += `* **Ruta/Página:** \`${err.route}${err.hash || ''}\`  \n`;
+        if (err.context?.userName) md += `* **Usuario / Rol:** \`${err.context.userName} (${err.context.userRole || 'user'})\` en sala \`${err.context.roomId || 'main'}\`  \n`;
+        if (err.context?.avatarId) md += `* **Avatar / Modo:** \`${err.context.avatarId}\` | \`${err.context.trackingMode || 'auto'}\`  \n`;
+        if (err.context?.deviceInfo) md += `* **Dispositivo / GPU:** \`${err.context.deviceInfo.platform} | ${err.context.deviceInfo.gpuRenderer || 'N/A'}\`  \n`;
+        if (err.sourceFile) md += `* **Ubicación:** \`${err.sourceFile}:${err.lineNumber || 0}\`  \n`;
+        if (err.stack) md += `\n**Stack Trace:**\n\`\`\`text\n${String(err.stack).slice(0, 700)}\n\`\`\`\n`;
+        if (err.breadcrumbs?.length) {
+          md += `\n**Acciones Previas (Breadcrumbs):**\n`;
+          err.breadcrumbs.slice(-4).forEach((b: any) => {
+            md += `- \`[${new Date(b.timestamp).toLocaleTimeString()}] [${b.category}]\` ${b.message}\n`;
+          });
+        }
+        md += `\n`;
+      });
+    }
+
+    md += `---\n\n## 3. Guía de Diagnóstico Rápido para la IA\n\n`;
+    md += `- **WebGL / Three.js:** Comprobar si hubo 'context lost', modelos con buffers ausentes o fallos de shader.\n`;
+    md += `- **MediaPipe / WASM:** Comprobar si 'face_landmarker.task' o binarios WASM arrojaron 404 o timeout de red.\n`;
+    md += `- **WebRTC / Red:** Comprobar si PeerJS o los brokers MQTT fallaron en handshake o paquetes excedieron cuotas.\n`;
+
+    return md;
+  }
+
+  function recordServerTelemetry(entry: any) {
+    serverErrorTelemetry.unshift(entry);
+    if (serverErrorTelemetry.length > 200) {
+      serverErrorTelemetry.pop();
+    }
+    try {
+      fs.appendFileSync(jsonlLogPath, JSON.stringify(entry) + '\n', 'utf-8');
+      fs.writeFileSync(aiDigestPath, generateAiDigestMarkdown(serverErrorTelemetry), 'utf-8');
+    } catch (_) {}
+  }
+
+  // Generate initial digest file if not exists
+  try {
+    if (!fs.existsSync(aiDigestPath)) {
+      fs.writeFileSync(aiDigestPath, generateAiDigestMarkdown(serverErrorTelemetry), 'utf-8');
+    }
+  } catch (_) {}
+
+  // Server-side global exception logging
+  process.on('uncaughtException', (err) => {
+    console.error('[Server UncaughtException]', err);
+    recordServerTelemetry({
+      id: `srv_err_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      timestamp: Date.now(),
+      isoTime: new Date().toISOString(),
+      severity: 'fatal',
+      category: 'server',
+      message: err?.message || 'Server Uncaught Exception',
+      stack: err?.stack,
+      count: 1,
+      route: 'server.ts',
+    });
+  });
+
+  process.on('unhandledRejection', (reason: any) => {
+    console.error('[Server UnhandledRejection]', reason);
+    recordServerTelemetry({
+      id: `srv_rej_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      timestamp: Date.now(),
+      isoTime: new Date().toISOString(),
+      severity: 'error',
+      category: 'server',
+      message: reason instanceof Error ? reason.message : String(reason),
+      stack: reason instanceof Error ? reason.stack : undefined,
+      count: 1,
+      route: 'server.ts',
+    });
+  });
+
+  // Ingest client errors telemetry batch
+  app.post('/api/logs/telemetry', (req, res) => {
+    try {
+      const { errors } = req.body || {};
+      if (Array.isArray(errors)) {
+        for (const err of errors) {
+          recordServerTelemetry(err);
+        }
+      }
+      res.json({ ok: true, received: Array.isArray(errors) ? errors.length : 0 });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message || 'Failed to ingest telemetry' });
+    }
+  });
+
+  // AI Summary endpoint: returns structured AI report
+  app.get('/api/logs/ai-summary', (req, res) => {
+    const format = req.query.format;
+    if (format === 'json') {
+      res.json({
+        totalErrors: serverErrorTelemetry.length,
+        errors: serverErrorTelemetry.slice(0, 50),
+      });
+      return;
+    }
+    if (fs.existsSync(aiDigestPath)) {
+      res.type('text/markdown; charset=utf-8').sendFile(aiDigestPath);
+    } else {
+      res.type('text/markdown; charset=utf-8').send(generateAiDigestMarkdown(serverErrorTelemetry));
+    }
+  });
+
+  // Raw logs endpoint
+  app.get('/api/logs/raw', (req, res) => {
+    const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
+    const severity = req.query.severity as string | undefined;
+    const category = req.query.category as string | undefined;
+
+    let filtered = serverErrorTelemetry;
+    if (severity) filtered = filtered.filter((l) => l.severity === severity);
+    if (category) filtered = filtered.filter((l) => l.category === category);
+
+    res.json({
+      total: serverErrorTelemetry.length,
+      returned: Math.min(filtered.length, limit),
+      logs: filtered.slice(0, limit),
+    });
+  });
+
+  // Clear logs endpoint
+  app.post('/api/logs/clear', (req, res) => {
+    serverErrorTelemetry.length = 0;
+    try {
+      if (fs.existsSync(jsonlLogPath)) fs.writeFileSync(jsonlLogPath, '', 'utf-8');
+      fs.writeFileSync(aiDigestPath, generateAiDigestMarkdown([]), 'utf-8');
+    } catch (_) {}
+    res.json({ ok: true, cleared: true });
+  });
+
   // API endpoints
   app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok', activeRooms: rooms.size, timestamp: Date.now() });
+    res.json({
+      status: 'ok',
+      activeRooms: rooms.size,
+      errorCount: serverErrorTelemetry.length,
+      timestamp: Date.now(),
+    });
   });
 
   app.get('/api/rooms', (req, res) => {
@@ -346,6 +550,13 @@ async function startServer() {
         socket.emit('media_state_sync', room.mediaState);
       }
 
+      // Entregar inmediatamente al nuevo participante cualquier modelo 3D personalizado activo en la sala
+      for (const p of participantsList) {
+        if (p.avatarId && avatarModelCache.has(p.avatarId)) {
+          socket.emit('avatar_model_data', avatarModelCache.get(p.avatarId));
+        }
+      }
+
       // Notify others in room
       socket.to(trimmedRoomId).emit('user_joined', {
         user: currentUser,
@@ -384,6 +595,11 @@ async function startServer() {
       if (room) {
         room.users.set(socket.id, currentUser);
         io.to(currentUser.roomId).emit('user_updated', { user: currentUser });
+
+        // Si tenemos el modelo 3D en caché del servidor, transmitirlo inmediatamente
+        if (avatarId && avatarModelCache.has(avatarId)) {
+          io.to(currentUser.roomId).emit('avatar_model_data', avatarModelCache.get(avatarId));
+        }
       }
     });
 
@@ -393,6 +609,13 @@ async function startServer() {
       const room = rooms.get(currentUser.roomId);
       if (!room) return;
 
+      // 1. Responder de inmediato desde la caché en memoria del servidor si ya está disponible (0ms)
+      if (avatarId && avatarModelCache.has(avatarId)) {
+        socket.emit('avatar_model_data', avatarModelCache.get(avatarId));
+        return;
+      }
+
+      // 2. Si no estaba en caché, dirigir solicitud al usuario destino
       if (targetUserId) {
         let targetSocketId: string | undefined;
         for (const [sId, u] of room.users.entries()) {
@@ -411,7 +634,7 @@ async function startServer() {
         }
       }
 
-      // Broadcast to room if specific target not found or omitted
+      // 3. Difundir a la sala si no se especificó o no se encontró socket puntual
       socket.to(currentUser.roomId).emit('request_avatar_model', {
         fromUserId: currentUser.id,
         fromSocketId: socket.id,
@@ -420,9 +643,14 @@ async function startServer() {
     });
 
     socket.on('send_avatar_model', ({ targetSocketId, targetUserId, modelPacket }) => {
-      if (!currentUser) return;
+      if (!currentUser || !modelPacket) return;
       const room = rooms.get(currentUser.roomId);
       if (!room) return;
+
+      // Almacenar en la caché central de memoria del servidor
+      if (modelPacket.avatarId) {
+        avatarModelCache.set(modelPacket.avatarId, modelPacket);
+      }
 
       if (targetSocketId) {
         io.to(targetSocketId).emit('avatar_model_data', modelPacket);
@@ -442,6 +670,23 @@ async function startServer() {
       } else {
         socket.to(currentUser.roomId).emit('avatar_model_data', modelPacket);
       }
+    });
+
+    // Transmisión proactiva de modelos 3D al crearse o equiparse
+    socket.on('share_avatar_model', (modelPacket) => {
+      if (!currentUser || !modelPacket) return;
+      const room = rooms.get(currentUser.roomId);
+      if (!room) return;
+
+      if (modelPacket.avatarId) {
+        avatarModelCache.set(modelPacket.avatarId, modelPacket);
+        if (currentUser.avatarId !== modelPacket.avatarId) {
+          currentUser.avatarId = modelPacket.avatarId;
+          room.users.set(socket.id, currentUser);
+          io.to(currentUser.roomId).emit('user_updated', { user: currentUser });
+        }
+      }
+      socket.to(currentUser.roomId).emit('avatar_model_data', modelPacket);
     });
 
     // Mic state toggle
@@ -487,10 +732,19 @@ async function startServer() {
       const room = rooms.get(currentUser.roomId);
       if (!room) return;
 
-      const target = room.users.get(targetUserId);
-      if (target) {
+      let targetSocketId: string | undefined;
+      let target: User | undefined;
+      for (const [sId, u] of room.users.entries()) {
+        if (u.id === targetUserId || sId === targetUserId) {
+          targetSocketId = sId;
+          target = u;
+          break;
+        }
+      }
+
+      if (target && targetSocketId) {
         target.isMuted = muteState !== undefined ? muteState : true;
-        io.to(targetUserId).emit('force_mute', { isMuted: target.isMuted });
+        io.to(targetSocketId).emit('force_mute', { isMuted: target.isMuted, targetUserId: target.id });
         io.to(currentUser.roomId).emit('user_updated', { user: target });
       }
     });
@@ -502,10 +756,11 @@ async function startServer() {
       if (!room) return;
 
       const shouldMute = muteState !== undefined ? muteState : true;
-      room.users.forEach((user, userId) => {
+      (room as any).isAllMuted = shouldMute;
+      room.users.forEach((user, socketId) => {
         if (user.role !== 'admin') {
           user.isMuted = shouldMute;
-          io.to(userId).emit('force_mute', { isMuted: shouldMute });
+          io.to(socketId).emit('force_mute', { isMuted: shouldMute, targetUserId: user.id });
         }
       });
 

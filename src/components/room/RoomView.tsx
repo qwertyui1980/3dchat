@@ -76,6 +76,7 @@ interface RoomViewProps {
   onTriggerGesture?: (gesture: QuickGestureType) => void;
   onOpenProfile?: () => void;
   onOpenFaces?: () => void;
+  onOpenDiagnostics?: () => void;
 }
 
 export const RoomView: React.FC<RoomViewProps> = ({
@@ -108,6 +109,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
   onLogout,
   onOpenProfile,
   onOpenFaces,
+  onOpenDiagnostics,
   mediaState,
   onAddMediaQueueItem,
   onRemoveMediaQueueItem,
@@ -266,6 +268,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
           onToggleFullscreen={handleToggleFullscreen}
           onOpenProfile={onOpenProfile}
           onOpenFaces={onOpenFaces}
+          onOpenDiagnostics={onOpenDiagnostics}
         />
       )}
 
@@ -411,6 +414,7 @@ export const RoomView: React.FC<RoomViewProps> = ({
           onToggleLock={onToggleLock}
           onMuteAll={onMuteAll}
           onSelectAvatar={onSelectAvatar}
+          onOpenDiagnostics={onOpenDiagnostics}
         />
       )}
 

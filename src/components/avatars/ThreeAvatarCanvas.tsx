@@ -9,7 +9,7 @@ import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 import { AvatarId, FaceFeatures, AvatarDefinition, DynamicTrackingMode } from '../../types';
 import { normalizeTrackingMode } from '../../services/face3d/dynamicModeHelper';
 import { getAvatarTrackingProfile, registerAvatarTrackingProfile } from './avatarTrackingProfiles';
-import { AVATAR_LIST } from './avatarConfigs';
+import { AVATAR_LIST, ALL_KNOWN_BUILTIN_IDS } from './avatarConfigs';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
 import { networkServiceSingleton } from '../../services/networkService';
 import {
@@ -292,6 +292,7 @@ function getValidModelSource(source?: any): string | null {
 
 interface ThreeAvatarCanvasProps {
   avatarId?: AvatarId;
+  userId?: string;
   features: FaceFeatures;
   userName?: string;
   isSpeaking?: boolean;
@@ -303,6 +304,7 @@ interface ThreeAvatarCanvasProps {
 
 export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
   avatarId = 'lincoln_3d',
+  userId,
   features,
   userName,
   isSpeaking = false,
@@ -364,14 +366,14 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
 
   // Auto-request missing custom model from Supabase Cloud and room peers
   useEffect(() => {
-    const isStd = AVATAR_LIST.some((a) => a.id === avatarId);
+    const isStd = ALL_KNOWN_BUILTIN_IDS.includes(avatarId) || AVATAR_LIST.some((a) => a.id === avatarId);
     if (!isStd && !avatarDef.modelUrl && !avatarDef.fileData) {
       avatarModelServiceSingleton.fetchAndCacheAvatarFromCloud(avatarId).catch((err) => {
         console.warn('[ThreeAvatarCanvas] Error recuperando avatar de Supabase:', err);
       });
-      networkServiceSingleton.requestAvatarModel('', avatarId);
+      networkServiceSingleton.requestAvatarModel(userId || '', avatarId);
     }
-  }, [avatarId, avatarDef.modelUrl, avatarDef.fileData]);
+  }, [avatarId, userId, avatarDef.modelUrl, avatarDef.fileData]);
 
   const trackingProfile = useMemo(() => {
     if (avatarDef?.trackingProfile) {
@@ -879,6 +881,7 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             const headPivot = new THREE.Group();
             rootGroup.add(headPivot);
 
+            objGroup.updateMatrixWorld(true);
             const box = new THREE.Box3().setFromObject(objGroup);
             const size = box.getSize(new THREE.Vector3());
             const center = box.getCenter(new THREE.Vector3());
@@ -1066,11 +1069,28 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           });
 
           // Calculate bounding box and dimensions
+          clonedScene.updateMatrixWorld(true);
           const box = new THREE.Box3().setFromObject(clonedScene);
           const size = box.getSize(new THREE.Vector3());
           const center = box.getCenter(new THREE.Vector3());
-          const maxDim = Math.max(size.x, size.y, size.z) || 1;
+          let maxDim = Math.max(size.x, size.y, size.z) || 1;
           const isFullBodyRig = hasSkeletalBones && (size.y > size.x * 1.8);
+
+          // If faceMesh is present (Face Studio / 3D Mask avatar), center precisely on the face anatomy
+          const anatomicalFaceNode = clonedScene.getObjectByName('faceMesh') as THREE.Mesh | undefined;
+          if (anatomicalFaceNode && anatomicalFaceNode.geometry && !isFullBodyRig) {
+            anatomicalFaceNode.updateMatrixWorld(true);
+            const faceBox = new THREE.Box3().setFromObject(anatomicalFaceNode);
+            if (!faceBox.isEmpty()) {
+              const faceCenter = faceBox.getCenter(new THREE.Vector3());
+              const faceSize = faceBox.getSize(new THREE.Vector3());
+              center.x = faceCenter.x;
+              center.y = faceCenter.y;
+              if (size.y > faceSize.y * 2.2) {
+                maxDim = Math.max(faceSize.x, faceSize.y, faceSize.z) * 1.4;
+              }
+            }
+          }
 
           if (isFullBodyRig) {
             // Full-body skeletal character standing on the ground
@@ -1803,10 +1823,11 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
       } else if (avatarId === 'pixel_punk') {
         controller = buildProceduralRobotCharacter('punk');
       } else {
-        const isStd = AVATAR_LIST.some((a) => a.id === avatarId);
+        const isStd = ALL_KNOWN_BUILTIN_IDS.includes(avatarId) || AVATAR_LIST.some((a) => a.id === avatarId);
         if (!isStd) {
-          // Custom avatar whose model is being fetched from Supabase Cloud
+          // Custom avatar whose model is being fetched from Supabase Cloud or P2P Mesh
           setIsLoading(true);
+          networkServiceSingleton.requestAvatarModel(userId || '', avatarId);
           avatarModelServiceSingleton
             .fetchAndCacheAvatarFromCloud(avatarId)
             .then((fetched) => {
@@ -1816,18 +1837,27 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
                 setAvatarRevision((r) => r + 1);
                 return;
               }
-              setIsLoading(false);
-              const fallback = buildProceduralRobotCharacter('mecha');
-              characterControllerRef.current = fallback;
-              scene.add(fallback.group);
+              // Dar un margen prudente de espera para que la red P2P o el servidor entreguen el modelo sin parpadear a robot
+              const timer = setTimeout(() => {
+                if (!isDisposed && !characterControllerRef.current) {
+                  setIsLoading(false);
+                  const fallback = buildProceduralRobotCharacter('mecha');
+                  characterControllerRef.current = fallback;
+                  scene.add(fallback.group);
+                }
+              }, 10000);
+              return () => clearTimeout(timer);
             })
             .catch(() => {
-              if (!isDisposed) {
-                setIsLoading(false);
-                const fallback = buildProceduralRobotCharacter('mecha');
-                characterControllerRef.current = fallback;
-                scene.add(fallback.group);
-              }
+              const timer = setTimeout(() => {
+                if (!isDisposed && !characterControllerRef.current) {
+                  setIsLoading(false);
+                  const fallback = buildProceduralRobotCharacter('mecha');
+                  characterControllerRef.current = fallback;
+                  scene.add(fallback.group);
+                }
+              }, 10000);
+              return () => clearTimeout(timer);
             });
           return;
         }

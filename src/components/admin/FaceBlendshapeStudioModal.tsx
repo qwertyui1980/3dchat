@@ -144,8 +144,8 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
   );
   const autoProcessedAvatarIdRef = useRef<string | null>(null);
 
-  // Target Collection: Personal ('Mis Avatares') vs Public ('Modelos Predefinidos')
-  const [targetCollection, setTargetCollection] = useState<'personal' | 'public'>(() => (isAdmin ? 'public' : 'personal'));
+  // Target Collection: Personal ('Mis Avatares') vs Public ('Colección Pública / Sala')
+  const [targetCollection, setTargetCollection] = useState<'personal' | 'public'>('public');
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -1222,7 +1222,6 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
 
     const avatarName = exportAvatarName.trim() || 'Mi Avatar 3D Facial';
     const isUpdate = !forceNew && !!currentEditingAvatarId;
-    const isPublic = isAdmin && targetCollection === 'public';
 
     // Obtener la cuenta del usuario actual para guardar en su colección personal
     let currentAuthOwner = '';
@@ -1235,7 +1234,15 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         }
       } catch (_) {}
     }
-    if (!isAdmin && !isPublic && !isUpdate) {
+
+    // Si el usuario no ha iniciado sesión (ej. acceso directo a /3dchat/faces), asociar con admin para no dejar modelo huérfano
+    if (!currentAuthOwner) {
+      currentAuthOwner = 'admin';
+    }
+
+    const isPublic = targetCollection === 'public' || currentAuthOwner === 'admin';
+
+    if (!isAdmin && !isPublic && !isUpdate && currentAuthOwner !== 'admin') {
       const quota = avatarModelServiceSingleton.canUserCreateAvatar(currentAuthOwner, false);
       if (!quota.allowed) {
         setStatus(
@@ -1354,6 +1361,12 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
         if (onSelectAvatar) {
           onSelectAvatar(newAvatar.id);
         }
+      }
+
+      // Sincronizar inmediatamente la base de datos de Supabase Cloud para que esté disponible en toda la app
+      avatarModelServiceSingleton.syncUserCloudAvatars(currentAuthOwner).catch(() => {});
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('xstreamx_avatars_updated'));
       }
 
       setTimeout(() => setSaveSuccessMsg(null), 5000);
@@ -3311,57 +3324,55 @@ export const FaceBlendshapeStudioModal: React.FC<FaceBlendshapeStudioModalProps>
                   </div>
                 </div>
 
-                {/* Admin Option: Add to Personal Collection vs Public Collection */}
-                {isAdmin && (
-                  <div className="p-3.5 rounded-xl bg-[#121626] border border-cyan-500/30 space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-bold text-neutral-200 flex items-center gap-1.5">
-                        <Layers className="w-3.5 h-3.5 text-cyan-400" />
-                        Colección de Destino
-                      </span>
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-800">
-                        Admin
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setTargetCollection('personal')}
-                        className={`p-2.5 rounded-xl border text-left transition flex flex-col gap-1 cursor-pointer ${
-                          targetCollection === 'personal'
-                            ? 'bg-cyan-950/80 border-cyan-400 text-white ring-1 ring-cyan-400/40 shadow-sm'
-                            : 'bg-[#0a0d18] hover:bg-[#151a2e] text-neutral-400 border-white/[0.08]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 font-bold text-xs">
-                          <User className="w-3.5 h-3.5 text-cyan-400" />
-                          <span>Mi Colección</span>
-                        </div>
-                        <p className="text-[10px] text-neutral-400 leading-tight">
-                          Pestaña personal "Mis Avatares".
-                        </p>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setTargetCollection('public')}
-                        className={`p-2.5 rounded-xl border text-left transition flex flex-col gap-1 cursor-pointer ${
-                          targetCollection === 'public'
-                            ? 'bg-indigo-950/80 border-indigo-400 text-white ring-1 ring-indigo-400/40 shadow-sm'
-                            : 'bg-[#0a0d18] hover:bg-[#151a2e] text-neutral-400 border-white/[0.08]'
-                        }`}
-                      >
-                        <div className="flex items-center gap-1.5 font-bold text-xs">
-                          <Globe className="w-3.5 h-3.5 text-indigo-400" />
-                          <span>Colección Pública</span>
-                        </div>
-                        <p className="text-[10px] text-neutral-400 leading-tight">
-                          Catálogo general para todos.
-                        </p>
-                      </button>
-                    </div>
+                {/* Availability in Database: Public Collection vs Personal Collection */}
+                <div className="p-3.5 rounded-xl bg-[#121626] border border-cyan-500/30 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-neutral-200 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-cyan-400" />
+                      Disponibilidad en Base de Datos
+                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-800">
+                      Supabase Cloud
+                    </span>
                   </div>
-                )}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTargetCollection('public')}
+                      className={`p-2.5 rounded-xl border text-left transition flex flex-col gap-1 cursor-pointer ${
+                        targetCollection === 'public'
+                          ? 'bg-indigo-950/80 border-indigo-400 text-white ring-1 ring-indigo-400/40 shadow-sm'
+                          : 'bg-[#0a0d18] hover:bg-[#151a2e] text-neutral-400 border-white/[0.08]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-xs">
+                        <Globe className="w-3.5 h-3.5 text-indigo-400" />
+                        <span>Colección Pública</span>
+                      </div>
+                      <p className="text-[10px] text-neutral-400 leading-tight">
+                        Disponible para todos los participantes.
+                      </p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTargetCollection('personal')}
+                      className={`p-2.5 rounded-xl border text-left transition flex flex-col gap-1 cursor-pointer ${
+                        targetCollection === 'personal'
+                          ? 'bg-cyan-950/80 border-cyan-400 text-white ring-1 ring-cyan-400/40 shadow-sm'
+                          : 'bg-[#0a0d18] hover:bg-[#151a2e] text-neutral-400 border-white/[0.08]'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5 font-bold text-xs">
+                        <User className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Mi Colección</span>
+                      </div>
+                      <p className="text-[10px] text-neutral-400 leading-tight">
+                        Vinculado a tu cuenta de usuario.
+                      </p>
+                    </button>
+                  </div>
+                </div>
 
                 {/* Direct Save into App (Update existing or Save as new) */}
                 {currentEditingAvatarId ? (

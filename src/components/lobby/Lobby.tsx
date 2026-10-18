@@ -27,6 +27,12 @@ import {
   Box,
   Pencil,
   Smile,
+  Upload,
+  Loader2,
+  Save,
+  Trash2,
+  CheckCircle2,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { AvatarId, FaceFeatures, AvatarDefinition, DynamicTrackingMode } from '../../types';
 import { AVATAR_LIST } from '../avatars/avatarConfigs';
@@ -41,6 +47,12 @@ import { networkServiceSingleton } from '../../services/networkService';
 import { LegalDisclaimerModal } from '../common/LegalDisclaimerModal';
 import { AdminControlPanel } from '../room/AdminControlPanel';
 import { FaceBlendshapeStudioModal } from '../admin/FaceBlendshapeStudioModal';
+import {
+  FaceToBlendshapeService,
+  DEFAULT_DEBUG_PARAMS,
+  DEFAULT_MOUTH_PARAMS,
+  DEFAULT_EYE_OPTIONS,
+} from '../../services/face3d/faceToBlendshapeService';
 import {
   applyDynamicMode,
   TRACKING_MODES_CONFIG,
@@ -213,7 +225,7 @@ export const Lobby: React.FC<LobbyProps> = ({
     if (authUser?.avatarId && avatarModelServiceSingleton.getAvatarById(authUser.avatarId)) {
       return authUser.avatarId as AvatarId;
     }
-    return 'lincoln_3d';
+    return 'face_cap';
   });
 
   // Synchronize authenticated user profile & assigned 3D avatar
@@ -249,7 +261,7 @@ export const Lobby: React.FC<LobbyProps> = ({
     };
   }, [authUser?.username, authUser?.name, authUser?.avatarId]);
 
-  // Tabs: 'predefined' (Modelos Predefinidos) vs 'custom' (Mis Avatares / 3D Masks en LocalStorage)
+  // Tabs: 'predefined' (Modelos Predefinidos) vs 'custom' (Mis Avatares / 3D Masks Online)
   const [avatarTab, setAvatarTab] = useState<'predefined' | 'custom'>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem(STORAGE_AVATAR_KEY) as AvatarId;
@@ -265,8 +277,9 @@ export const Lobby: React.FC<LobbyProps> = ({
     return avatars.filter((a) => {
       if (!a.isCustom) return true;
       if (a.isPublic) return true;
-      if ((a.ownerId || '').trim().toLowerCase() === 'admin') return true;
-      return false;
+      const owner = (a.ownerId || '').trim().toLowerCase();
+      if (!owner || owner === 'admin') return true;
+      return true; // Todos los modelos de la base de datos disponibles para elegir
     });
   }, [avatars]);
 
@@ -275,9 +288,12 @@ export const Lobby: React.FC<LobbyProps> = ({
     return avatars.filter((a) => {
       const owner = (a.ownerId || '').trim().toLowerCase();
       if (isAdminUser) {
-        return owner === 'admin' || (!owner && a.isCustom);
+        return owner === 'admin' || (!owner && a.isCustom) || a.isCustom;
       }
-      return cleanUser && owner === cleanUser;
+      if (cleanUser) {
+        return owner === cleanUser || (!owner && a.isCustom);
+      }
+      return a.isCustom || a.id.startsWith('custom_') || !owner;
     });
   }, [avatars, authUser?.username, isAdminUser]);
 
@@ -310,6 +326,195 @@ export const Lobby: React.FC<LobbyProps> = ({
   const handleEditCustomAvatar = (avatar: AvatarDefinition) => {
     setEditingAvatarForStudio(avatar);
     setIsFaceStudioOpen(true);
+  };
+
+  // Estados y métodos para subida de foto y creación automática de modelo 3D
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [isGeneratingPhoto, setIsGeneratingPhoto] = useState(false);
+  const [photoProgress, setPhotoProgress] = useState<string>('');
+  const [pendingModelToSave, setPendingModelToSave] = useState<{
+    avatar: AvatarDefinition;
+    blob: Blob;
+    previewImage: string;
+  } | null>(null);
+  const [pendingModelName, setPendingModelName] = useState<string>('');
+  const [previousAvatarId, setPreviousAvatarId] = useState<AvatarId | null>(null);
+  const [isSavingPendingModel, setIsSavingPendingModel] = useState(false);
+
+  const handleTriggerPhotoUpload = () => {
+    if (!isAdminUser && customAvatars.length >= MAX_USER_AVATARS) {
+      alert(`Has alcanzado el límite máximo permitido de ${MAX_USER_AVATARS} avatares en tu biblioteca personal. Elimina uno de tus modelos para poder crear uno nuevo.`);
+      return;
+    }
+    photoInputRef.current?.click();
+  };
+
+  const handlePhotoFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+
+    if (!isAdminUser && customAvatars.length >= MAX_USER_AVATARS) {
+      alert(`Has alcanzado el límite máximo de ${MAX_USER_AVATARS} avatares por cuenta. Elimina uno de tus modelos para continuar.`);
+      return;
+    }
+
+    setIsGeneratingPhoto(true);
+    setPhotoProgress('Cargando imagen facial...');
+    setPreviousAvatarId(selectedAvatarId);
+    setError(null);
+
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+      const img = new Image();
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('No se pudo decodificar la imagen seleccionada.'));
+        img.src = dataUrl;
+      });
+
+      setPhotoProgress('Detectando rasgos faciales y malla 3D...');
+      const service = FaceToBlendshapeService.getInstance();
+      const result = await service.processFaceImage(img, {
+        mouthParams: { ...DEFAULT_MOUTH_PARAMS },
+        eyeOptions: { ...DEFAULT_EYE_OPTIONS, pupilSize: 0.32 },
+      });
+
+      setPhotoProgress('Generando geometría y 52 morph targets ARKit...');
+      service.applyTransforms(
+        result.faceMesh,
+        result.headModel,
+        result.bustModel,
+        DEFAULT_DEBUG_PARAMS,
+        result.eyesGroup,
+        result.oralCavity,
+        result.eyePairResult
+      );
+
+      setPhotoProgress('Exportando modelo 3D optimizado...');
+      const glbBuffer = await service.exportGLB(
+        result.faceMesh,
+        result.headModel,
+        result.bustModel,
+        result.eyesGroup,
+        result.oralCavity,
+        false, // includeHead
+        false, // includeBust
+        true,  // includeEyes
+        false  // includeOralCavity
+      );
+
+      const glbBlob = new Blob([glbBuffer], { type: 'model/gltf-binary' });
+      const modelUrl = URL.createObjectURL(glbBlob);
+
+      // Miniatura en canvas
+      let previewImage = '';
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 160;
+        canvas.height = 160;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, 160, 160);
+          previewImage = canvas.toDataURL('image/jpeg', 0.85);
+        }
+      } catch (_) {}
+
+      const tempId = `custom_user_${Date.now()}`;
+      const defaultName = `Mi Avatar ${customAvatars.length + 1}`;
+
+      const tempAvatar: AvatarDefinition = {
+        id: tempId,
+        name: defaultName,
+        tagline: 'Avatar 3D biomimético generado desde foto con 52 blendshapes ARKit',
+        category: 'Creados con IA',
+        themeColor: '#06b6d4',
+        accentColor: '#3b82f6',
+        badge: 'NUEVO 3D',
+        emoji: '✨',
+        isCustom: true,
+        isPublic: false,
+        modelUrl,
+        previewImage,
+        originalImage: previewImage,
+        debugParams: DEFAULT_DEBUG_PARAMS,
+        createdAt: Date.now(),
+        ownerId: authUser?.username?.toLowerCase() || 'anon',
+        trackingProfile: getAvatarTrackingProfile('face_cap'),
+      };
+
+      // Registrar inmediatamente en memoria
+      avatarModelServiceSingleton.registerLiveAvatar(tempAvatar);
+
+      // Activar inmediatamente en la ventana de avatar del lobby
+      setSelectedAvatarId(tempId);
+      setAvatarTab('custom');
+
+      // Preparar diálogo de confirmación para guardar en su biblioteca personal
+      setPendingModelToSave({
+        avatar: tempAvatar,
+        blob: glbBlob,
+        previewImage,
+      });
+      setPendingModelName(defaultName);
+    } catch (err: any) {
+      console.error('[Lobby] Error creando avatar desde foto:', err);
+      setError(err?.message || 'Error al procesar la foto para generar el modelo 3D.');
+    } finally {
+      setIsGeneratingPhoto(false);
+      setPhotoProgress('');
+    }
+  };
+
+  const handleConfirmSavePendingModel = async () => {
+    if (!pendingModelToSave) return;
+    setIsSavingPendingModel(true);
+    try {
+      const cleanName = pendingModelName.trim() || pendingModelToSave.avatar.name;
+      const cleanOwner = authUser?.username?.trim().toLowerCase() || 'anon';
+
+      const saved = await avatarModelServiceSingleton.addCustomModel({
+        name: cleanName,
+        tagline: 'Avatar 3D generado desde foto con seguimiento facial ARKit',
+        category: 'Creados con IA',
+        themeColor: '#06b6d4',
+        badge: '3D FOTO',
+        previewImage: pendingModelToSave.previewImage,
+        originalImage: pendingModelToSave.previewImage,
+        debugParams: DEFAULT_DEBUG_PARAMS,
+        isPublic: false,
+        ownerId: cleanOwner,
+        file: pendingModelToSave.blob,
+      });
+
+      avatarModelServiceSingleton.removeLiveAvatar(pendingModelToSave.avatar.id);
+      setSelectedAvatarId(saved.id);
+      if (typeof window !== 'undefined') {
+        const userKey = getUserAvatarStorageKey(authUser?.username);
+        localStorage.setItem(userKey, saved.id);
+        localStorage.setItem(STORAGE_AVATAR_KEY, saved.id);
+      }
+      setPendingModelToSave(null);
+    } catch (err: any) {
+      console.error('[Lobby] Error al confirmar guardado de modelo:', err);
+      setError('Error al guardar el modelo en tu biblioteca.');
+    } finally {
+      setIsSavingPendingModel(false);
+    }
+  };
+
+  const handleDiscardPendingModel = () => {
+    if (!pendingModelToSave) return;
+    avatarModelServiceSingleton.removeLiveAvatar(pendingModelToSave.avatar.id);
+    const fallback = previousAvatarId || predefinedAvatars[0]?.id || 'face_cap';
+    setSelectedAvatarId(fallback);
+    setPendingModelToSave(null);
   };
 
   // Dynamic Tracking Modes ('parafernalia' | 'gestures' | 'lipsync')
@@ -765,6 +970,83 @@ export const Lobby: React.FC<LobbyProps> = ({
                 className="w-full h-full"
               />
 
+              {/* Overlay de Carga durante la Generación del Modelo 3D */}
+              {isGeneratingPhoto && (
+                <div className="absolute inset-0 z-40 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center space-y-3 animate-in fade-in">
+                  <div className="relative">
+                    <div className="w-14 h-14 rounded-full border-2 border-cyan-500/20 border-t-cyan-400 animate-spin flex items-center justify-center" />
+                    <Sparkles className="w-6 h-6 text-cyan-400 absolute inset-0 m-auto animate-pulse" />
+                  </div>
+                  <div className="space-y-1">
+                    <h3 className="text-sm font-bold text-white tracking-wide">
+                      Generando tu Modelo 3D
+                    </h3>
+                    <p className="text-xs text-cyan-300 font-medium">
+                      {photoProgress || 'Procesando foto...'}
+                    </p>
+                    <p className="text-[10px] text-neutral-400">
+                      Creando 52 morph targets ARKit con texturizado UV
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Confirmación Previa para Guardar Modelo 3D en Biblioteca Personal */}
+              {pendingModelToSave && !isGeneratingPhoto && (
+                <div className="absolute inset-x-2 bottom-2 z-40 p-3.5 bg-[#090d16]/95 border border-cyan-500/60 rounded-xl shadow-2xl backdrop-blur-md space-y-2.5 animate-in fade-in slide-in-from-bottom-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-300">
+                      <Sparkles className="w-4 h-4 text-cyan-400" />
+                      <span>¡Modelo 3D activo y listo!</span>
+                    </div>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800">
+                      {customAvatars.length}/4 en biblioteca
+                    </span>
+                  </div>
+
+                  <p className="text-[11px] text-neutral-300 leading-tight">
+                    Tu avatar ya está activo en el visor. ¿Deseas guardarlo en tu biblioteca personal de modelos?
+                  </p>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={pendingModelName}
+                      onChange={(e) => setPendingModelName(e.target.value)}
+                      placeholder="Nombre del modelo..."
+                      maxLength={20}
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-cyan-400"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isSavingPendingModel}
+                      onClick={handleConfirmSavePendingModel}
+                      className="flex-1 py-1.5 px-2.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 text-xs font-black shadow-md transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      {isSavingPendingModel ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Check className="w-3.5 h-3.5" />
+                      )}
+                      <span>Guardar en Biblioteca</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isSavingPendingModel}
+                      onClick={handleDiscardPendingModel}
+                      className="py-1.5 px-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-neutral-400 hover:text-white text-xs font-semibold transition cursor-pointer"
+                      title="Descartar modelo generado"
+                    >
+                      Descartar
+                    </button>
+                  </div>
+                </div>
+              )}
+
               {/* Real-time Anatomical Mesh Overlay (100% Private - Zero Camera Image Rendered) */}
               {showCameraPip && (
                 <div className="absolute bottom-3 right-3 w-44 h-36 bg-slate-950/95 rounded-xl overflow-hidden border border-cyan-500/50 shadow-2xl z-30 flex flex-col animate-in fade-in zoom-in-95">
@@ -1189,32 +1471,50 @@ export const Lobby: React.FC<LobbyProps> = ({
                     <span>Elige tu Avatar 3D</span>
                   </label>
                   <div className="flex items-center gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!isAdminUser && customAvatars.length >= MAX_USER_AVATARS) {
-                          alert(`Has alcanzado el límite máximo permitido de ${MAX_USER_AVATARS} avatares por cuenta. Elimina o edita uno de tus avatares existentes.`);
-                          return;
-                        }
-                        setEditingAvatarForStudio(null);
-                        setIsFaceStudioOpen(true);
-                      }}
-                      className="text-[11px] text-yellow-300 hover:text-yellow-200 font-black flex items-center gap-1 cursor-pointer bg-gradient-to-r from-yellow-500/20 to-blue-500/20 hover:from-yellow-500/30 hover:to-blue-500/30 px-2.5 py-1 rounded-lg border border-yellow-400/40 shadow-sm shadow-yellow-500/10 transition active:scale-95"
-                      title="Crear Avatar Facial con 3D Masks"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 text-yellow-400" />
-                      <span>3D Masks</span>
-                    </button>
+                    {/* Input de archivo oculto para que el usuario suba su foto directamente */}
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handlePhotoFileSelected}
+                      className="hidden"
+                    />
 
-                    {isAdminUser && (
+                    {isAdminUser ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingAvatarForStudio(null);
+                            setIsFaceStudioOpen(true);
+                          }}
+                          className="text-[11px] text-yellow-300 hover:text-yellow-200 font-black flex items-center gap-1 cursor-pointer bg-gradient-to-r from-yellow-500/20 to-blue-500/20 hover:from-yellow-500/30 hover:to-blue-500/30 px-2.5 py-1 rounded-lg border border-yellow-400/40 shadow-sm shadow-yellow-500/10 transition active:scale-95"
+                          title="Crear Avatar Facial con 3D Masks (Admin)"
+                        >
+                          <Sparkles className="w-3.5 h-3.5 text-yellow-400" />
+                          <span>3D Masks</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setIsAdminPanelOpen(true)}
+                          className="text-[11px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 px-2 py-1 rounded-lg border border-amber-500/30 transition active:scale-95"
+                          title="Gestionar Modelos 3D"
+                        >
+                          <Shield className="w-3 h-3" />
+                          <span className="hidden sm:inline">Gestionar</span>
+                        </button>
+                      </>
+                    ) : (
                       <button
                         type="button"
-                        onClick={() => setIsAdminPanelOpen(true)}
-                        className="text-[11px] text-amber-400 hover:text-amber-300 font-bold flex items-center gap-1 cursor-pointer bg-amber-500/10 hover:bg-amber-500/20 px-2 py-1 rounded-lg border border-amber-500/30 transition active:scale-95"
-                        title="Gestionar Modelos 3D"
+                        onClick={handleTriggerPhotoUpload}
+                        disabled={isGeneratingPhoto}
+                        className="text-[11px] text-cyan-200 hover:text-white font-bold flex items-center gap-1.5 cursor-pointer bg-gradient-to-r from-cyan-600/30 to-blue-600/30 hover:from-cyan-500/40 hover:to-blue-500/40 px-2.5 py-1 rounded-lg border border-cyan-400/40 shadow-sm shadow-cyan-500/15 transition active:scale-95 disabled:opacity-50"
+                        title="Sube una foto para generar tu modelo 3D biomimético"
                       >
-                        <Shield className="w-3 h-3" />
-                        <span className="hidden sm:inline">Gestionar</span>
+                        <Camera className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Subir Foto</span>
                       </button>
                     )}
                   </div>
@@ -1409,18 +1709,20 @@ export const Lobby: React.FC<LobbyProps> = ({
                               </button>
                             )}
 
-                            {/* Botón: Volver a Editar con 3D Mask */}
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleEditCustomAvatar(avatar);
-                              }}
-                              className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-slate-900/90 hover:bg-blue-600 text-slate-400 hover:text-white border border-slate-700 hover:border-blue-400 flex items-center justify-center transition shadow-md z-10 cursor-pointer"
-                              title={`Volver a editar "${avatar.name}" con 3D Mask`}
-                            >
-                              <Sliders className="w-2.5 h-2.5 text-blue-400 group-hover:text-white" />
-                            </button>
+                            {/* Botón Admin: Volver a Editar con 3D Mask */}
+                            {isAdminUser && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditCustomAvatar(avatar);
+                                }}
+                                className="absolute bottom-1 right-1 w-5 h-5 rounded-full bg-slate-900/90 hover:bg-blue-600 text-slate-400 hover:text-white border border-slate-700 hover:border-blue-400 flex items-center justify-center transition shadow-md z-10 cursor-pointer"
+                                title={`Volver a editar "${avatar.name}" con 3D Mask`}
+                              >
+                                <Sliders className="w-2.5 h-2.5 text-blue-400 group-hover:text-white" />
+                              </button>
+                            )}
 
                             <div
                               className="w-10 h-10 rounded-lg border flex items-center justify-center text-xl shadow-inner shrink-0 overflow-hidden"
@@ -1453,58 +1755,78 @@ export const Lobby: React.FC<LobbyProps> = ({
                         );
                       })}
 
-                      {/* Botón + Crear con 3D Masks (Siempre visible en Mis Avatares) */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (!isAdminUser && customAvatars.length >= MAX_USER_AVATARS) {
-                            alert(`Has alcanzado el límite máximo permitido de ${MAX_USER_AVATARS} avatares por cuenta. Elimina o edita uno de tus avatares existentes.`);
-                            return;
+                      {/* Botón + Crear / + Subir Foto */}
+                      {isAdminUser ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingAvatarForStudio(null);
+                            setIsFaceStudioOpen(true);
+                          }}
+                          title="Crear nuevo avatar 3D facial con 52 blendshapes en 3D Masks Studio"
+                          className="relative p-2 rounded-xl border border-dashed text-left flex flex-col items-center justify-center gap-1 cursor-pointer transition active:scale-95 shadow-md min-h-[86px] border-cyan-500/50 hover:border-cyan-400 bg-gradient-to-b from-cyan-950/30 to-indigo-950/30 hover:from-cyan-950/50 hover:to-indigo-950/50 shadow-cyan-950/20"
+                        >
+                          <div className="w-10 h-10 rounded-lg flex items-center justify-center text-sm shadow-md shrink-0 bg-gradient-to-tr from-cyan-500 to-indigo-600 text-white">
+                            <Sparkles className="w-5 h-5" />
+                          </div>
+                          <span className="text-[9px] font-bold text-center leading-tight text-cyan-200">
+                            + Crear Avatar
+                          </span>
+                          <span className="text-[8px] font-mono px-1 py-0.2 rounded border text-cyan-300 bg-cyan-900/60 border-cyan-600/50">
+                            3D Masks
+                          </span>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleTriggerPhotoUpload}
+                          disabled={isGeneratingPhoto || customAvatars.length >= MAX_USER_AVATARS}
+                          title={
+                            customAvatars.length >= MAX_USER_AVATARS
+                              ? `Límite alcanzado (${MAX_USER_AVATARS}/${MAX_USER_AVATARS} avatares). Elimina uno existente para crear otro.`
+                              : 'Subir una foto para generar automáticamente tu modelo 3D con blendshapes'
                           }
-                          setEditingAvatarForStudio(null);
-                          setIsFaceStudioOpen(true);
-                        }}
-                        title={
-                          !isAdminUser && customAvatars.length >= MAX_USER_AVATARS
-                            ? `Límite alcanzado (${MAX_USER_AVATARS}/${MAX_USER_AVATARS} avatares). Elimina o edita uno existente.`
-                            : 'Crear nuevo avatar 3D facial con 52 blendshapes desde foto'
-                        }
-                        className={`relative p-2 rounded-xl border border-dashed text-left flex flex-col items-center justify-center gap-1 cursor-pointer transition active:scale-95 shadow-md min-h-[86px] ${
-                          !isAdminUser && customAvatars.length >= MAX_USER_AVATARS
-                            ? 'border-amber-500/40 bg-amber-950/20 hover:bg-amber-950/30 shadow-amber-950/20'
-                            : 'border-cyan-500/50 hover:border-cyan-400 bg-gradient-to-b from-cyan-950/30 to-indigo-950/30 hover:from-cyan-950/50 hover:to-indigo-950/50 shadow-cyan-950/20'
-                        }`}
-                      >
-                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm shadow-md shrink-0 ${
-                          !isAdminUser && customAvatars.length >= MAX_USER_AVATARS
-                            ? 'bg-gradient-to-tr from-amber-600 to-yellow-500 text-slate-950'
-                            : 'bg-gradient-to-tr from-cyan-500 to-indigo-600 text-white'
-                        }`}>
-                          <Sparkles className="w-5 h-5" />
-                        </div>
-                        <span className={`text-[9px] font-bold text-center leading-tight ${
-                          !isAdminUser && customAvatars.length >= MAX_USER_AVATARS ? 'text-amber-200' : 'text-cyan-200'
-                        }`}>
-                          {!isAdminUser && customAvatars.length >= MAX_USER_AVATARS ? 'Límite (4/4)' : '+ Crear Avatar'}
-                        </span>
-                        <span className={`text-[8px] font-mono px-1 py-0.2 rounded border ${
-                          !isAdminUser && customAvatars.length >= MAX_USER_AVATARS
-                            ? 'text-amber-300 bg-amber-900/60 border-amber-600/50'
-                            : 'text-cyan-300 bg-cyan-900/60 border-cyan-600/50'
-                        }`}>
-                          {!isAdminUser && customAvatars.length >= MAX_USER_AVATARS ? 'Máx 4' : '3D Masks'}
-                        </span>
-                      </button>
+                          className={`relative p-2 rounded-xl border border-dashed text-left flex flex-col items-center justify-center gap-1 cursor-pointer transition active:scale-95 shadow-md min-h-[86px] ${
+                            customAvatars.length >= MAX_USER_AVATARS
+                              ? 'border-amber-500/40 bg-amber-950/20 opacity-70 cursor-not-allowed shadow-amber-950/20'
+                              : 'border-cyan-500/50 hover:border-cyan-400 bg-gradient-to-b from-cyan-950/30 to-blue-950/30 hover:from-cyan-950/50 hover:to-blue-950/50 shadow-cyan-950/20'
+                          }`}
+                        >
+                          <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm shadow-md shrink-0 ${
+                            customAvatars.length >= MAX_USER_AVATARS
+                              ? 'bg-gradient-to-tr from-amber-600 to-yellow-500 text-slate-950'
+                              : 'bg-gradient-to-tr from-cyan-500 to-blue-600 text-white'
+                          }`}>
+                            <Camera className="w-5 h-5" />
+                          </div>
+                          <span className={`text-[9px] font-bold text-center leading-tight ${
+                            customAvatars.length >= MAX_USER_AVATARS ? 'text-amber-200' : 'text-cyan-200'
+                          }`}>
+                            {customAvatars.length >= MAX_USER_AVATARS ? 'Límite (4/4)' : '+ Subir Foto'}
+                          </span>
+                          <span className={`text-[8px] font-mono px-1 py-0.2 rounded border ${
+                            customAvatars.length >= MAX_USER_AVATARS
+                              ? 'text-amber-300 bg-amber-900/60 border-amber-600/50'
+                              : 'text-cyan-300 bg-cyan-900/60 border-cyan-600/50'
+                          }`}>
+                            {customAvatars.length >= MAX_USER_AVATARS ? 'Máx 4' : 'Desde Foto'}
+                          </span>
+                        </button>
+                      )}
                     </div>
 
                     {/* Estado vacío si no hay avatares personalizados */}
                     {customAvatars.length === 0 && (
                       <div className="p-3 rounded-xl bg-slate-950/60 border border-slate-800/80 text-center">
                         <p className="text-xs text-neutral-300 font-semibold mb-1">
-                          No tienes avatares 3D creados aún
+                          No tienes modelos en tu biblioteca aún
                         </p>
                         <p className="text-[11px] text-neutral-400">
-                          Haz clic en <strong className="text-cyan-300">&ldquo;+ Crear Avatar&rdquo;</strong> o en <strong className="text-cyan-300">&ldquo;3D Masks&rdquo;</strong> para generar tu modelo 3D con blendshapes desde una foto. Se guardará únicamente en tu navegador.
+                          {isAdminUser ? (
+                            <>Haz clic en <strong className="text-cyan-300">&ldquo;3D Masks&rdquo;</strong> para diseñar modelos en 3D Studio.</>
+                          ) : (
+                            <>Haz clic en <strong className="text-cyan-300">&ldquo;+ Subir Foto&rdquo;</strong> para generar tu modelo 3D biomimético. Puedes guardar hasta 4 modelos en tu biblioteca.</>
+                          )}
                         </p>
                       </div>
                     )}

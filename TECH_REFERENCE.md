@@ -91,15 +91,25 @@ graph LR
 5. **Nivel Multi-Pestaña Local (`BroadcastChannel`):**
    * Canal nativo `xstreamx_mesh_channel` que permite sincronizar múltiples ventanas o pestañas en la misma máquina sin consumir ancho de banda de red.
 
-### 3.1. Sincronización Automática P2P y Relay de Modelos 3D Personalizados (3ds Max / Custom Models)
-* **Problema Resuelto:** Los modelos 3D creados o importados por los usuarios (archivos `.obj`, `.stl`, `.glb`, `.gltf` exportados desde 3ds Max, Blender o el Estudio 3D) residían originalmente únicamente en el `IndexedDB` / almacenamiento local del usuario emisor, impidiendo que los demás participantes de la sala de chat pudieran visualizarlos.
-* **Protocolo de Detección y Solicitud Bajo Demanda:**
-  * Al unirse un participante (`user_joined`, `presence_sync` o al montarse `ParticipantCard`), el cliente receptor evalúa si el `avatarId` corresponde a un modelo ausente localmente.
-  * Si el modelo no existe, emite `requestAvatarModel(targetUserId, avatarId)` a través de la conexión directa `PeerJS DataConnection`, con fallback hacia Socket.io (`request_avatar_model`) y MQTT Mesh.
-* **Empaquetado y Entrega Binaria:**
-  * El usuario poseedor del modelo extrae el binario y metadatos (`avatarModelServiceSingleton.getModelDataForSync`) y lo transmite al solicitante con búfer binario de hasta 50MB.
+### 3.1. Sincronización Automática P2P, Relay en Servidor y Caché de Modelos 3D Personalizados (3D Masks / Custom Models)
+* **Problema Resuelto:** Los modelos 3D creados o importados por los usuarios (archivos `.obj`, `.stl`, `.glb`, `.gltf` exportados desde 3ds Max, Blender o el Estudio 3D) residían originalmente únicamente en el `IndexedDB` / almacenamiento local del usuario emisor, impidiendo que los demás participantes de la sala de chat pudieran visualizarlos y provocando fallos por serialización de `ArrayBuffer` (`[object Object]`) con fallback inmediato a robot mecha.
+* **Caché en Memoria en Servidor (`avatarModelCache` en `server.ts`):**
+  * El servidor Node.js/Express mantiene una caché centralizada en memoria de hasta 50 modelos 3D compartidos. Al recibir `send_avatar_model` o `share_avatar_model`, el paquete se indexa inmediatamente por `avatarId`.
+  * Cuando un nuevo participante entra a la sala (`join_room`), el servidor le entrega al instante (latencia 0 ms) todos los modelos 3D activos de los participantes en la llamada sin esperar round-trips.
+  * Al recibir `request_avatar_model`, si el modelo está en caché, el servidor lo resuelve inmediatamente al solicitante.
+* **Empaquetado Híbrido Resiliente (Dual Base64 DataURL + ArrayBuffer):**
+  * `avatarModelServiceSingleton.getModelDataForSync` empaqueta tanto el `buffer` binario como una cadena `fileData` Base64 DataURL (`data:model/gltf-binary;base64,...`).
+  * Esto elimina por completo el fallo de serialización JSON en MQTT, Socket.io y `BroadcastChannel`, donde los `ArrayBuffer` puros se transformaban en objetos vacíos `{}`.
 * **Ingesta Dinámica e Invocación en Caliente:**
-  * El cliente receptor registra el modelo en caliente con `avatarModelServiceSingleton.registerRemoteAvatar`, generando un `Blob` de objeto en memoria, guardando en caché local en IndexedDB y disparando el listener reactivo de `ThreeAvatarCanvas`, que carga y anima inmediatamente el avatar en pantalla sin requerir reinicio de la llamada.
+  * `avatarModelServiceSingleton.registerRemoteAvatar` valida el tipo binario de entrada (ArrayBuffer, Uint8Array, Buffer serializado o Base64 DataURL decodificado con `atob`), creando un `Blob` de objeto en memoria, guardando en caché local en IndexedDB y disparando el listener reactivo de `ThreeAvatarCanvas`, que monta y anima inmediatamente el avatar en pantalla.
+  * `ThreeAvatarCanvas.tsx` mantiene una ventana de espera prudente (10s) con spinner de carga mientras se resuelve el modelo desde la nube, PeerJS, Socket.io o MQTT, evitando el parpadeo prematuro hacia el robot de mecha procedural.
+* **Difusión Inmediata Proactiva Mesh P2P y Socket.io:**
+  * Al guardar o activar un modelo en el Estudio 3D (`FaceBlendshapeStudioModal` o modal de avatares de sala), el cliente emite proactivamente `share_avatar_model` al servidor y transmite el paquete `avatar_model_data` a través de todos los canales de datos WebRTC directos (`peerDataConnections`) y el `BroadcastChannel` multi-pestaña local.
+  * Los demás clientes en la sala reciben el paquete, lo registran en `avatarModelServiceSingleton`, disparan un evento de actualización que notifica a las tarjetas de participantes y montan inmediatamente el nuevo modelo 3D sin recargar ni esperar round-trips.
+* **Centrado Anatómico y Proporcional en Ventanas Cuadradas 1:1:**
+  * En `ThreeAvatarCanvas.tsx`, la escena clonada ejecuta `updateMatrixWorld(true)` antes del cálculo de la caja envolvente (`Box3`). Si el modelo incluye la malla facial (`faceMesh`), el centro $X, Y$ se ancla con precisión a la anatomía del rostro (ojos, nariz y boca), posicionando el pivote cefálico en $(0, 3.8, 0)$ en coincidencia milimétrica con el objetivo focal de la cámara (`camera.lookAt(0, 3.8, 0)`). Esto garantiza que el avatar permanezca centrado, sin desplazamientos ni cortes en las tarjetas cuadradas de los participantes.
+* **Sincronización Multi-Pestaña Local (`BroadcastChannel`):**
+  * Mensajes `tab_request_avatar_model` y `tab_avatar_model_data` en el canal nativo `xstreamx_mesh_channel` para entrega instantánea entre pestañas abiertas en la misma máquina sin consumir ancho de banda de red.
 
 ### 3.2. Centralización en la Nube con Supabase DB (`public.users`, `public.avatars`, `public.rooms`)
 * **Migración de Backend Local a Supabase Online:**
@@ -109,7 +119,7 @@ graph LR
 * **Disponibilidad Universal de Avatares Creados en la Sala (`#espacio/main`):**
   * Al guardar un avatar en el Estudio 3D (`FaceBlendshapeStudioModal`) o en el perfil de usuario, el binario codificado en Base64/DataURL se almacena directamente en la tabla `public.avatars` con su `owner_id`, `format`, `preview_image` y `debug_params`.
   * Al entrar en la sala `#espacio/main`, cualquier participante (tanto el usuario creador como los observadores remotos) resuelve automáticamente el modelo 3D ausente invocando `avatarModelServiceSingleton.fetchAndCacheAvatarFromCloud(avatarId)`.
-  * `ThreeAvatarCanvas.tsx` mantiene un estado de carga reactivo y evita el parpadeo o fallback a robot de mecha procedural, montando de forma inmediata el archivo `.glb`/`.obj`/`.stl` en cuanto se descarga desde Supabase.
+  * Si Supabase está offline o sin credenciales, el sistema recurre transparentemente a la caché de `server.ts` y al mesh P2P.
 * **Cuota de Creación por Cuenta:**
   * Cada usuario normal puede crear y guardar hasta un máximo de 4 avatares 3D personalizados en su cuenta. La cuenta maestra de Administrador (`admin`) no tiene límite de creación.
 
@@ -433,27 +443,12 @@ flowchart LR
 * **Pestañas Duales en "Elige tu Avatar 3D":**
   * **Modelos Predefinidos:** Presenta el catálogo nativo del sistema (robots, animales, anime, esculturas, neon holo).
   * **Mis Avatares (3D Masks):** Aloja los avatares faciales personalizados creados por el usuario mediante el estudio *3D Masks*.
-* **Base de Datos Local de Alto Rendimiento en IndexedDB (`xstreamx_db` v2):**
-  * Los avatares generados con 3D Masks, el catálogo completo de modelos predefinidos y las cuentas de usuario se almacenan en una base de datos local **IndexedDB** (`xstreamx_db` v2) administrada por [`indexedDbService.ts`](file:///d:/Apps/xstreamx/src/services/db/indexedDbService.ts), superando el límite de 5 MB de LocalStorage.
-  * **Estructura de Object Stores:**
-    * `custom_models`: Almacena registros de modelos 3D y avatares con índices por fecha, nombre y categoría, conteniendo tanto el catálogo base del sistema como modelos creados por el usuario con archivos binarios nativos en formato `Blob`/`ArrayBuffer`.
-    * `users`: Almacena cuentas de usuarios con autenticación local (`username`, `name`, `role`, `password`, `avatarId`, `createdAt`). Incluye cuentas pre-sembradas para el Administrador (`admin` / `Pr3siZ2027`) y los 6 participantes presidenciales (`presi1` a `presi6` / `Avatar1` a `Avatar6`).
-    * `elements`: Almacén genérico clave-valor con marca temporal (`updatedAt`) para elementos varios de la aplicación (presets, configuraciones, estados del lienzo).
-    * `metadata`: Claves del sistema para persistencia de modelos renombrados, deshabilitados y eliminados.
-  * **Migración Automática y Retrocompatibilidad:** Al iniciar, [`avatarModelService.ts`](file:///d:/Apps/xstreamx/src/services/avatarModelService.ts) detecta y migra automáticamente cualquier modelo antiguo existente en `localStorage` hacia IndexedDB y purga las cadenas Base64 pesadas para erradicar errores de cuota (`QuotaExceededError`).
-* **Eliminación con Botón "X" para Cualquier Usuario o Administrador:**
-  * Cada tarjeta de la pestaña *Mis Avatares* incorpora un botón de eliminación circular con ícono "X" en la esquina superior derecha (`top-1 right-1`).
-  * Al hacer clic, se confirma la acción y se invoca `avatarModelServiceSingleton.deleteModel(avatarId)`, purjando el modelo de la memoria y de IndexedDB de forma inmediata.
-  * Si el avatar eliminado estaba activo, el sistema conmuta automáticamente a un modelo predefinido seguro como fallback.
-* **Renombrado Universal de Modelos por el Administrador:**
-  * El administrador tiene potestad de cambiar el nombre visible de **cualquier modelo** (tanto modelos predefinidos del sistema como avatares creados con 3D Masks).
-  * **Puntos de Entrada:**
-    * Directamente desde las tarjetas del Lobby ([`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx)) mediante el botón de edición (ícono de lápiz `Pencil`) visible exclusivamente para administradores.
-    * Desde el Panel de Control del Administrador ([`AdminControlPanel.tsx`](file:///d:/Apps/xstreamx/src/components/room/AdminControlPanel.tsx)) con edición en línea (`inline input`), atajos de teclado (`Enter` para guardar, `Escape` para cancelar) y botones de confirmación rápida.
-  * **Persistencia en Base de Datos e In-Memory Cache:**
-    * Los nombres modificados se sincronizan en `metadata` / `localStorage` (`xstreamx_renamed_avatars_v1`) y se actualizan directamente en la entidad del modelo en IndexedDB.
-    * Se aplican de forma reactiva e inmediata a todas las listas y componentes suscriptores sin requerir recargar la página.
-    * Al restablecer los modelos por defecto o eliminar un modelo personalizado, los nombres personalizados se sincronizan o limpian correspondientemente.
+* **Eliminación Total de Almacenamiento en LocalStorage y Modelo 100% Online Cloud:**
+  * Se eliminó cualquier almacenamiento de modelos 3D en **LocalStorage** (`STORAGE_CUSTOM_AVATARS`, etc.). La plataforma basa el catálogo y distribución de modelos exclusivamente en la **Base de Datos Online (Supabase Cloud)** y catálogo nativo de fábrica.
+  * **Purgado Automático de LocalStorage:** Al iniciar, [`avatarModelService.ts`](file:///d:/Apps/xstreamx/src/services/avatarModelService.ts) ejecuta `purgeLocalStorageModels()`, limpiando de forma proactiva cualquier residuo antiguo o cadenas Base64 en `localStorage` para garantizar cuota limpia y evitar colisiones locales.
+  * **Caché en IndexedDB y Metadatos de Sistema:**
+    * Los metadatos de personalización (`disabled_avatars`, `deleted_avatars`, `renamed_avatars`, `avatar_previews`) se persisten exclusivamente en IndexedDB (`xstreamx_db` v2, almacén `metadata`), sin consumir cuota de LocalStorage.
+    * IndexedDB actúa como caché de blobs binarios descargados de la nube para renderizado a 60 FPS, mientras que Supabase Cloud (`avatars` table) es la fuente viva de verdad.
 * **Acceso y Gestión por Roles:**
   * La subida de archivos crudos externos 3D (`Subir 3D` / `.glb` / `.obj` / `.stl`) y la desactivación global de modelos de plataforma continúan reservadas al panel del administrador (`AdminControlPanel`).
 * **Identificación Visual de Modelos y Miniaturas en Base de Datos (`previewImage`):**
@@ -673,12 +668,16 @@ Para soportar identidad persistente manteniendo compatibilidad con despliegues e
   * Tanto para la cámara como para el micrófono, las funciones de apagado liberan completamente las pistas activas (`track.stop()`), previniendo condiciones de error `NotReadableError` o bloqueo de dispositivo ocupado en el sistema operativo.
   * Al reactivar, se adquiere un nuevo flujo con las restricciones deseadas y se reasocia de forma segura al motor MediaPipe Face Landmarker y al analizador de audio Web Audio API.
 
-### 12.2. Moderación Estricta de Sala: "Mutear a Todos"
-* **Silenciamiento Global Inmediato:** El Administrador cuenta con el control "Mutear a todos", el cual difunde una señal prioritaria a través de la red cuádruple (`force_mute_all` vía PeerJS DataConnection, MQTT WebSockets y Supabase Realtime).
+### 12.2. Moderación Estricta de Sala: Conmutación "Mutear a Todos" y "Desmutear a Todos"
+* **Silenciamiento Global Inmediato:** El Administrador cuenta con el control "Mutear a todos", el cual difunde una señal prioritaria a través de la red cuádruple (`force_mute_all` vía PeerJS DataConnection, MQTT WebSockets, Socket.io y Supabase Realtime).
 * **Bloqueo Infranqueable de Micrófono para Participantes:**
   * Al activarse "Mutear a todos", los micrófonos de todos los participantes no administradores se apagan de inmediato.
   * El botón del micrófono en [`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx) pasa a estado deshabilitado (`disabled`), mostrando un icono de candado y un tooltip indicando que la sala ha sido silenciada por el administrador.
   * La lógica en `handleToggleMic` rechaza cualquier intento de desmutearse hasta que el Administrador desactive explícitamente la opción de silenciar a todos.
+* **Ciclo Completo de Desmutear ("Demutear a Todos"):**
+  * Al pulsar "Desmutear Todos", el sistema calcula el estado objetivo considerando tanto el indicador `room.isAllMuted` como el estado real de los participantes no administradores (`areAllParticipantsMuted`).
+  * En cada cliente receptor, el evento `force_mute` con `isMuted: false` reactiva de inmediato el hardware local (`setIsMicActive(true)`, `audioServiceSingleton.setMute(false)`, `networkServiceSingleton.toggleMute(false)`), reanuda la reproducción de audio WebRTC (`resumeAllRemoteAudio()`) y actualiza el estado de los badges en la sala a no silenciado.
+  * El servidor Node.js/Express (`server.ts`) actualiza `room.isAllMuted = false`, reemite `user_updated` y difunde `all_users_updated` para que todos los clientes reflejen la reactivación sonora en tiempo real.
 
 ### 12.3. Dimensionamiento Proporcional de Ventanas de Participantes (120px a 480px)
 * **Control Deslizante Dinámico:** Se incorporó un widget interactivo con barra deslizante en la parte superior derecha de la sala [`RoomView.tsx`](file:///d:/Apps/xstreamx/src/components/room/RoomView.tsx), permitiendo escalar dinámicamente el ancho de las ventanas de los participantes entre **120px** y **480px**.
@@ -747,9 +746,28 @@ Anteriormente, al ingresar a la sala, los participantes mostraban el modelo de r
   * Al editar el perfil en [`UserProfileModal.tsx`](file:///d:/Apps/xstreamx/src/components/profile/UserProfileModal.tsx), el cambio de avatar se propaga al instante a la sesión activa (`sessionStorage`), a la base de datos local y a la sala mediante `updateAvatar()`.
 
 ### 15.3. Manejo Resiliente de Favicon y Caché de Activos Estáticos (`favicon.ico` y `*.css`)
-* **Favicon Multi-Resolución Nativo:** Se generó `public/favicon.ico` (resoluciones 16x16, 32x32, 48x48 y 64x64 con compresión ICO) y se vincularon explícitamente en el `<head>` de [`index.html`](file:///d:/Apps/xstreamx/index.html) tanto el formato SVG vectorial (`favicon.svg`) como el binario `.ico`, eliminando el error 404 nativo emitido por navegadores basados en Chromium.
+* **Favicon Multi-Resolución Nativo y Enrutamiento Subpath:** Se generó `public/favicon.ico` (resoluciones 16x16, 32x32, 48x48 y 64x64 con compresión ICO) y se vincularon explícitamente en el `<head>` de [`index.html`](file:///d:/Apps/xstreamx/index.html) con rutas relativas (`./favicon.ico` y `./favicon.svg`). Además, un script dinámico en el `<head>` detecta la raíz en entornos GitHub Pages (`<usuario>.github.io/<repo>/`) o subdirectorios (`/3dchat`) para fijar enlaces canónicos absolutos al favicon, eliminando solicitudes fallidas 404 hacia el dominio raíz (`https://qwertyui1980.github.io/favicon.ico`).
 * **Mapeo y Fallback de Bundles CSS Antiguos:** Para prevenir errores 404 cuando clientes con caché residual o pestañas activas solicitan hashes anteriores de hojas de estilo (ej. `index-BD_-xWaB.css`), se incorporó en [`server.ts`](file:///d:/Apps/xstreamx/server.ts) un middleware de resolución que entrega la hoja de estilos activa con tipo MIME `text/css`, manteniendo compatibilidad con sesiones abiertas.
-* **Disponibilidad Dual de Binarios MediaPipe WASM (`vision_wasm_internal.*`):** Los binarios y scripts del runtime de visión (`vision_wasm_internal.js`, `vision_wasm_internal.wasm`, `face_landmarker.task`) se encuentran disponibilizados tanto en `/wasm/` como en la raíz pública `/` de la aplicación. Esto previene fallos de resolución (`Error processing: Event`) emitidos por Web Workers o por `FilesetResolver.forVisionTasks()` en [`FaceBlendshapeStudioModal.tsx`](file:///d:/Apps/xstreamx/src/components/admin/FaceBlendshapeStudioModal.tsx) y [`mediapipeService.ts`](file:///d:/Apps/xstreamx/src/services/mediapipeService.ts).
+* **Resolución Dinámica de Activos en Subcarpetas (`assetUrl.ts`):** Mediante `getAssetBasePath()`, la aplicación infiere automáticamente el subdirectorio base de GitHub Pages (`/3dchat`) o despliegue personalizado para prefijar todos los recursos estáticos (modelos 3D, WASM, tareas de machine learning y favicons).
+
+---
+
+## 18. Arquitectura de Carga Resiliente de MediaPipe WASM (Tolerancia a Fallos en GitHub Pages y CDN)
+
+Durante despliegues estáticos en GitHub Pages o subdirectorios donde el servidor web no expone rutas absolutas `/wasm` en la raíz del dominio, las llamadas tradicionales a `FilesetResolver.forVisionTasks('/wasm')` fallan con códigos HTTP 404 (`net::ERR_ABORTED 404` al buscar `https://qwertyui1980.github.io/wasm/vision_wasm_internal.js`), detonando eventos de error de script (`[FaceBlendshapeStudio] Error processing: Event {isTrusted: true, type: 'error', target: script}`).
+
+Para garantizar 100% de disponibilidad y cero interrupciones en [`faceToBlendshapeService.ts`](file:///d:/Apps/xstreamx/src/services/face3d/faceToBlendshapeService.ts) y [`mediapipeService.ts`](file:///d:/Apps/xstreamx/src/services/mediapipeService.ts), se implementó una **estrategia de inicialización en 4 etapas con conmutación transparente (Multi-Tier Fallback)**:
+
+### 18.1. Etapas de Carga del Landmarker Facial
+1. **Etapa 1 (WASM Local + Modelo Local en GPU):**  
+   Utiliza `getAssetUrl('wasm')` para obtener la ruta canónica completa en el subpath (`https://qwertyui1980.github.io/3dchat/wasm`). Si el host sirve el script WASM local y el archivo `face_landmarker.task` con aceleración por GPU, la inferencia se activa localmente.
+2. **Etapa 2 (WASM Local + Modelo Remoto en GPU):**  
+   Si el archivo binario `.task` local presenta problemas de integridad o transferencia, se descarga el modelo oficial optimizado desde Google Cloud Storage (`storage.googleapis.com/...`).
+3. **Etapa 3 (WASM CDN Global + Modelo Remoto en GPU):**  
+   Si el servidor estático bloquea la inyección de scripts WASM locales o responde 404 al archivo `.js`/`.wasm`, el servicio **recrea inmediatamente el objeto `vision`** conectándose al CDN oficial de MediaPipe (`https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm`), cargando el motor WebAssembly de forma infalible en la GPU.
+4. **Etapa 4 (WASM CDN Global + Modelo Remoto en CPU):**  
+   En dispositivos con navegadores o GPUs incompatibles con WebGL/WebGPU context, se ejecuta el landmarker en modo CPU sin bloquear la creación de avatares 3D ni el procesamiento facial.
+
 
 ---
 
@@ -765,17 +783,21 @@ Para asegurar que todos los participantes puedan usar tanto los modelos estánda
 ### 16.2. Arquitectura de Sincronización y Acceso en Reunión
 * **Persistencia Nube Inmediata (Dual Base64 + Blob):**
   * Al guardar un avatar en [`FaceBlendshapeStudioModal.tsx`](file:///d:/Apps/xstreamx/src/components/admin/FaceBlendshapeStudioModal.tsx) o subir un archivo `.glb`/`.obj`/`.stl`, [`avatarModelService.ts`](file:///d:/Apps/xstreamx/src/services/avatarModelService.ts) convierte el archivo a Base64 data URL y lo persiste directamente en la tabla `avatars` de Supabase Cloud vinculándolo al usuario en `users.avatar_ids`.
+  * La interfaz del estudio expone el selector de disponibilidad en base de datos para todos los usuarios con valor predeterminado en "Colección Pública" (`isPublic: true`), garantizando que los modelos generados estén disponibles de inmediato para toda la comunidad y en reuniones sin quedar como modelos huérfanos.
   * Los clientes remotos descargan el modelo bajo demanda vía `fetchAndCacheAvatarFromCloud()` y lo almacenan en su IndexedDB local para acceso instantáneo a 60 FPS.
+* **Consulta Total a la Base de Datos (`getAllAvatarsFromCloud`):**
+  * [`DatabaseService`](file:///d:/Apps/xstreamx/src/services/dbService.ts) implementa `getAllAvatarsFromCloud()`, permitiendo que [`syncUserCloudAvatars`](file:///d:/Apps/xstreamx/src/services/avatarModelService.ts) recupere todos los modelos almacenados en la tabla `avatars` de Supabase sin importar el usuario emisor o si se registraron sin sesión activa.
 * **Recarga Reactiva en Three.js:**
   * Al completarse la descarga del modelo en la nube en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/components/avatars/ThreeAvatarCanvas.tsx), se dispara `setAvatarRevision((r) => r + 1)`, montando el modelo GLTF/OBJ/STL en el grafo de escena Three.js sin requerir recargar la página.
-* **Componente `RoomAvatarModal.tsx`:**
-  * Modal accesible durante la reunión desde la barra de controles [`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx).
-  * **Pestaña "Disponibles y Admin":** Reúne todos los modelos de fábrica (`lincoln_3d`, `biden_3d`, `obama_3d`, `trump_3d`, `three_robot`, `mipipi_3d`, `fox_sensei`, etc.), los modelos públicos del catálogo y los creados por el Administrador (`ownerId === 'admin'`).
+* **Componente `RoomAvatarModal.tsx` & `Lobby.tsx`:**
+  * Modal accesible durante la reunión desde la barra de controles [`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx) y en la selección del Lobby.
+  * **Pestaña "Disponibles y Admin":** Reúne todos los modelos de fábrica (`lincoln_3d`, `biden_3d`, `obama_3d`, `trump_3d`, `three_robot`, `mipipi_3d`, `fox_sensei`, etc.), todos los modelos generados en 3D Mask sincronizados desde la base de datos y los creados por el Administrador (`ownerId === 'admin'`).
   * **Pestaña "Mi Colección":** Muestra los modelos biomiméticos pertenecientes a la cuenta del usuario activo (`ownerId === cleanUser`), con soporte de cuota y acceso rápido.
   * **Acciones en Llamada:**
     * Botón **"+ Crear con 3D Masks"**: Despliega [`FaceBlendshapeStudioModal.tsx`](file:///d:/Apps/xstreamx/src/components/admin/FaceBlendshapeStudioModal.tsx) dentro de la sala para crear o ajustar avatares desde fotos y ponérselos de inmediato.
     * Botón **"Subir Modelo (.glb/.obj)"**: Permite importar archivos tridimensionales locales directamente durante la llamada.
 * **Propagación en Tiempo Real:**
+  * Al guardar un modelo en 3D Masks, se emite el evento global `xstreamx_avatars_updated` y se dispara `avatarModelService.syncUserCloudAvatars()`, haciendo que el nuevo modelo aparezca instantáneamente en la interfaz de selección.
   * Al seleccionar un nuevo avatar en el modal de la sala, `handleSelectAvatar()` en [`App.tsx`](file:///d:/Apps/xstreamx/src/App.tsx) actualiza el estado local, persiste la preferencia en `localStorage`, y transmite el cambio a la red (`networkService.updateAvatar()`), logrando que todos los participantes en la videollamada actualicen su visualización en Three.js automáticamente.
 
 ### 16.3. Protección y Sanitización de Fuentes 3D (Eliminación de SyntaxError: "[object Object]")
@@ -784,31 +806,95 @@ Para asegurar que todos los participantes puedan usar tanto los modelos estánda
   1. Se implementó la función selectora `getValidModelSource()` en [`ThreeAvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/components/avatars/ThreeAvatarCanvas.tsx) que rechaza de forma estricta cualquier valor que no inicie con protocolos legítimos (`blob:`, `data:`, `http:`, `https:` o `/`) o que contenga `"[object Object]"`. Si la fuente no es válida, la escena utiliza el fallback procedural mecha sin arrojar errores a la consola.
   2. En [`avatarModelService.ts`](file:///d:/Apps/xstreamx/src/services/avatarModelService.ts) (`syncUserCloudAvatars` y `fetchAndCacheAvatarFromCloud`), se agregaron filtros que excluyen los avatares de fábrica (`DEFAULT_AVATARS`) de la colección dinámica de usuario para no sobreescribir sus loaders nativos y se valida que `modelDataStr` sea un Data URL o URL web válida antes de invocar `fetch()`.
 
+### 16.4. Catálogo Oficial de Modelos Predefinidos y "El Real" como Modelo por Defecto
+* **Selección Predefinida (7 Modelos de Fábrica):**
+  1. **Robot 3D (`three_robot`):** Mecha sci-fi con visor cian y morph targets.
+  2. **Gato 3D (`cat_3d`):** Felino 3D con orejas activas y bigotes.
+  3. **Perro 3D (`dog_3d`):** Cachorro 3D con orejas rebotantes y lengua.
+  4. **Holo Mesh 3D (`mesh_outline`):** Malla holográfica wireframe reactiva a expresiones.
+  5. **Neon Cyber 3D (`neon_holo`):** Avatar holográfico de líneas de neón.
+  6. **Robota (`cyber_nova`):** Androide cibernético con visor holográfico.
+  7. **El Real (`face_cap`):** Rostro humano biomimético de alta fidelidad con 52 morph targets ARKit sincronizados.
+* **Modelo Predeterminado para Nuevos Usuarios:** "El Real" (`face_cap`) se asigna como el avatar activo predeterminado para todas las cuentas nuevas y sesiones iniciales en el sistema.
+
 ---
 
-## 17. Enrutamiento y Deep Linking de la Aplicación 3D Mask Studio (`/3dchat/faces`)
+## 17. Enrutamiento y Control de Acceso a 3D Mask Studio (`/3dchat/faces`) y Flujo de Fotos para Usuarios
 
-Para habilitar el acceso directo e independiente a la aplicación y taller de creación de máscaras faciales 3D biomiméticas, se introdujo el enrutamiento dedicado `/3dchat/faces`:
+### 17.1. Acceso Reservado a 3D Masks para Administradores
+* **Separación de Roles y Permisos:**
+  * El taller completo de calibración avanzada y ajuste de puntos de anclaje [`FaceBlendshapeStudioModal.tsx`](file:///d:/Apps/xstreamx/src/components/admin/FaceBlendshapeStudioModal.tsx) queda reservado exclusivamente para usuarios con rol `admin`.
+  * Se removieron todos los accesos públicos a 3D Masks para usuarios regulares en [`Header.tsx`](file:///d:/Apps/xstreamx/src/components/common/Header.tsx), [`PresidentesNeonHome.tsx`](file:///d:/Apps/xstreamx/src/components/home/PresidentesNeonHome.tsx), [`UserProfileModal.tsx`](file:///d:/Apps/xstreamx/src/components/profile/UserProfileModal.tsx) y [`RoomAvatarModal.tsx`](file:///d:/Apps/xstreamx/src/components/room/RoomAvatarModal.tsx).
+  * En la ruta `/3dchat/faces`, los usuarios regulares que intenten ingresar son notificados y redirigidos al Lobby.
 
-### 17.1. Especificación de Rutas y Compatibilidad Dual (Path & Hash Routing)
-* **URL Primaria Canónica:** `https://<host>/3dchat/faces`
-* **Rutas Alternativas y Alias Soportados:**
-  * `/#/3dchat/faces` o `#/3dchat/faces` (Deep linking mediante fragmento de URL hash para compatibilidad con servidores estáticos y recargas de página sin reescritura de URL).
-  * `/faces`, `/#/faces`, `/3dmask`, `#/3dmask`, `/3dmasks`, `#/3dmasks`.
-* **Detección Dinámica:** Implementada mediante `isFacesRoute(pathname, hash)` en [`App.tsx`](file:///d:/Apps/xstreamx/src/App.tsx), la cual inspecciona tanto el pathname de la ventana como el hash actual, reaccionando a los eventos `popstate` y `hashchange`.
+### 17.2. Nuevo Flujo de Creación de Avatar desde Foto en el Lobby (Para Usuarios)
+* **Experiencia Directa de 1 Clic:**
+  * Los usuarios regulares cuentan con un botón directo **"Subir Foto"** en el Lobby.
+  * Al seleccionar una imagen de rostro, el servicio cliente [`FaceToBlendshapeService`](file:///d:/Apps/xstreamx/src/services/face3d/faceToBlendshapeService.ts) detecta la malla facial con MediaPipe, genera la geometría 3D, el texturizado UV y los 52 blendshapes ARKit.
+* **Activación Inmediata del Modelo Generado:**
+  * El modelo 3D creado aparece **inmediatamente como el modelo activo** en la ventana de avatar [`AvatarCanvas.tsx`](file:///d:/Apps/xstreamx/src/components/avatars/AvatarCanvas.tsx) para que el usuario pueda probar sus expresiones faciales en tiempo real antes de guardarlo.
+* **Confirmación Previa de Guardado:**
+  * La interfaz despliega un cuadro de diálogo de confirmación: *"¿Deseas guardar este modelo 3D en tu biblioteca personal de modelos?"* con opción de personalizar el nombre.
+  * Al confirmar, se persiste en la base de datos de Supabase Cloud e IndexedDB. Si el usuario descarta, se regresa limpiamente al avatar anterior.
+* **Límite de Biblioteca Personal y Gestión:**
+  * Los usuarios pueden almacenar hasta un máximo de **4 modelos 3D** en su biblioteca personal.
+  * Cada modelo en "Mis Avatares" cuenta con un botón de eliminación rápida (`X`) para borrar modelos obsoletos y liberar cupos para nuevas creaciones.
 
-### 17.2. Experiencia de Usuario y Flujo de Navegación
-* **Modo Autónomo a Pantalla Completa:** Al navegar directamente a `/3dchat/faces`, se renderiza directamente [`FaceBlendshapeStudioModal.tsx`](file:///d:/Apps/xstreamx/src/components/admin/FaceBlendshapeStudioModal.tsx) a pantalla completa sin requerir autenticación previa obligatoria (`isAdmin` habilitado para visitantes invitados en modo estudio).
-* **Flujo de Retorno Contextual:**
-  * Al cerrar el estudio (`onClose`), si el usuario se encontraba dentro de una videollamada activa (`isInRoom && room && currentUser`), la aplicación regresa limpiamente a `/espacio/main`.
-  * Si el usuario ingresó de forma directa o desde el lobby/login, la aplicación retorna a la raíz `/`.
-* **Guardado y Selección Automática:** Al generar y guardar una máscara 3D en el estudio (`onSelectAvatar`), el nuevo modelo se activa inmediatamente como avatar local, se almacena en Supabase/IndexedDB y se notifica al usuario con un toast de confirmación.
+---
 
-### 17.3. Puntos de Entrada y Acceso Rápido en la Interfaz (UI Deep Linking)
-* **Página de Inicio (`PresidentesNeonHome.tsx`):** Botón con efecto neón cian `"3D Masks"` con ícono de destellos (`Sparkles`) situado de forma prominente en la barra de acciones principal del Home.
-* **Barra Superior (`Header.tsx`):** Botón `"3D Masks"` en el encabezado visible tanto en el Lobby como dentro de la sala de reuniones.
-* **Perfil de Usuario (`UserProfileModal.tsx`):** Enlace directo con tarjeta destacada en la parte inferior del modal de gestión de avatares: *"¿Quieres crear una máscara facial 3D desde una foto? Ir a /3dchat/faces"*.
-* **Soporte en Servidor Express (`server.ts`):** Regla explícita en modo producción (`app.get(['/3dchat/faces', '/3dchat/faces/*', '/faces', '/faces/*'], ...)`) para entregar el bundle SPA sin interferir con otros recursos ni provocar respuestas 404.
+
+## 19. Sistema de Telemetría, Detección de Errores y Diagnóstico IA en Producción
+
+Para garantizar observabilidad absoluta, tolerancia a fallos en edge y diagnóstico autónomo asistido por Inteligencia Artificial, XStreamX incorpora una arquitectura de telemetría y registro de errores de ciclo completo:
+
+### 19.1. Captura y Clasificación en Cliente (`diagnosticLogService.ts`)
+* **Puntos de Captura Globales:**
+  * `window.onerror`: Atrapa excepciones de scripts no interceptadas, scripts de terceros y fallos en WebGL/WASM.
+  * `window.unhandledrejection`: Registra rechazos no controlados en promesas asíncronas (carga de modelos, transacciones Supabase/IndexedDB, WebRTC ICE failures).
+  * Intercepción no intrusiva de `console.error` y `console.warn` críticos: Captura advertencias de Three.js, shaders descompilados, pérdida de contexto WebGL y advertencias de MediaPipe Vision sin perturbar el flujo de desarrollo.
+* **Clasificación Automática por Dominio:**
+  * `webgl`: Shaders, context lost, buffers, Three.js matrix world, texturas.
+  * `webrtc`: Fallos de señalización PeerJS, SDP exchange, canales de datos P2P, ICE connection drops.
+  * `mediapipe`: Carga de WASM, FaceLandmarker, buffers de imagen de cámara, blendshapes ARKit.
+  * `audio`: AudioContext bloqueado por autoplayer policies, MediaStreamTrack audio mutes, nodos de ganancia.
+  * `network`: Solicitudes fetch fallidas, WebSocket disconnects, Supabase REST timeouts.
+  * `model3d`: Fallos de parsing en `GLTFLoader`, `OBJLoader`, `STLLoader`, sintaxis inválida, URLs corruptas.
+  * `storage`: Cuotas de `IndexedDB`, `localStorage`, `sessionStorage`.
+  * `react` & `general`: Ciclo de vida y otros fallos de interfaz.
+* **Mecanismo Anti-Inundación y Deduplicación (60 FPS Safe):**
+  * Los errores recurrentes en bucles de renderizado (p. ej. `requestAnimationFrame` a 60 FPS) se identifican mediante una firma hash única (`${category}:${severity}:${message}`).
+  * Se actualiza el contador de ocurrencias (`count`), timestamp de primera vez (`firstSeen`) y última vez (`lastSeen`), evitando colapsar la memoria o saturar el canal de red.
+* **Miga de Pan de Acciones (Breadcrumbs):**
+  * Buffer circular de hasta 25 acciones previas al fallo: navegación de rutas, login/logout, unión a salas, cambio de avatar, mutear/desmutear, activar cámara. Permite a la IA reconstruir el camino exacto que reprodujo el problema.
+* **Huella Digital de Hardware y Rendimiento:**
+  * Detección de aceleración gráfica vía extensión WebGL unmasked: `gpuVendor` y `gpuRenderer`.
+  * Resolución de pantalla, pixel ratio, concurrencia de núcleos (`hardwareConcurrency`), memoria aproximada del dispositivo.
+
+### 19.2. Transmisión Resiliente y Servidor de Ingesta (`server.ts`)
+* **Transmisión Asíncrona sin Bloqueo:**
+  * Buffer de descarga periódico cada 5 segundos y transmisión inmediata en `pagehide`/descarga de ventana mediante `navigator.sendBeacon()` o `fetch(..., { keepalive: true })`.
+* **Endpoints HTTP Dedicados en Servidor Express:**
+  * `POST /api/logs/telemetry`: Endpoint de ingesta que procesa lotes de telemetría y los persiste en `logs/production_errors.jsonl`.
+  * `GET /api/logs/ai-summary`: Endpoint optimizado para lectura de Inteligencia Artificial que entrega un documento Markdown resumido (`logs/ai_error_digest.md`) con el estado de salud, fallos agrupados, impacto, contexto de hardware y breadcrumbs.
+  * `GET /api/logs/raw`: Retorna los logs en formato JSON estructurado con filtros de límite y severidad.
+  * `POST /api/logs/clear`: Permite limpiar el buffer activo de diagnóstico.
+* **Archivo de Digest para la IA (`logs/ai_error_digest.md`):**
+  * El servidor mantiene actualizado en tiempo real un archivo local que cualquier agente de IA (como el asistente Antigravity) puede consultar directamente con `view_file` para inspeccionar el estado en producción sin requerir acceso a herramientas externas.
+
+### 19.3. Interfaz de Diagnóstico y Telemetría (`DiagnosticLogsModal.tsx`)
+* **Acceso Multicanal:**
+  * Ruta directa: `/diagnostics` o `/3dchat/diagnostics` (también vía hash `#/diagnostics`).
+  * Botón **"Diagnóstico IA"** con indicador pulsante en la barra superior (`Header.tsx`) para administradores y desarrolladores.
+  * Pestaña y acceso directo dentro del Panel de Control Administrador (`AdminControlPanel.tsx`).
+* **Herramientas de Diagnóstico Integradas:**
+  * Panel de métricas rápidas: Conteo de fallos Fatales, Errores y Advertencias, con distribución por subsistemas.
+  * Filtros en tiempo real por severidad (`all`, `fatal`, `error`, `warn`) y por categoría tecnológica (`WebGL`, `WebRTC`, `MediaPipe`, `Modelos 3D`, etc.).
+  * Búsqueda en texto libre sobre mensajes, rutas, usuarios y trazas de error.
+  * Vistas detalladas desplegables con stack trace completo y miga de pan (*Breadcrumbs*).
+  * **Botón "Copiar Reporte para IA":** Formatea un prompt estructurado en Markdown con instrucciones de depuración listo para pegar en el chat del asistente de IA.
+  * **Botón "Descargar Markdown":** Exporta un informe legible completo del incidente.
+  * **Botón "Exportar JSON":** Descarga el archivo de telemetría estructurado para análisis en herramientas SIEM o monitoreo APM.
+
 
 
 

@@ -31,6 +31,7 @@ import {
   Copy,
   UserPlus,
   Search,
+  Activity,
 } from 'lucide-react';
 import { RoomInfo, User, AvatarDefinition } from '../../types';
 import { avatarModelServiceSingleton } from '../../services/avatarModelService';
@@ -49,6 +50,7 @@ interface AdminControlPanelProps {
   onMuteAll: () => void;
   onSelectAvatar?: (avatarId: string) => void;
   onOpenFaceStudio?: () => void;
+  onOpenDiagnostics?: () => void;
 }
 
 export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
@@ -62,6 +64,7 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
   onMuteAll,
   onSelectAvatar,
   onOpenFaceStudio,
+  onOpenDiagnostics,
 }) => {
   const [activeTab, setActiveTab] = useState<'models' | 'room' | 'users'>('models');
   const [avatars, setAvatars] = useState<AvatarDefinition[]>(() =>
@@ -437,6 +440,18 @@ export const AdminControlPanel: React.FC<AdminControlPanelProps> = ({
             <KeyRound className="w-4 h-4" />
             <span>Usuarios y Contraseñas ({userAccounts.length})</span>
           </button>
+
+          {onOpenDiagnostics && (
+            <button
+              type="button"
+              onClick={onOpenDiagnostics}
+              className="flex items-center gap-1.5 ml-auto px-3 py-1.5 rounded-lg text-xs font-bold text-purple-300 bg-purple-950/50 hover:bg-purple-900/70 border border-purple-500/40 hover:border-purple-400 transition cursor-pointer shadow-sm shadow-purple-950/40"
+              title="Abrir Telemetría y Diagnóstico de Errores para IA"
+            >
+              <Activity className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+              <span>Diagnóstico IA</span>
+            </button>
+          )}
         </div>
 
         {/* Tab Content Body */}

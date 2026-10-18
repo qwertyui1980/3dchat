@@ -662,8 +662,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
             </div>
           )}
 
-          {/* Quick link to /3dchat/faces */}
-          {onOpenFaces && (
+          {/* Quick link to /3dchat/faces - Solo para Admin */}
+          {onOpenFaces && user.role === 'admin' && (
             <div className="border-t border-white/[0.08] pt-3 flex items-center justify-between text-neutral-400">
               <span>¿Quieres crear una máscara facial 3D desde una foto?</span>
               <button

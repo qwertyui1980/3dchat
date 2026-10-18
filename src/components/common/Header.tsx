@@ -1,4 +1,4 @@
-import { Users, LogOut, Maximize2, Minimize2, Sparkles } from 'lucide-react';
+import { Users, LogOut, Maximize2, Minimize2, Sparkles, Activity } from 'lucide-react';
 import { RoomInfo, User } from '../../types';
 import { AuthenticatedUser } from '../auth/Login';
 
@@ -13,6 +13,7 @@ interface HeaderProps {
   onToggleFullscreen?: () => void;
   onOpenProfile?: () => void;
   onOpenFaces?: () => void;
+  onOpenDiagnostics?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -24,6 +25,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleFullscreen,
   onOpenProfile,
   onOpenFaces,
+  onOpenDiagnostics,
 }) => {
 
   return (
@@ -48,8 +50,8 @@ export const Header: React.FC<HeaderProps> = ({
           </>
         )}
 
-        {/* 3D Masks Studio Direct Link (/3dchat/faces) */}
-        {onOpenFaces && (
+        {/* 3D Masks Studio Direct Link (/3dchat/faces) - Solo para Admin */}
+        {onOpenFaces && authUser?.role === 'admin' && (
           <button
             type="button"
             onClick={onOpenFaces}
@@ -58,6 +60,19 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
             <span className="text-[11px]">3D Masks</span>
+          </button>
+        )}
+
+        {/* Telemetry & AI Diagnostic Logs Button */}
+        {onOpenDiagnostics && (
+          <button
+            type="button"
+            onClick={onOpenDiagnostics}
+            title="Telemetría y Diagnóstico de Errores para IA (/diagnostics)"
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#140e24] hover:bg-[#1f153a] text-purple-300 hover:text-purple-200 border border-purple-500/40 hover:border-purple-400 text-xs font-semibold shadow-sm shadow-purple-950/40 transition cursor-pointer"
+          >
+            <Activity className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+            <span className="hidden sm:inline text-[11px]">Diagnóstico IA</span>
           </button>
         )}
 
