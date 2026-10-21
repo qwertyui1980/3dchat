@@ -117,11 +117,17 @@ graph LR
   * `src/services/dbService.ts` actúa como la autoridad central y única fuente de verdad para autenticación (`authenticateUser`), gestión de perfiles (`saveUser`), salas en vivo (`saveRoom`) y catálogos de avatares (`saveAvatarRecord`).
   * `src/services/db/indexedDbService.ts` delega transparentemente todas las operaciones a `dbServiceSingleton`, manteniendo únicamente una caché de memoria de latencia cero para resiliencia offline.
 * **Disponibilidad Universal de Avatares Creados en la Sala (`#espacio/main`):**
-  * Al guardar un avatar en el Estudio 3D (`FaceBlendshapeStudioModal`) o en el perfil de usuario, el binario codificado en Base64/DataURL se almacena directamente en la tabla `public.avatars` con su `owner_id`, `format`, `preview_image` y `debug_params`.
+  * Al guardar un avatar en el Estudio 3D (`FaceBlendshapeStudioModal`), el binario codificado en Base64/DataURL se almacena directamente en la tabla `public.avatars` con su `owner_id`, `format`, `preview_image` y `debug_params`.
+  * La interfaz de `UserProfileModal` ha sido simplificada para enfocarse exclusivamente en la administración de credenciales de usuario (ID, Display Name, Rol, Biografía y selección rápida de avatar activo), eliminando formularios redundantes de configuración manual de Supabase y subida duplicada de archivos locales.
   * Al entrar en la sala `#espacio/main`, cualquier participante (tanto el usuario creador como los observadores remotos) resuelve automáticamente el modelo 3D ausente invocando `avatarModelServiceSingleton.fetchAndCacheAvatarFromCloud(avatarId)`.
   * Si Supabase está offline o sin credenciales, el sistema recurre transparentemente a la caché de `server.ts` y al mesh P2P.
-* **Cuota de Creación por Cuenta:**
+* **Cuota de Creación por Cuenta y Aislamiento Estricto de Biblioteca Personal ("Mis Avatares"):**
   * Cada usuario normal puede crear y guardar hasta un máximo de 4 avatares 3D personalizados en su cuenta. La cuenta maestra de Administrador (`admin`) no tiene límite de creación.
+  * Al registrarse una cuenta nueva, la pestaña **"Mis Avatares"** se inicializa estrictamente vacía ($0/4$), mostrando el estado desprovisto con el botón de subida "+ Subir Foto". Los modelos creados por el administrador o modelos públicos sin propietario se clasifican exclusivamente en **"Modelos Predefinidos"**, previniendo que los usuarios nuevos hereden modelos ajenos en su biblioteca privada.
+* **Interfaz del Salón (Lobby) y Módulo Emo:**
+  * El panel de seguimiento facial y espejo en vivo adopta la nomenclatura **"Emo"** (subtítulo *Face tracking*). Al pulsar sobre el modo dinámico **Emo**, si la cámara del usuario se encuentra apagada o sin permisos concedidos, el sistema invoca de forma proactiva la solicitud de permisos y el encendido del stream de video (`onToggleCamera` / `startCamera`), activando en tiempo real el botón de cámara en la interfaz.
+  * El disparador del menú de expresiones faciales rápidas (**Gestos**) se ubica como control HUD flotante en la esquina superior derecha del visor 3D, optimizando el espacio de la barra inferior de hardware y permitiendo activar poses faciales directamente sobre la vista previa.
+  * La barra superior de navegación ([`Header.tsx`](file:///d:/Apps/xstreamx/src/components/common/Header.tsx)) prescinde del acceso directo de diagnóstico IA para mantener un aspecto minimalista y enfocado al usuario final.
 
 ---
 
@@ -895,7 +901,25 @@ Para garantizar observabilidad absoluta, tolerancia a fallos en edge y diagnóst
   * **Botón "Descargar Markdown":** Exporta un informe legible completo del incidente.
   * **Botón "Exportar JSON":** Descarga el archivo de telemetría estructurado para análisis en herramientas SIEM o monitoreo APM.
 
+---
 
+## 20. Optimizaciones de UI y Control de Gestos en Sala
 
+### 20.1. Menú Rápido de Gestos y Auto-Reset a Neutral
+* **Catálogo Compacto de Gestos ([`dynamicModeHelper.ts`](file:///d:/Apps/xstreamx/src/services/face3d/dynamicModeHelper.ts)):**
+  * Simplificado a 4 gestos esenciales de alta expresividad: **Sonrisa** (`😊`), **Sorpresa** (`😲`), **Guiño** (`😉`) y **Ceño** (`😠`).
+  * Se eliminaron los botones *Pucker* y *Neutral* del grid, optimizando la cuadrícula a 4 columnas balanceadas (`grid-cols-4`).
+* **Auto-Reset al Hacer Clic Fuera ([`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx) y [`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx)):**
+  * Al hacer clic fuera del panel emergente de gestos (sobre el backdrop `fixed inset-0`), el panel se oculta inmediatamente y el avatar se resetea de forma automática a la expresión `neutral` (`onTriggerGesture('neutral')`).
+  * Se retiró el botón textual redundante "Reset Neutral".
 
+### 20.2. Simplificación y Adaptabilidad Móvil de la Sala
+* **Reubicación del Selector de Tamaño de Ventanas ([`Header.tsx`](file:///d:/Apps/xstreamx/src/components/common/Header.tsx) y [`RoomView.tsx`](file:///d:/Apps/xstreamx/src/components/room/RoomView.tsx)):**
+  * El deslizador de zoom/escala de las tarjetas de avatar (`Ventanas: {cardSize}px`) se integró limpiamente en la barra de navegación superior derecha, eliminando el control flotante que tapaba los avatares.
+  * Inicialización responsiva: en pantallas estrechas o móviles, el tamaño inicial se adapta con `Math.min(320, window.innerWidth - 24)`.
+* **Depuración de Controles de Llamada ([`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx)):**
+  * Eliminación del botón duplicado de colgar/salir de llamada (centralizado en el botón "Salir" del [`Header.tsx`](file:///d:/Apps/xstreamx/src/components/common/Header.tsx)).
+  * Eliminación del botón redundante de cambio de avatar en vivo dentro de la sala.
+* **Limpieza de Tarjetas de Participantes ([`ParticipantCard.tsx`](file:///d:/Apps/xstreamx/src/components/room/ParticipantCard.tsx)):**
+  * Eliminación de las etiquetas/badges flotantes de modo dinámico (*Lip Sync / Gestos / Parafernalia*), dejando limpia la vista de los modelos 3D con restricciones de dimensión máxima adaptables al viewport.
 

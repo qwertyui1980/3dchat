@@ -792,6 +792,7 @@ export default function App() {
   const handleLogout = () => {
     if (typeof window !== 'undefined') {
       sessionStorage.removeItem('xstreamx_auth');
+      localStorage.removeItem('xstreamx_selected_avatar');
       const basePath = getBasePath();
       window.history.replaceState(null, '', `${basePath}/`);
     }
@@ -808,6 +809,9 @@ export default function App() {
       localStorage.setItem('xstreamx_tracking_mode', mode);
     }
     networkServiceSingleton.updateTrackingMode(mode);
+    if (normalizeTrackingMode(mode) === 'gestures' && !isCameraActive) {
+      startCamera();
+    }
     setLocalFeatures((prev) => {
       const active = applyDynamicMode(
         prev,

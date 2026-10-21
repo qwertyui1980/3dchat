@@ -5,7 +5,6 @@ import {
   Video,
   VideoOff,
   MessageSquare,
-  PhoneOff,
   Check,
   Tv,
   ScanFace,
@@ -19,6 +18,7 @@ import {
   Sparkles,
   Smile,
   Lock,
+  MoreHorizontal,
 } from 'lucide-react';
 import { AvatarId, DynamicTrackingMode } from '../../types';
 import {
@@ -173,19 +173,6 @@ export const CallControls: React.FC<CallControlsProps> = ({
           {isCameraActive ? <Video className="w-5 h-5 text-white" /> : <VideoOff className="w-5 h-5 text-rose-400" />}
         </button>
 
-        {/* 3D Avatar Switcher Button */}
-        {onOpenAvatarModal && (
-          <button
-            type="button"
-            onClick={onOpenAvatarModal}
-            className="p-3 sm:p-3.5 rounded-2xl bg-cyan-950/70 hover:bg-cyan-900/80 text-cyan-300 border border-cyan-500/40 transition active:scale-95 shadow-sm shadow-cyan-950/40 cursor-pointer flex items-center gap-1.5"
-            title="Cambiar mi Avatar 3D (Modelos Disponibles, Admin y Mi Colección)"
-          >
-            <Sparkles className="w-5 h-5 text-cyan-400" />
-            <span className="hidden xl:inline text-xs font-semibold">Avatar</span>
-          </button>
-        )}
-
         {/* Dynamic Mode Quick Switcher Popover */}
         <div className="relative">
           <button
@@ -281,7 +268,7 @@ export const CallControls: React.FC<CallControlsProps> = ({
                 ? 'bg-amber-950/70 hover:bg-amber-900/80 text-amber-300 border-amber-500/40 shadow-md shadow-amber-950/40'
                 : 'bg-[#121218] hover:bg-[#181822] text-neutral-100 border-white/[0.08]'
             }`}
-            title="Menú de Gestos (Sonrisa, Sorpresa, Guiño, Ceño, Pucker, Neutral)"
+            title="Menú de Gestos (Sonrisa, Sorpresa, Guiño, Ceño)"
           >
             <Smile className="w-5 h-5 text-amber-400" />
             <span className="hidden xl:inline text-xs font-semibold">
@@ -291,25 +278,22 @@ export const CallControls: React.FC<CallControlsProps> = ({
 
           {showGesturesPicker && (
             <>
-              <div className="fixed inset-0 z-20" onClick={() => setShowGesturesPicker(false)} />
+              <div
+                className="fixed inset-0 z-20"
+                onClick={() => {
+                  setShowGesturesPicker(false);
+                  if (onTriggerGesture) onTriggerGesture('neutral');
+                }}
+              />
               <div className="absolute -translate-x-1/2 left-1/2 bottom-full mb-3 w-[calc(100vw-32px)] max-w-sm rounded-2xl bg-gradient-to-r from-amber-950/95 via-orange-950/90 to-amber-950/95 border border-amber-500/40 p-3 shadow-2xl backdrop-blur-xl z-30 space-y-2.5 animate-in fade-in zoom-in-95">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-1.5">
                     <Smile className="w-4 h-4 text-amber-400" />
                     <span className="text-xs font-bold text-amber-200">Gestos</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (onTriggerGesture) onTriggerGesture('neutral');
-                    }}
-                    className="text-[10px] text-amber-300 hover:text-white underline cursor-pointer"
-                  >
-                    Reset Neutral
-                  </button>
                 </div>
 
-                <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+                <div className="grid grid-cols-4 gap-2">
                   {QUICK_GESTURES.map((g) => {
                     const isActive = activeGesture === g.id;
                     return (
@@ -335,20 +319,6 @@ export const CallControls: React.FC<CallControlsProps> = ({
             </>
           )}
         </div>
-
-        {/* Leave Call Button */}
-        <button
-          type="button"
-          onClick={() => {
-            if (window.confirm('¿Estás seguro de que deseas salir del espacio?')) {
-              onLeaveCall();
-            }
-          }}
-          className="p-3 sm:p-3.5 rounded-2xl bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800/60 transition active:scale-95 shadow-sm cursor-pointer"
-          title="Salir del espacio"
-        >
-          <PhoneOff className="w-5 h-5" />
-        </button>
       </div>
 
       {/* Right: Screen & Tracking & Pizarra & Chat Buttons */}

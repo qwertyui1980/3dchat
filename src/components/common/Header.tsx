@@ -1,4 +1,4 @@
-import { Users, LogOut, Maximize2, Minimize2, Sparkles, Activity } from 'lucide-react';
+import { LogOut, Maximize2, Minimize2, Sparkles, Sliders } from 'lucide-react';
 import { RoomInfo, User } from '../../types';
 import { AuthenticatedUser } from '../auth/Login';
 
@@ -14,6 +14,8 @@ interface HeaderProps {
   onOpenProfile?: () => void;
   onOpenFaces?: () => void;
   onOpenDiagnostics?: () => void;
+  cardSize?: number;
+  onCardSizeChange?: (size: number) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -25,7 +27,9 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleFullscreen,
   onOpenProfile,
   onOpenFaces,
-  onOpenDiagnostics,
+  onOpenDiagnostics: _onOpenDiagnostics,
+  cardSize,
+  onCardSizeChange,
 }) => {
 
   return (
@@ -40,14 +44,35 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Right Controls */}
       <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-        {room && (
-          <>
-            {/* Participants Count Badge */}
-            <div className="flex items-center gap-1 px-2 py-1 sm:px-2.5 sm:py-1 rounded-lg bg-[#10141f] border border-blue-500/30 text-xs text-blue-200 shadow-sm shadow-blue-500/10">
-              <Users className="w-3.5 h-3.5 text-blue-400" />
-              <span className="font-semibold">{room.participants.length}</span>
-            </div>
-          </>
+        {/* Participant Windows Sizing Slider (Header) */}
+        {cardSize !== undefined && onCardSizeChange && (
+          <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 py-1 rounded-xl bg-white/[0.04] border border-yellow-500/20 text-xs select-none">
+            <Sliders className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
+            <span className="text-neutral-300 text-[11px] font-medium hidden sm:inline">Ventanas:</span>
+            <input
+              type="range"
+              min={120}
+              max={480}
+              step={10}
+              value={cardSize}
+              onChange={(e) => onCardSizeChange(Number(e.target.value))}
+              className="w-16 sm:w-24 h-1.5 accent-yellow-400 bg-neutral-800 rounded-lg cursor-pointer"
+              title={`Dimensionar ventanas de participantes: ${cardSize}px`}
+            />
+            <span className="font-mono text-yellow-300 text-[11px] min-w-[36px] text-right font-bold">
+              {cardSize}px
+            </span>
+            {cardSize !== 280 && (
+              <button
+                type="button"
+                onClick={() => onCardSizeChange(280)}
+                className="text-[10px] text-neutral-400 hover:text-yellow-300 transition cursor-pointer ml-0.5"
+                title="Restablecer tamaño predeterminado (280px)"
+              >
+                ↺
+              </button>
+            )}
+          </div>
         )}
 
         {/* 3D Masks Studio Direct Link (/3dchat/faces) - Solo para Admin */}
@@ -60,19 +85,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
             <span className="text-[11px]">3D Masks</span>
-          </button>
-        )}
-
-        {/* Telemetry & AI Diagnostic Logs Button */}
-        {onOpenDiagnostics && (
-          <button
-            type="button"
-            onClick={onOpenDiagnostics}
-            title="Telemetría y Diagnóstico de Errores para IA (/diagnostics)"
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#140e24] hover:bg-[#1f153a] text-purple-300 hover:text-purple-200 border border-purple-500/40 hover:border-purple-400 text-xs font-semibold shadow-sm shadow-purple-950/40 transition cursor-pointer"
-          >
-            <Activity className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
-            <span className="hidden sm:inline text-[11px]">Diagnóstico IA</span>
           </button>
         )}
 

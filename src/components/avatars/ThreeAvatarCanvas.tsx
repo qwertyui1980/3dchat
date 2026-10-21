@@ -881,6 +881,10 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             const headPivot = new THREE.Group();
             rootGroup.add(headPivot);
 
+            // Neutralise any embedded root transform before measuring (same fix as GLTF path)
+            objGroup.position.set(0, 0, 0);
+            objGroup.rotation.set(0, 0, 0);
+            objGroup.scale.set(1, 1, 1);
             objGroup.updateMatrixWorld(true);
             const box = new THREE.Box3().setFromObject(objGroup);
             const size = box.getSize(new THREE.Vector3());
@@ -1068,8 +1072,14 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             }
           });
 
-          // Calculate bounding box and dimensions
+          // ── Centering fix: neutralise any GLTF-embedded root transform before
+          //    measuring bounds so that models exported from Blender / 3ds Max with
+          //    non-zero root position / rotation don't end up off-centre.
+          clonedScene.position.set(0, 0, 0);
+          clonedScene.rotation.set(0, 0, 0);
+          clonedScene.scale.set(1, 1, 1);
           clonedScene.updateMatrixWorld(true);
+
           const box = new THREE.Box3().setFromObject(clonedScene);
           const size = box.getSize(new THREE.Vector3());
           const center = box.getCenter(new THREE.Vector3());
@@ -1079,13 +1089,16 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
           // If faceMesh is present (Face Studio / 3D Mask avatar), center precisely on the face anatomy
           const anatomicalFaceNode = clonedScene.getObjectByName('faceMesh') as THREE.Mesh | undefined;
           if (anatomicalFaceNode && anatomicalFaceNode.geometry && !isFullBodyRig) {
+            // updateMatrixWorld propagates correctly because clonedScene is now neutral
             anatomicalFaceNode.updateMatrixWorld(true);
             const faceBox = new THREE.Box3().setFromObject(anatomicalFaceNode);
             if (!faceBox.isEmpty()) {
               const faceCenter = faceBox.getCenter(new THREE.Vector3());
               const faceSize = faceBox.getSize(new THREE.Vector3());
+              // Only override X/Y — keep Z at scene center so face stays forward-facing
               center.x = faceCenter.x;
               center.y = faceCenter.y;
+              // Don't override center.z — use full-scene Z center so depth is neutral
               if (size.y > faceSize.y * 2.2) {
                 maxDim = Math.max(faceSize.x, faceSize.y, faceSize.z) * 1.4;
               }
@@ -1103,7 +1116,7 @@ export const ThreeAvatarCanvas: React.FC<ThreeAvatarCanvasProps> = ({
             // Scale to fill avatar portrait viewport nicely (~2.35 units height)
             const headScaleFactor = 2.35 / maxDim;
             clonedScene.scale.setScalar(headScaleFactor);
-            // Center the geometry precisely on the local origin of headPivot
+            // Center X and Y precisely; leave Z lightly centered so face isn't pushed back
             clonedScene.position.set(
               -center.x * headScaleFactor,
               -center.y * headScaleFactor,

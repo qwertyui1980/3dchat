@@ -28,7 +28,7 @@ import { WhiteboardPanel } from '../whiteboard/WhiteboardPanel';
 import { AdminControlPanel } from './AdminControlPanel';
 import { RoomAvatarModal } from './RoomAvatarModal';
 import { FaceBlendshapeStudioModal } from '../admin/FaceBlendshapeStudioModal';
-import { Maximize2, Minimize2, Sliders } from 'lucide-react';
+import { Maximize2, Minimize2 } from 'lucide-react';
 import { QuickGestureType } from '../../services/face3d/dynamicModeHelper';
 
 interface RoomViewProps {
@@ -140,6 +140,9 @@ export const RoomView: React.FC<RoomViewProps> = ({
   // Participant Card Dynamic Sizing (120px to 480px, maintaining strict 1:1 proportion)
   const [cardSize, setCardSize] = useState<number>(() => {
     if (typeof window !== 'undefined') {
+      if (window.innerWidth < 640) {
+        return Math.min(320, Math.floor(window.innerWidth - 24));
+      }
       const saved = localStorage.getItem('xstreamx_participant_card_size');
       if (saved) {
         const parsed = parseInt(saved, 10);
@@ -269,46 +272,19 @@ export const RoomView: React.FC<RoomViewProps> = ({
           onOpenProfile={onOpenProfile}
           onOpenFaces={onOpenFaces}
           onOpenDiagnostics={onOpenDiagnostics}
+          cardSize={cardSize}
+          onCardSizeChange={handleCardSizeChange}
         />
       )}
 
       {/* Main Video Call Stage Layout */}
       <div className="flex-1 flex min-h-0 relative overflow-hidden z-10">
-        
-        {/* Floating Participant Card Sizing Slider (120px to 480px, maintaining strict 1:1 ratio) */}
-        <div className="absolute top-2.5 right-3 sm:right-5 z-20 flex items-center gap-2 px-3 py-1.5 rounded-xl bg-[#0a0d14]/90 backdrop-blur-md border border-yellow-500/20 shadow-xl text-xs select-none">
-          <Sliders className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
-          <span className="text-neutral-300 text-[11px] font-medium hidden sm:inline">Ventanas:</span>
-          <input
-            type="range"
-            min={120}
-            max={480}
-            step={10}
-            value={cardSize}
-            onChange={(e) => handleCardSizeChange(Number(e.target.value))}
-            className="w-16 sm:w-28 h-1.5 accent-yellow-400 bg-neutral-800 rounded-lg cursor-pointer"
-            title={`Dimensionar ventanas de participantes: ${cardSize}px (Mínimo: 120px, Máximo: 480px)`}
-          />
-          <span className="font-mono text-yellow-300 text-[11px] min-w-[36px] text-right font-bold">
-            {cardSize}px
-          </span>
-          {cardSize !== 280 && (
-            <button
-              type="button"
-              onClick={() => handleCardSizeChange(280)}
-              className="text-[10px] text-neutral-400 hover:text-yellow-300 transition cursor-pointer ml-0.5"
-              title="Restablecer tamaño predeterminado (280px)"
-            >
-              ↺
-            </button>
-          )}
-        </div>
 
         {/* Participant Avatars Viewport */}
-        <div className="flex-1 p-2 sm:p-5 overflow-y-auto flex flex-col justify-center">
+        <div className="flex-1 p-2 sm:p-5 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-center">
           
           {/* GRID / MOSAIC VIEW */}
-          <div className="w-full flex-1 flex flex-wrap gap-2.5 sm:gap-4 items-center justify-center overflow-y-auto p-1 sm:p-2">
+          <div className="w-full flex-1 flex flex-wrap gap-2.5 sm:gap-4 items-center justify-center p-1 sm:p-2">
             {allParticipants.map((participant) => {
               const isSelf = participant.id === currentUser.id;
               const features = isSelf ? localFeatures : peerFeaturesMap.get(participant.id) || localFeatures;

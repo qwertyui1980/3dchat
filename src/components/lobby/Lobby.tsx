@@ -264,38 +264,48 @@ export const Lobby: React.FC<LobbyProps> = ({
   // Tabs: 'predefined' (Modelos Predefinidos) vs 'custom' (Mis Avatares / 3D Masks Online)
   const [avatarTab, setAvatarTab] = useState<'predefined' | 'custom'>(() => {
     if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem(STORAGE_AVATAR_KEY) as AvatarId;
-      if (saved) {
-        const found = avatarModelServiceSingleton.getAvatarById(saved);
+      const userKey = getUserAvatarStorageKey(authUser?.username);
+      const savedUser = localStorage.getItem(userKey) as AvatarId;
+      if (savedUser) {
+        const found = avatarModelServiceSingleton.getAvatarById(savedUser);
         if (found?.isCustom) return 'custom';
       }
     }
     return 'predefined';
   });
 
-  const predefinedAvatars = useMemo(() => {
-    return avatars.filter((a) => {
-      if (!a.isCustom) return true;
-      if (a.isPublic) return true;
-      const owner = (a.ownerId || '').trim().toLowerCase();
-      if (!owner || owner === 'admin') return true;
-      return true; // Todos los modelos de la base de datos disponibles para elegir
-    });
-  }, [avatars]);
-
   const customAvatars = useMemo(() => {
     const cleanUser = (authUser?.username || '').trim().toLowerCase();
+    if (!cleanUser) return [];
     return avatars.filter((a) => {
       const owner = (a.ownerId || '').trim().toLowerCase();
       if (isAdminUser) {
-        return owner === 'admin' || (!owner && a.isCustom) || a.isCustom;
+        return owner === 'admin';
       }
-      if (cleanUser) {
-        return owner === cleanUser || (!owner && a.isCustom);
-      }
-      return a.isCustom || a.id.startsWith('custom_') || !owner;
+      // Para usuarios registrados regulares: única y estrictamente los creados por esta cuenta
+      return owner === cleanUser;
     });
   }, [avatars, authUser?.username, isAdminUser]);
+
+  const predefinedAvatars = useMemo(() => {
+    const cleanUser = (authUser?.username || '').trim().toLowerCase();
+    return avatars.filter((a) => {
+      const owner = (a.ownerId || '').trim().toLowerCase();
+      // Los avatares privados creados por este usuario pertenecen a "Mis Avatares"
+      if (cleanUser && owner === cleanUser) return false;
+      if (!a.isCustom) return true;
+      if (a.isPublic) return true;
+      if (!owner || owner === 'admin') return true;
+      return false;
+    });
+  }, [avatars, authUser?.username]);
+
+  // Si la cuenta no tiene avatares creados, la pestaña predeterminada siempre es 'predefined'
+  useEffect(() => {
+    if (customAvatars.length === 0 && avatarTab === 'custom') {
+      setAvatarTab('predefined');
+    }
+  }, [authUser?.username, customAvatars.length]);
 
   const handleDeleteCustomAvatar = (avatarId: string, avatarName: string) => {
     if (window.confirm(`¿Estás seguro de que deseas eliminar el avatar "${avatarName}"?`)) {
@@ -532,6 +542,14 @@ export const Lobby: React.FC<LobbyProps> = ({
     setTrackingMode(mode);
     if (typeof window !== 'undefined') {
       localStorage.setItem(STORAGE_TRACKING_MODE_KEY, mode);
+    }
+    // Al activar el modo Emo (Face tracking), encender o solicitar permisos de cámara si aún no está activa
+    if (normalizeTrackingMode(mode) === 'gestures' && !isCameraActive) {
+      if (onToggleCamera) {
+        onToggleCamera();
+      } else if (onRequestCamera) {
+        onRequestCamera();
+      }
     }
   };
 
@@ -931,11 +949,16 @@ export const Lobby: React.FC<LobbyProps> = ({
         <div className="lg:col-span-6 flex flex-col items-center">
           <div className="w-full max-w-md bg-[#0d0d12]/95 rounded-2xl border border-white/[0.08] p-5 shadow-2xl relative">
             <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_8px_#ffe600]" />
-                <span className="text-xs font-bold uppercase tracking-wider text-neutral-300">
-                  Elige tu avatar
-                </span>
+              <div className="flex items-center gap-2.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-yellow-400 animate-pulse shadow-[0_0_10px_#ffe600]" />
+                <div>
+                  <h2 className="text-sm font-black uppercase tracking-wider text-white leading-tight">
+                    Emo
+                  </h2>
+                  <p className="text-[10px] text-neutral-400 font-semibold tracking-wide">
+                    Face tracking
+                  </p>
+                </div>
               </div>
               {isAdminUser && (
                 <button
@@ -1122,6 +1145,70 @@ export const Lobby: React.FC<LobbyProps> = ({
                   {showCameraPip ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
               </div>
+
+              {/* Top Right: Botón de Gestos Rápido */}
+              <div className="absolute top-3 right-3 z-30">
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={() => setShowGesturesMenu((prev) => !prev)}
+                    className={`px-2.5 py-1.5 rounded-lg border backdrop-blur-md flex items-center gap-1.5 transition cursor-pointer text-xs font-semibold shadow-lg ${
+                      showGesturesMenu || currentActiveGesture
+                        ? 'bg-amber-950/80 hover:bg-amber-900 border-amber-500/60 text-amber-300 shadow-amber-950/40'
+                        : 'bg-slate-900/85 hover:bg-slate-800 border-white/[0.12] text-slate-200 hover:text-white'
+                    }`}
+                    title="Menú de Gestos (Sonrisa, Sorpresa, Guiño, Ceño)"
+                  >
+                    <Smile className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Gestos</span>
+                    {currentActiveGesture && (
+                      <span className="text-xs">
+                        {QUICK_GESTURES.find((g) => g.id === currentActiveGesture)?.emoji}
+                      </span>
+                    )}
+                  </button>
+
+                  {showGesturesMenu && (
+                    <>
+                      <div
+                        className="fixed inset-0 z-30"
+                        onClick={() => {
+                          setShowGesturesMenu(false);
+                          handleGestureClick('neutral');
+                        }}
+                      />
+                      <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 p-3 rounded-2xl bg-[#0b0e15]/95 border border-amber-500/40 shadow-2xl backdrop-blur-xl z-40 space-y-2.5 animate-in fade-in zoom-in-95">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <Smile className="w-4 h-4 text-amber-400" />
+                            <span className="text-xs font-bold text-amber-200">Gestos</span>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-4 gap-2">
+                          {QUICK_GESTURES.map((g) => {
+                            const isActive = currentActiveGesture === g.id;
+                            return (
+                              <button
+                                key={g.id}
+                                type="button"
+                                onClick={() => handleGestureClick(g.id)}
+                                className={`py-2 px-1 rounded-lg border text-[10px] font-bold transition flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                                  isActive
+                                    ? 'bg-amber-500/30 border-amber-400 text-amber-200 shadow-sm ring-1 ring-amber-400/50'
+                                    : 'bg-black/40 hover:bg-amber-500/20 border-amber-500/20 text-neutral-200 hover:text-amber-200'
+                                }`}
+                              >
+                                <span className="text-sm leading-none">{g.emoji}</span>
+                                <span className="truncate max-w-full">{g.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Slider Adjustments Drawer */}
@@ -1226,7 +1313,7 @@ export const Lobby: React.FC<LobbyProps> = ({
                   <span className="text-[9px] text-neutral-400 text-center leading-none">Voz & Zoom</span>
                 </button>
 
-                {/* 2. Reconocimiento de Gestos (Azul Neón) */}
+                {/* 2. Reconocimiento de Gestos / Emo (Azul Neón) */}
                 <button
                   type="button"
                   onClick={() => handleSelectTrackingMode('gestures')}
@@ -1235,11 +1322,11 @@ export const Lobby: React.FC<LobbyProps> = ({
                       ? 'bg-blue-950/80 border-blue-400 text-white ring-1 ring-blue-400/40 shadow-sm shadow-blue-500/20'
                       : 'bg-[#121218] hover:bg-[#181822] text-neutral-400 border-white/[0.06]'
                   }`}
-                  title="Reconoce única y exclusivamente gestos faciales por cámara y los iguala en el avatar"
+                  title="Modo Emo: reconoce única y exclusivamente expresiones y seguimiento facial por cámara"
                 >
                   <ScanFace className={`w-4 h-4 ${normalizeTrackingMode(trackingMode) === 'gestures' ? 'text-blue-400' : 'text-neutral-400'}`} />
-                  <span className="text-[11px] font-bold leading-none text-center">Gestos</span>
-                  <span className="text-[9px] text-neutral-400 text-center leading-none">100% Cámara</span>
+                  <span className="text-[11px] font-bold leading-none text-center">Emo</span>
+                  <span className="text-[9px] text-neutral-400 text-center leading-none">Face tracking</span>
                 </button>
 
                 {/* 3. Lip Sync (Rojo Neón) */}
@@ -1286,72 +1373,6 @@ export const Lobby: React.FC<LobbyProps> = ({
                 >
                   {isCameraActive ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4 text-rose-400" />}
                 </button>
-
-                {/* Gestos Dropdown / Popover Menu */}
-                <div className="relative">
-                  <button
-                    type="button"
-                    onClick={() => setShowGesturesMenu((prev) => !prev)}
-                    className={`p-2.5 rounded-xl border flex items-center gap-1.5 transition cursor-pointer text-xs font-semibold ${
-                      showGesturesMenu || currentActiveGesture
-                        ? 'bg-amber-950/70 hover:bg-amber-900 border-amber-500/50 text-amber-300 shadow-md shadow-amber-950/30'
-                        : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-200'
-                    }`}
-                    title="Menú de Gestos (Sonrisa, Sorpresa, Guiño, Ceño, Pucker, Neutral)"
-                  >
-                    <Smile className="w-4 h-4 text-amber-400" />
-                    <span>Gestos</span>
-                    {currentActiveGesture && (
-                      <span className="text-xs">
-                        {QUICK_GESTURES.find((g) => g.id === currentActiveGesture)?.emoji}
-                      </span>
-                    )}
-                  </button>
-
-                  {showGesturesMenu && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-30"
-                        onClick={() => setShowGesturesMenu(false)}
-                      />
-                      <div className="absolute left-0 bottom-full mb-2 w-72 sm:w-80 p-3 rounded-2xl bg-gradient-to-r from-amber-950/95 via-orange-950/90 to-amber-950/95 border border-amber-500/40 shadow-2xl backdrop-blur-xl z-40 space-y-2.5 animate-in fade-in zoom-in-95">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-1.5">
-                            <Smile className="w-4 h-4 text-amber-400" />
-                            <span className="text-xs font-bold text-amber-200">Gestos</span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => handleGestureClick('neutral')}
-                            className="text-[10px] text-amber-300 hover:text-white underline cursor-pointer"
-                          >
-                            Reset Neutral
-                          </button>
-                        </div>
-                        <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
-                          {QUICK_GESTURES.map((g) => {
-                            const isActive = currentActiveGesture === g.id;
-                            return (
-                              <button
-                                key={g.id}
-                                type="button"
-                                onClick={() => handleGestureClick(g.id)}
-                                className={`py-2 px-1 rounded-lg border text-[10px] font-bold transition flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
-                                  isActive
-                                    ? 'bg-amber-500/30 border-amber-400 text-amber-200 shadow-sm ring-1 ring-amber-400/50'
-                                    : 'bg-black/40 hover:bg-amber-500/20 border-amber-500/20 text-neutral-200 hover:text-amber-200'
-                                }`}
-                              >
-                                <span className="text-sm leading-none">{g.emoji}</span>
-                                <span className="truncate max-w-full">{g.label}</span>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
               </div>
 
               {/* Audio visualizer */}

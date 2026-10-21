@@ -104,6 +104,8 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
         touchAction: 'none',
         width: `${cardSize}px`,
         height: `${cardSize}px`,
+        maxWidth: 'calc(100vw - 1.5rem)',
+        maxHeight: 'calc(100dvh - 11rem)',
         aspectRatio: '1 / 1',
       }}
       className={`group relative shrink-0 rounded-2xl bg-[#08080c] border transition-[shadow,border-color] duration-200 overflow-hidden shadow-2xl select-none ${
@@ -129,35 +131,8 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
 
       {/* Top Bar inside Card */}
       <div className="absolute top-2 inset-x-2 sm:top-2.5 sm:inset-x-2.5 flex items-center justify-between z-10 gap-1">
-        {/* Left: Mode / Voice status badge (visible on widths >= 160px) */}
-        {cardSize >= 160 ? (
-          <div className="flex items-center gap-1.5 shrink-0">
-            {activeMode === 'gestures' ? (
-              <span
-                className="px-1.5 py-0.5 rounded-md bg-blue-950/80 text-blue-300 border border-blue-500/40 text-[10px] font-mono shadow-[0_0_8px_rgba(59,130,246,0.3)]"
-                title="Modo Reconocimiento de Gestos • Visión 100% Cámara"
-              >
-                Gestos
-              </span>
-            ) : activeMode === 'lipsync' ? (
-              <span
-                className="px-1.5 py-0.5 rounded-md bg-rose-950/80 text-rose-300 border border-rose-500/40 text-[10px] font-mono shadow-[0_0_8px_rgba(244,63,94,0.3)]"
-                title="Modo Lip Sync • Máscara estática y boca por audio"
-              >
-                Lip Sync
-              </span>
-            ) : (
-              <span
-                className="px-1.5 py-0.5 rounded-md bg-yellow-950/80 text-yellow-300 border border-yellow-500/40 text-[10px] font-mono shadow-[0_0_8px_rgba(250,204,21,0.3)]"
-                title="Modo Parafernalia • Ritmo de voz, gestos y zoom dinámico"
-              >
-                Parafernalia
-              </span>
-            )}
-          </div>
-        ) : (
-          <div />
-        )}
+        {/* Left spacer */}
+        <div />
 
         {/* Right: Name Badge & Admin Direct Controls (Mic & X) */}
         <div className="flex items-center gap-1.5 min-w-0 max-w-[70%] justify-end">

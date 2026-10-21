@@ -39,11 +39,11 @@ const BASE_CONFIGS: Record<CanonicalTrackingMode, TrackingModeConfig> = {
   gestures: {
     id: 'gestures',
     canonicalId: 'gestures',
-    label: 'Reconocimiento de Gestos',
-    sublabel: 'Visión 100% Cámara',
+    label: 'Emo',
+    sublabel: 'Face tracking',
     description: 'Reconoce única y exclusivamente gestos faciales por cámara y los iguala en el avatar',
     color: '#3b82f6',
-    badge: 'Gestos',
+    badge: 'Emo',
     icon: 'scanFace',
   },
   lipsync: {
@@ -90,8 +90,6 @@ export const QUICK_GESTURES: QuickGestureConfig[] = [
   { id: 'surprise', emoji: '😲', label: 'Sorpresa' },
   { id: 'wink', emoji: '😉', label: 'Guiño' },
   { id: 'furrow', emoji: '😠', label: 'Ceño' },
-  { id: 'pucker', emoji: '😗', label: 'Pucker' },
-  { id: 'neutral', emoji: '😐', label: 'Neutral' },
 ];
 
 /**
