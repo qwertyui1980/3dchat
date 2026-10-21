@@ -233,18 +233,17 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
               </linearGradient>
 
               {/* Clips de fijación a la pared */}
-              <g id="clip">
+              <g id="clip" className="clip">
                 <circle r="4.5" />
                 <path d="M-2.5,0H2.5M0,-2.5V2.5" />
               </g>
 
               {/* Tubos de puente negros entre electrodos */}
               <g id="links">
-                <path d="M35,337 C35,385 42,408 66,430" />
+                <path d="M35,337 C35,385 42,408 119,430" />
                 <path d="M305,337 Q310,353 315,337" />
                 <path d="M585,337 Q590,353 595,337" />
-                <path d="M865,337 C876,375 850,425 822,466" />
-                <path d="M72,495 V523 M722,495 V523" />
+                <path d="M125,495 V523 M775,495 V523" />
               </g>
 
               {/* Luz de neón sobre la pared (la roja y la blanca parpadean con su figura) */}
@@ -271,7 +270,7 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
               <ellipse id="spRed" cx="170" cy="220" rx="220" ry="240" />
               <ellipse id="spWht" cx="450" cy="220" rx="220" ry="240" />
               <ellipse id="spBlu" cx="730" cy="220" rx="220" ry="240" />
-              <ellipse id="spYel" cx="430" cy="570" rx="520" ry="280" />
+              <ellipse id="spYel" cx="450" cy="570" rx="520" ry="280" />
 
               {/* Tubos de unión apagados y cableado */}
               <use href="#links" className="dead" />
@@ -319,14 +318,11 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
 
               {/* Texto */}
               <g className="sign-text" filter="url(#neon-glow)">
-                <text x="62" y="490" fontSize="150" textLength={670} lengthAdjust="spacingAndGlyphs">
+                <text x="115" y="490" fontSize="150" textLength={670} lengthAdjust="spacingAndGlyphs">
                   P<tspan className="r">R</tspan>ESIDENTES
                 </text>
-                <text x="62" y="675" fontSize="188" textLength={670} lengthAdjust="spacingAndGlyphs">
+                <text x="115" y="675" fontSize="188" textLength={670} lengthAdjust="spacingAndGlyphs">
                   MUE<tspan className="r">R</tspan>TOS
-                </text>
-                <text transform="translate(800 470) rotate(90)" fontSize="64" textLength={215} lengthAdjust="spacingAndGlyphs">
-                  Y VIVOS.
                 </text>
               </g>
 
@@ -338,12 +334,11 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
                 <circle className="cap" cx={585} cy={337} r={6} />
                 <circle className="cap" cx={595} cy={337} r={6} />
                 <circle className="cap" cx={865} cy={337} r={6} />
-                <circle className="cap" cx={822} cy={466} r={6} />
                 <use href="#clip" className="clip" x={170} y={76} />
                 <use href="#clip" className="clip" x={450} y={95} />
                 <use href="#clip" className="clip" x={730} y={77} />
-                <use href="#clip" className="clip" x={72} y={509} />
-                <use href="#clip" className="clip" x={722} y={509} />
+                <use href="#clip" className="clip" x={125} y={509} />
+                <use href="#clip" className="clip" x={775} y={509} />
                 <use href="#clip" className="clip" x={310} y={352} />
                 <use href="#clip" className="clip" x={590} y={352} />
               </g>
@@ -357,7 +352,7 @@ export const PresidentesNeonHome: React.FC<PresidentesNeonHomeProps> = ({
         </h1>
 
         {/* Botones de Acción con la paleta de color del rótulo de neón */}
-        <div className="flex flex-row items-center justify-center gap-3 sm:gap-5 mt-6 sm:mt-9 z-20">
+        <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-5 mt-6 sm:mt-9 z-20">
           {/* Botón Principal: Entrar al salón (Amarillo Neón del Letrero) */}
           <button
             type="button"

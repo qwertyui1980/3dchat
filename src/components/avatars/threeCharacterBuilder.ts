@@ -2178,6 +2178,11 @@ export function buildFaceCapCharacter(gltf: GLTF): Character3DController {
 
   const model = SkeletonUtils.clone(gltf.scene) as THREE.Group;
 
+  model.position.set(0, 0, 0);
+  model.rotation.set(0, 0, 0);
+  model.scale.set(1, 1, 1);
+  model.updateMatrixWorld(true);
+
   // Scale and center the head properly for our scene
   const bbox = new THREE.Box3().setFromObject(model);
   const center = new THREE.Vector3();
@@ -2483,6 +2488,11 @@ export function buildLincolnCharacter(gltf: GLTF): Character3DController {
 
   const model = SkeletonUtils.clone(gltf.scene) as THREE.Group;
 
+  model.position.set(0, 0, 0);
+  model.rotation.set(0, 0, 0);
+  model.scale.set(1, 1, 1);
+  model.updateMatrixWorld(true);
+
   const bbox = new THREE.Box3().setFromObject(model);
   const center = new THREE.Vector3();
   bbox.getCenter(center);
@@ -2761,6 +2771,11 @@ export function buildObamaCharacter(gltf: GLTF): Character3DController {
 
   const model = SkeletonUtils.clone(gltf.scene) as THREE.Group;
 
+  model.position.set(0, 0, 0);
+  model.rotation.set(0, 0, 0);
+  model.scale.set(1, 1, 1);
+  model.updateMatrixWorld(true);
+
   const bbox = new THREE.Box3().setFromObject(model);
   const center = new THREE.Vector3();
   bbox.getCenter(center);
@@ -2882,6 +2897,11 @@ export function buildTrumpCharacter(gltf: GLTF): Character3DController {
 
   const model = SkeletonUtils.clone(gltf.scene) as THREE.Group;
 
+  model.position.set(0, 0, 0);
+  model.rotation.set(0, 0, 0);
+  model.scale.set(1, 1, 1);
+  model.updateMatrixWorld(true);
+
   const bbox = new THREE.Box3().setFromObject(model);
   const center = new THREE.Vector3();
   bbox.getCenter(center);
@@ -3002,6 +3022,17 @@ export function buildMipipiCharacter(gltf: GLTF): Character3DController {
   root.position.set(0, 0, 0);
 
   const model = SkeletonUtils.clone(gltf.scene) as THREE.Group;
+
+  // Clean rogue non-character background debris in mipipi.glb (e.g. orphan objects at X=-35, Y=12)
+  const rogueBody = model.getObjectByName('Body');
+  if (rogueBody) rogueBody.removeFromParent();
+  const rogueStalk = model.getObjectByName('Stalk');
+  if (rogueStalk) rogueStalk.removeFromParent();
+
+  model.position.set(0, 0, 0);
+  model.rotation.set(0, 0, 0);
+  model.scale.set(1, 1, 1);
+  model.updateMatrixWorld(true);
 
   // Find meshes with morph targets
   const morphMeshes: Array<{ mesh: THREE.Mesh; dict: { [key: string]: number } }> = [];

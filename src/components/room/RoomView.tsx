@@ -10,6 +10,7 @@ import {
   VideoQueueItem,
   WhiteboardStroke,
   DynamicTrackingMode,
+  DEFAULT_NEUTRAL_FEATURES,
 } from '../../types';
 import { Header } from '../common/Header';
 import {
@@ -134,7 +135,12 @@ export const RoomView: React.FC<RoomViewProps> = ({
   const [isFaceStudioOpen, setIsFaceStudioOpen] = useState(false);
   const [editingAvatarForStudio, setEditingAvatarForStudio] = useState<AvatarDefinition | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isTrackingPipVisible, setIsTrackingPipVisible] = useState(() => initialTrackingPip ?? true);
+  const [isTrackingPipVisible, setIsTrackingPipVisible] = useState(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 640) {
+      return false; // Evita tapar la pantalla del móvil por defecto
+    }
+    return initialTrackingPip ?? true;
+  });
   const [lastReadMessageCount, setLastReadMessageCount] = useState(messages.length);
 
   // Participant Card Dynamic Sizing (120px to 480px, maintaining strict 1:1 proportion)
@@ -152,8 +158,25 @@ export const RoomView: React.FC<RoomViewProps> = ({
     return 280;
   });
 
+  // Keep cardSize bounded to screen width on mobile window resize or device rotation
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 640) {
+        setCardSize((prev) => {
+          const maxMobile = Math.max(120, Math.floor(window.innerWidth - 24));
+          return prev > maxMobile ? maxMobile : prev;
+        });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   const handleCardSizeChange = (val: number) => {
-    const clamped = Math.max(120, Math.min(480, Math.round(val)));
+    const maxBound = typeof window !== 'undefined' && window.innerWidth < 640
+      ? Math.floor(window.innerWidth - 24)
+      : 480;
+    const clamped = Math.max(120, Math.min(maxBound, Math.round(val)));
     setCardSize(clamped);
     if (typeof window !== 'undefined') {
       localStorage.setItem('xstreamx_participant_card_size', clamped.toString());
@@ -281,13 +304,13 @@ export const RoomView: React.FC<RoomViewProps> = ({
       <div className="flex-1 flex min-h-0 relative overflow-hidden z-10">
 
         {/* Participant Avatars Viewport */}
-        <div className="flex-1 p-2 sm:p-5 overflow-y-auto overflow-x-hidden flex flex-col items-center justify-center">
+        <div className="flex-1 p-2 sm:p-4 overflow-y-auto overflow-x-hidden flex flex-col items-center">
           
           {/* GRID / MOSAIC VIEW */}
-          <div className="w-full flex-1 flex flex-wrap gap-2.5 sm:gap-4 items-center justify-center p-1 sm:p-2">
+          <div className="w-full my-auto flex flex-wrap gap-2 sm:gap-4 items-center justify-center p-1 sm:p-2">
             {allParticipants.map((participant) => {
               const isSelf = participant.id === currentUser.id;
-              const features = isSelf ? localFeatures : peerFeaturesMap.get(participant.id) || localFeatures;
+              const features = isSelf ? localFeatures : (peerFeaturesMap.get(participant.id) || DEFAULT_NEUTRAL_FEATURES);
 
               return (
                 <ParticipantCard

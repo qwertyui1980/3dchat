@@ -113,15 +113,15 @@ export class AudioService {
           const avgFreq = freqSum / (speechBins * 255);
 
           const rawEnergy = Math.max(rms, avgFreq * 0.45);
-          // Noise Gate: ambient room noise, computer fans, breathing, keyboard clicks (~0.005 to 0.028)
-          // are strictly gated to 0. Only genuine human voice sounds above 0.032 pass through.
-          const NOISE_GATE = 0.032;
-          const PEAK_RANGE = 0.20;
+          // Noise Gate: ambient room noise, computer fans, faint breathing (~0.002 to 0.006)
+          // are filtered out. Normal conversational human voice (0.008+) passes smoothly.
+          const NOISE_GATE = 0.008;
+          const PEAK_RANGE = 0.16;
           let normalized = 0;
           if (rawEnergy > NOISE_GATE) {
             const excess = Math.min(1.0, (rawEnergy - NOISE_GATE) / PEAK_RANGE);
-            // Non-linear power curve (gamma 1.5): suppresses low sounds and captures prominent vocal peaks
-            normalized = Math.min(1.0, Math.pow(excess, 1.5) * 1.25);
+            // Smooth, responsive curve (gamma 1.1): accurately captures quiet speech and vocal dynamics
+            normalized = Math.min(1.0, Math.pow(excess, 1.1) * 1.18);
           }
 
           if (this.onVolumeChange && timestamp - lastDispatchTime >= 30) {

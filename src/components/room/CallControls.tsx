@@ -92,22 +92,24 @@ export const CallControls: React.FC<CallControlsProps> = ({
   const [showGesturesPicker, setShowGesturesPicker] = React.useState(false);
 
   return (
-    <div className="h-20 pb-[max(0.5rem,env(safe-area-inset-bottom))] bg-[#08080c]/95 backdrop-blur-xl border-t border-white/[0.06] px-3 sm:px-6 flex items-center justify-between z-20 shrink-0 select-none">
+    <div className={`h-16 sm:h-20 pb-[max(0.25rem,env(safe-area-inset-bottom))] bg-[#08080c]/95 backdrop-blur-xl border-t border-white/[0.06] px-2 sm:px-6 flex items-center justify-between shrink-0 select-none overflow-x-auto no-scrollbar transition-[z-index] ${
+      showModePicker || showGesturesPicker ? 'z-[60]' : 'z-30'
+    }`}>
       {/* Left side: Admin Controls or Spacer */}
-      <div className="flex items-center gap-2 min-w-[32px] sm:min-w-[48px]">
+      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
         {isAdmin && onMuteAll && (
           <button
             type="button"
             onClick={onMuteAll}
-            className={`px-3 py-2.5 rounded-2xl border transition active:scale-95 shadow-sm flex items-center gap-1.5 cursor-pointer text-xs font-semibold ${
+            className={`p-2 sm:px-3 sm:py-2.5 rounded-xl sm:rounded-2xl border transition active:scale-95 shadow-sm flex items-center gap-1.5 cursor-pointer text-xs font-semibold ${
               isAllMuted
                 ? 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-300 border-rose-800/60'
                 : 'bg-[#121218] hover:bg-[#181822] text-neutral-200 border-white/[0.08]'
             }`}
             title={isAllMuted ? 'Reactivar micrófonos de todos' : 'Mutear a todos los participantes'}
           >
-            <MicOff className={`w-4 h-4 ${isAllMuted ? 'text-rose-400' : 'text-neutral-400'}`} />
-            <span className="hidden sm:inline">
+            <MicOff className={`w-4 h-4 sm:w-4.5 sm:h-4.5 ${isAllMuted ? 'text-rose-400' : 'text-neutral-400'}`} />
+            <span className="hidden md:inline">
               {isAllMuted ? 'Desmutear Todos' : 'Mutear Todos'}
             </span>
           </button>
@@ -117,23 +119,23 @@ export const CallControls: React.FC<CallControlsProps> = ({
           <button
             type="button"
             onClick={onOpenAdminPanel}
-            className="px-3 py-2.5 rounded-2xl bg-[#121218] hover:bg-[#181822] border border-white/[0.08] text-neutral-200 hover:text-white transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm text-xs font-semibold"
+            className="p-2 sm:px-3 sm:py-2.5 rounded-xl sm:rounded-2xl bg-[#121218] hover:bg-[#181822] border border-white/[0.08] text-neutral-200 hover:text-white transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm text-xs font-semibold"
             title="Abrir Panel de Control del Administrador"
           >
-            <Shield className="w-4 h-4 text-neutral-400" />
+            <Shield className="w-4 h-4 sm:w-4.5 sm:h-4.5 text-neutral-400" />
             <span className="hidden md:inline">Panel Admin</span>
           </button>
         )}
       </div>
 
-      {/* Center: Core Call Toggles (Mic, Camera, Avatar Switcher, Leave) */}
-      <div className="flex items-center gap-2 sm:gap-3">
+      {/* Center: Core Call Toggles (Mic, Camera, Gestures) */}
+      <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
         {/* Mic Toggle */}
         <button
           type="button"
           onClick={onToggleMic}
           disabled={!isAdmin && isAllMuted}
-          className={`relative p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-sm ${
+          className={`relative p-2 sm:p-3.5 rounded-xl sm:rounded-2xl border transition active:scale-95 shadow-sm ${
             !isAdmin && isAllMuted
               ? 'bg-neutral-900/90 border-neutral-800 text-neutral-500 cursor-not-allowed opacity-60'
               : isMicActive
@@ -148,13 +150,13 @@ export const CallControls: React.FC<CallControlsProps> = ({
               : 'Activar mi micrófono'
           }
         >
-          {isMicActive ? <Mic className="w-5 h-5 text-white" /> : <MicOff className="w-5 h-5 text-rose-400" />}
+          {isMicActive ? <Mic className="w-4 h-4 sm:w-5 sm:h-5 text-white" /> : <MicOff className="w-4 h-4 sm:w-5 sm:h-5 text-rose-400" />}
           {!isAdmin && isAllMuted && (
             <span
-              className="absolute -top-1 -right-1 w-4 h-4 bg-rose-600 rounded-full flex items-center justify-center text-white shadow-md"
+              className="absolute -top-1 -right-1 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-rose-600 rounded-full flex items-center justify-center text-white shadow-md"
               title="Micrófono bloqueado por el administrador"
             >
-              <Lock className="w-2.5 h-2.5" />
+              <Lock className="w-2 h-2 sm:w-2.5 sm:h-2.5" />
             </span>
           )}
         </button>
@@ -163,22 +165,87 @@ export const CallControls: React.FC<CallControlsProps> = ({
         <button
           type="button"
           onClick={onToggleCamera}
-          className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-sm cursor-pointer ${
+          className={`p-2 sm:p-3.5 rounded-xl sm:rounded-2xl border transition active:scale-95 shadow-sm cursor-pointer ${
             isCameraActive
               ? 'bg-blue-600/90 hover:bg-blue-500 text-white border-blue-400 shadow-[0_0_12px_rgba(59,130,246,0.35)]'
               : 'bg-rose-950/80 hover:bg-rose-900/80 text-rose-300 border-rose-800/60 shadow-[0_0_10px_rgba(244,63,94,0.3)]'
           }`}
           title={isCameraActive ? 'Pausar captura de rostro' : 'Activar captura de rostro'}
         >
-          {isCameraActive ? <Video className="w-5 h-5 text-white" /> : <VideoOff className="w-5 h-5 text-rose-400" />}
+          {isCameraActive ? <Video className="w-4 h-4 sm:w-5 sm:h-5 text-white" /> : <VideoOff className="w-4 h-4 sm:w-5 sm:h-5 text-rose-400" />}
         </button>
 
-        {/* Dynamic Mode Quick Switcher Popover */}
+        {/* Gestos Quick Menu Popover */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setShowGesturesPicker(!showGesturesPicker)}
+            className={`p-2 sm:p-3.5 rounded-xl sm:rounded-2xl border transition active:scale-95 shadow-sm cursor-pointer flex items-center gap-1.5 ${
+              showGesturesPicker || activeGesture
+                ? 'bg-amber-950/70 hover:bg-amber-900/80 text-amber-300 border-amber-500/40 shadow-md shadow-amber-950/40'
+                : 'bg-[#121218] hover:bg-[#181822] text-neutral-100 border-white/[0.08]'
+            }`}
+            title="Menú de Gestos (Sonrisa, Sorpresa, Guiño, Ceño)"
+          >
+            <Smile className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400" />
+            <span className="hidden xl:inline text-xs font-semibold">
+              {activeGesture ? QUICK_GESTURES.find((g) => g.id === activeGesture)?.label || 'Gestos' : 'Gestos'}
+            </span>
+          </button>
+
+          {showGesturesPicker && (
+            <>
+              <div
+                className="fixed inset-0 z-[70]"
+                onClick={() => {
+                  setShowGesturesPicker(false);
+                  if (onTriggerGesture) onTriggerGesture('neutral');
+                }}
+              />
+              <div className="fixed sm:absolute bottom-20 sm:bottom-full left-3 right-3 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 mb-2 sm:mb-3 sm:w-[calc(100vw-32px)] max-w-sm mx-auto rounded-2xl bg-gradient-to-r from-amber-950/95 via-orange-950/90 to-amber-950/95 border border-amber-500/40 p-3 shadow-2xl backdrop-blur-xl z-[80] space-y-2.5 animate-in fade-in zoom-in-95">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Smile className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold text-amber-200">Gestos</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 gap-2">
+                  {QUICK_GESTURES.map((g) => {
+                    const isActive = activeGesture === g.id;
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => {
+                          if (onTriggerGesture) onTriggerGesture(g.id);
+                        }}
+                        className={`py-2 px-1 rounded-lg border text-[10px] font-bold transition flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                          isActive
+                            ? 'bg-amber-500/30 border-amber-400 text-amber-200 shadow-sm ring-1 ring-amber-400/50'
+                            : 'bg-black/40 hover:bg-amber-500/20 border-amber-500/20 text-neutral-200 hover:text-amber-200'
+                        }`}
+                      >
+                        <span className="text-sm leading-none">{g.emoji}</span>
+                        <span className="truncate max-w-full">{g.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Right: Dynamic Mode (Lip Sync) & Screen & Tracking & Pizarra & Chat Buttons */}
+      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+        {/* Dynamic Mode Quick Switcher Popover (Lip Sync / Parafernalia / Gestos) */}
         <div className="relative">
           <button
             type="button"
             onClick={() => setShowModePicker(!showModePicker)}
-            className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-sm cursor-pointer flex items-center gap-1.5 ${
+            className={`p-2 sm:p-3.5 rounded-xl sm:rounded-2xl border transition active:scale-95 shadow-sm cursor-pointer flex items-center gap-1.5 ${
               showModePicker
                 ? 'bg-[#181824] text-white border-yellow-400/80 shadow-[0_0_12px_rgba(250,204,21,0.35)]'
                 : normalizeTrackingMode(trackingMode) === 'gestures'
@@ -190,11 +257,11 @@ export const CallControls: React.FC<CallControlsProps> = ({
             title="Cambiar Modo Dinámico: Parafernalia / Gestos / Lip Sync"
           >
             {normalizeTrackingMode(trackingMode) === 'gestures' ? (
-              <ScanFace className="w-5 h-5 text-blue-400" />
+              <ScanFace className="w-4 h-4 sm:w-5 sm:h-5 text-blue-400" />
             ) : normalizeTrackingMode(trackingMode) === 'lipsync' ? (
-              <Radio className="w-5 h-5 text-rose-400" />
+              <Radio className="w-4 h-4 sm:w-5 sm:h-5 text-rose-400" />
             ) : (
-              <Sparkles className="w-5 h-5 text-yellow-400" />
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-yellow-400" />
             )}
             <span className="hidden xl:inline text-xs font-semibold">
               {normalizeTrackingMode(trackingMode) === 'gestures' ? 'Gestos' : normalizeTrackingMode(trackingMode) === 'lipsync' ? 'Lip Sync' : 'Parafernalia'}
@@ -203,8 +270,8 @@ export const CallControls: React.FC<CallControlsProps> = ({
 
           {showModePicker && (
             <>
-              <div className="fixed inset-0 z-20" onClick={() => setShowModePicker(false)} />
-              <div className="absolute -translate-x-1/2 left-1/2 bottom-full mb-3 w-[calc(100vw-32px)] max-w-xs rounded-2xl bg-[#0a0d14] border border-yellow-500/30 p-3 shadow-2xl z-30 space-y-2">
+              <div className="fixed inset-0 z-[70]" onClick={() => setShowModePicker(false)} />
+              <div className="fixed sm:absolute bottom-20 sm:bottom-full left-3 right-3 sm:right-0 sm:left-auto sm:translate-x-0 mb-2 sm:mb-3 sm:w-[calc(100vw-32px)] max-w-xs mx-auto rounded-2xl bg-[#0a0d14] border border-yellow-500/30 p-3 shadow-2xl z-[80] space-y-2">
                 <div className="text-xs font-bold text-neutral-300 px-1 flex items-center justify-between">
                   <span>Modos de Animación</span>
                 </div>
@@ -258,85 +325,20 @@ export const CallControls: React.FC<CallControlsProps> = ({
           )}
         </div>
 
-        {/* Gestos Quick Menu Popover */}
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => setShowGesturesPicker(!showGesturesPicker)}
-            className={`p-3 sm:p-3.5 rounded-2xl border transition active:scale-95 shadow-sm cursor-pointer flex items-center gap-1.5 ${
-              showGesturesPicker || activeGesture
-                ? 'bg-amber-950/70 hover:bg-amber-900/80 text-amber-300 border-amber-500/40 shadow-md shadow-amber-950/40'
-                : 'bg-[#121218] hover:bg-[#181822] text-neutral-100 border-white/[0.08]'
-            }`}
-            title="Menú de Gestos (Sonrisa, Sorpresa, Guiño, Ceño)"
-          >
-            <Smile className="w-5 h-5 text-amber-400" />
-            <span className="hidden xl:inline text-xs font-semibold">
-              {activeGesture ? QUICK_GESTURES.find((g) => g.id === activeGesture)?.label || 'Gestos' : 'Gestos'}
-            </span>
-          </button>
-
-          {showGesturesPicker && (
-            <>
-              <div
-                className="fixed inset-0 z-20"
-                onClick={() => {
-                  setShowGesturesPicker(false);
-                  if (onTriggerGesture) onTriggerGesture('neutral');
-                }}
-              />
-              <div className="absolute -translate-x-1/2 left-1/2 bottom-full mb-3 w-[calc(100vw-32px)] max-w-sm rounded-2xl bg-gradient-to-r from-amber-950/95 via-orange-950/90 to-amber-950/95 border border-amber-500/40 p-3 shadow-2xl backdrop-blur-xl z-30 space-y-2.5 animate-in fade-in zoom-in-95">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Smile className="w-4 h-4 text-amber-400" />
-                    <span className="text-xs font-bold text-amber-200">Gestos</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-4 gap-2">
-                  {QUICK_GESTURES.map((g) => {
-                    const isActive = activeGesture === g.id;
-                    return (
-                      <button
-                        key={g.id}
-                        type="button"
-                        onClick={() => {
-                          if (onTriggerGesture) onTriggerGesture(g.id);
-                        }}
-                        className={`py-2 px-1 rounded-lg border text-[10px] font-bold transition flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
-                          isActive
-                            ? 'bg-amber-500/30 border-amber-400 text-amber-200 shadow-sm ring-1 ring-amber-400/50'
-                            : 'bg-black/40 hover:bg-amber-500/20 border-amber-500/20 text-neutral-200 hover:text-amber-200'
-                        }`}
-                      >
-                        <span className="text-sm leading-none">{g.emoji}</span>
-                        <span className="truncate max-w-full">{g.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* Right: Screen & Tracking & Pizarra & Chat Buttons */}
-      <div className="flex items-center gap-2">
         {/* 1. Dedicated Button: Re-open Theater Video Screen */}
         {onOpenTheater && (
           <button
             type="button"
             onClick={onOpenTheater}
-            className={`relative p-2.5 sm:py-3 sm:px-3 rounded-2xl border transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm ${
+            className={`relative p-2 sm:py-3 sm:px-3 rounded-xl sm:rounded-2xl border transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm ${
               isTheaterOpen
                 ? 'bg-[#20202c] text-white border-white/[0.22]'
                 : 'bg-[#121218] hover:bg-[#181822] text-neutral-200 border-white/[0.08]'
             }`}
             title={isTheaterOpen ? 'Ocultar video' : 'Abrir video'}
           >
-            <Tv className="w-5 h-5 shrink-0" />
-            <span className="text-xs font-semibold hidden sm:inline">Video</span>
+            <Tv className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            <span className="text-xs font-semibold hidden md:inline">Video</span>
           </button>
         )}
 
@@ -345,15 +347,15 @@ export const CallControls: React.FC<CallControlsProps> = ({
           <button
             type="button"
             onClick={onToggleTrackingPip}
-            className={`relative p-2.5 sm:py-3 sm:px-3 rounded-2xl border transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm ${
+            className={`relative p-2 sm:py-3 sm:px-3 rounded-xl sm:rounded-2xl border transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm ${
               isTrackingPipOpen
                 ? 'bg-[#20202c] text-white border-white/[0.22]'
                 : 'bg-[#121218] hover:bg-[#181822] text-neutral-200 border-white/[0.08]'
             }`}
             title={isTrackingPipOpen ? 'Ocultar visor de tracking' : 'Mostrar visor de tracking'}
           >
-            <ScanFace className="w-5 h-5 shrink-0" />
-            <span className="text-xs font-semibold hidden sm:inline">Tracking</span>
+            <ScanFace className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            <span className="text-xs font-semibold hidden md:inline">Tracking</span>
           </button>
         )}
 
@@ -362,15 +364,15 @@ export const CallControls: React.FC<CallControlsProps> = ({
           <button
             type="button"
             onClick={onToggleWhiteboard}
-            className={`relative p-2.5 sm:py-3 sm:px-3 rounded-2xl border transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm ${
+            className={`relative p-2 sm:py-3 sm:px-3 rounded-xl sm:rounded-2xl border transition active:scale-95 flex items-center gap-1.5 cursor-pointer shadow-sm ${
               isWhiteboardOpen
                 ? 'bg-[#20202c] text-white border-white/[0.22]'
                 : 'bg-[#121218] hover:bg-[#181822] text-neutral-200 border-white/[0.08]'
             }`}
             title={isWhiteboardOpen ? 'Cerrar Pizarra colaborativa' : 'Abrir Pizarra colaborativa'}
           >
-            <PenTool className="w-5 h-5 shrink-0" />
-            <span className="text-xs font-semibold hidden sm:inline">Pizarra</span>
+            <PenTool className="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
+            <span className="text-xs font-semibold hidden md:inline">Pizarra</span>
           </button>
         )}
 
@@ -378,16 +380,16 @@ export const CallControls: React.FC<CallControlsProps> = ({
         <button
           type="button"
           onClick={onToggleChat}
-          className={`relative p-3 sm:p-3.5 rounded-2xl border transition cursor-pointer shadow-sm ${
+          className={`relative p-2 sm:p-3.5 rounded-xl sm:rounded-2xl border transition cursor-pointer shadow-sm ${
             isChatOpen
               ? 'bg-[#20202c] text-white border-white/[0.22]'
               : 'bg-[#121218] hover:bg-[#181822] text-neutral-200 border-white/[0.08]'
           }`}
           title="Abrir chat del espacio"
         >
-          <MessageSquare className="w-5 h-5" />
+          <MessageSquare className="w-4 h-4 sm:w-5 sm:h-5" />
           {unreadChatCount > 0 && !isChatOpen && (
-            <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-rose-500 text-white font-bold text-[9px] flex items-center justify-center border border-[#08080c]">
+            <span className="absolute -top-1 -right-1 w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full bg-rose-500 text-white font-bold text-[9px] flex items-center justify-center border border-[#08080c]">
               {unreadChatCount}
             </span>
           )}

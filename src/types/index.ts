@@ -110,6 +110,26 @@ export interface FaceFeatures {
   trackingMode?: DynamicTrackingMode;
 }
 
+export const DEFAULT_NEUTRAL_FEATURES: FaceFeatures = {
+  pitch: 0,
+  yaw: 0,
+  roll: 0,
+  eyeBlinkLeft: 0,
+  eyeBlinkRight: 0,
+  eyeWideLeft: 0,
+  eyeWideRight: 0,
+  gazeX: 0,
+  gazeY: 0,
+  browRaise: 0,
+  browFurrow: 0,
+  jawOpen: 0,
+  mouthSmile: 0,
+  mouthPucker: 0,
+  mouthX: 0,
+  audioVolume: 0,
+  isFaceDetected: false,
+};
+
 export type DynamicTrackingMode =
   | 'parafernalia'
   | 'gestures'

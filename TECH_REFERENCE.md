@@ -524,17 +524,18 @@ flowchart LR
 ### 7.3. Portada con Lámparas de Neón SVG Vectoriales y Construcción Física Realista (`PresidentesNeonHome.tsx`)
 * **Fondo Panorámico de Pared de Ladrillos Negros Preservado:**
   * Pared de ladrillos oscuros ([`dark_brick_wall.jpg`](file:///d:/Apps/xstreamx/public/images/dark_brick_wall.jpg)) cubriendo todo el viewport con viñeteado ambiental y resplandor difuso reflejado sobre la mampostería.
-* **Arquitectura de Lámparas de Neón SVG y Elementos Físicos de Fabricación (`HomeAnima.html`):**
+* **Arquitectura de Lámparas de Neón SVG y Elementos Físicos de Fabricación (`Presidentes Muertos_home.html`):**
   * Trazos vectoriales de precisión geométrica con estructura bicapa:
     * **Capa Exterior de Tubo de Gas (`.tube` con `stroke-width: 4.5`):** Color saturado característico de cada figura y texto (`#ff1f35` rojo, `#dfe9ff` blanco, `#1f6bff` azul, `#ffe81a` amarillo).
     * **Capa Interior de Núcleo Térmico (`.core` con `stroke-width: 1.6`):** Blanco caliente / pastel (`#ffffff`, `#ffd2d6`, `#c4e1ff`) simulando el plasma incandescente interior.
     * **Filtro SVG Multicapa `#neon-glow`:** Triple difusión gaussiana (`feGaussianBlur` a stdDeviation 2.5, 8 y 20) combinada con `feMerge` para emular el halo volumétrico de gas neón.
   * **Construcción Física Realista de Lámpara de Neón:**
-    * **Tubos de Puente Pintados de Negro (`.dead` con calibre 6px y `.dead-hi` a 1.4px):** Trazos de vidrio opacados que unen físicamente los electrodos entre cabezas y letrero con reflejo especular tenue.
-    * **Tapones de Electrodos Metálicos (`.cap`):** Tapones terminales redondeados en las entradas de corriente de los tubos.
-    * **Clips de Sujeción y Tornillería a Pared (`.clip`):** Abrazaderas de anclaje con tornillos en cruz sosteniendo los tubos sobre la pared.
+    * **Tubos de Puente Pintados de Negro (`.dead` con calibre 6px y `.dead-hi` a 1.4px):** Trazos de vidrio opacados que unen físicamente los electrodos entre cabezas y letrero con reflejo especular tenue (`M35,337 C35,385 42,408 119,430`, `M305,337 Q310,353 315,337`, `M585,337 Q590,353 595,337` y puentes verticales `M125,495 V523 M775,495 V523`).
+    * **Tapones de Electrodos Metálicos (`.cap`):** Tapones terminales redondeados en las entradas de corriente de los tubos en coordenadas exactas (`cx: 35, 305, 315, 585, 595, 865`).
+    * **Clips de Sujeción y Tornillería a Pared (`.clip`):** Abrazaderas de anclaje con tornillos en cruz sosteniendo los tubos sobre la pared en posiciones calibradas (`x: 170, 450, 730, 125, 775, 310, 590`).
+  * **Tipografía y Alineación Central:** Textos `"PRESIDENTES"` (150px) y `"MUERTOS"` (188px) rigurosamente centrados a `x="115"` con `textLength="670"` y `lengthAdjust="spacingAndGlyphs"` en fuente *Oswald*.
 * **Luz de Neón Derramada sobre la Pared Sincronizada:**
-  * Elipses con gradientes radiales (`#spRed`, `#spWht`, `#spBlu`, `#spYel`) proyectan conos de luz volumétrica sobre la pared de ladrillos.
+  * Elipses con gradientes radiales (`#spRed`, `#spWht`, `#spBlu`, `#spYel` centrada a `cx="450" cy="570"`) proyectan conos de luz volumétrica sobre la pared de ladrillos.
   * Los resplandores de la figura roja (`#spRed`) y de la figura blanca (`#spWht`) modulan su opacidad al unísono con el parpadeo de sus respectivos tubos en el ciclo de malfunción (`neon(setOpacity(red, spRed), ...)`).
 * **Ciclo de Animación y Malfunción Eléctrica Realista:**
   * **Ráfagas de Parpadeo (`burst`):** Micro-oscilaciones de opacidad rápida (30-150ms) entre voltaje residual (0.04 - 0.3) y encendido total (0.65 - 1.0).
@@ -542,7 +543,17 @@ flowchart LR
   * **Figura Roja (`figRed` + `#spRed`):** Malfunción frecuente con intervalos de 1.5s a 4.0s y ráfagas cortas.
   * **Figura Blanca (`figWht` + `#spWht`):** Intervalos más espaciados (3.5s a 8.0s) con apagones prolongados ocasionales (`dead = 0.3`).
   * **Letras 'R' (`.r` en "PRESIDENTES" y "MUERTOS"):** Modulación independiente de `strokeOpacity` con fallos estocásticos individuales (`dead = 0.2`).
-* **Accesibilidad y SEO:** Mantiene un encabezado semántico `<h1 className="sr-only">Presidentes Muertos y Vivos</h1>` y botones de acceso al Salón Principal y show en vivo.
+* **Accesibilidad y SEO:** Mantiene un encabezado semántico `<h1 className="sr-only">Presidentes Muertos y Vivos</h1>` y botones de acceso al Salón Principal, show en vivo y creación de perfil con envoltura responsiva.
+
+### 7.4. Logotipo Neón en Cabecera y Calibración Luminosa (`PresidentesMuertosNeonLogo.tsx` y `Header.tsx`)
+* **Componente Especializado [`PresidentesMuertosNeonLogo.tsx`](file:///d:/Apps/xstreamx/src/components/common/PresidentesMuertosNeonLogo.tsx):**
+  * Letrero tipográfico de neón amarillo (*"PRESIDENTES MUERTOS"*) en fuente *Oswald*, aislando únicamente el rótulo sin caricaturas ni elementos distractores.
+  * **Calibración de Brillo Atenuada y Trazos Delgados:** Trazo fino único de tubo de neón (`strokeWidth="2.1"` en `#f5d63d`, eliminando la sobreimpresión blanca que saturaba y engrosaba las letras), filtro `#pm-logo-glow` sutil con doble difusión gaussiana ligera (`stdDeviation` a 1.0 y 3.0) sin empastar los ojos interiores de las letras ni desbordar la barra superior.
+  * Simulación estocástica de fallas eléctricas en las letras 'R' (`.pm-r`) con micro-ráfagas (`burst`) y apagones intermitentes.
+  * Soporte para fondo transparente optimizado para barras de navegación o textura de pared de ladrillos opcional (`showBrickBackground`).
+* **Integración en la Barra Superior ([`Header.tsx`](file:///d:/Apps/xstreamx/src/components/common/Header.tsx)):**
+  * Posicionado como identidad de marca interactiva en la esquina superior izquierda de la aplicación (reemplazando el texto estático `XSTREAMX`), con enlace directo a `#lobby`.
+  * La pantalla de Lobby ([`Lobby.tsx`](file:///d:/Apps/xstreamx/src/components/lobby/Lobby.tsx)) conserva su distribución simétrica y despejada.
 
 ---
 
@@ -587,7 +598,7 @@ xstreamx/
 │   │   ├── profile/              # UserProfileModal (Gestión de perfil, avatares creados y Supabase Sync)
 │   │   ├── home/                 # PresidentesNeonHome (Landing con las figuras neón fotorrealistas sin marco sobre muro de ladrillo negro, fallas eléctricas independientes en letras 'R' y las 3 figuras, y chispas interactivas con física de partículas)
 │   │   ├── avatars/              # ThreeAvatarCanvas, threeCharacterBuilder, configs
-│   │   ├── common/               # Header, LegalDisclaimerModal, StarfieldBackground
+│   │   ├── common/               # Header, LegalDisclaimerModal, StarfieldBackground, PresidentesMuertosNeonLogo
 │   │   ├── lobby/                # Lobby interactivo de entrada y selección de avatar
 │   │   ├── room/                 # RoomView, CallControls, VideoGrid, ChatSidebar
 │   │   ├── theater/              # YouTubeSyncPlayer, HomeTheaterWindow, QueueModal
@@ -913,13 +924,50 @@ Para garantizar observabilidad absoluta, tolerancia a fallos en edge y diagnóst
   * Al hacer clic fuera del panel emergente de gestos (sobre el backdrop `fixed inset-0`), el panel se oculta inmediatamente y el avatar se resetea de forma automática a la expresión `neutral` (`onTriggerGesture('neutral')`).
   * Se retiró el botón textual redundante "Reset Neutral".
 
-### 20.2. Simplificación y Adaptabilidad Móvil de la Sala
-* **Reubicación del Selector de Tamaño de Ventanas ([`Header.tsx`](file:///d:/Apps/xstreamx/src/components/common/Header.tsx) y [`RoomView.tsx`](file:///d:/Apps/xstreamx/src/components/room/RoomView.tsx)):**
-  * El deslizador de zoom/escala de las tarjetas de avatar (`Ventanas: {cardSize}px`) se integró limpiamente en la barra de navegación superior derecha, eliminando el control flotante que tapaba los avatares.
-  * Inicialización responsiva: en pantallas estrechas o móviles, el tamaño inicial se adapta con `Math.min(320, window.innerWidth - 24)`.
-* **Depuración de Controles de Llamada ([`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx)):**
-  * Eliminación del botón duplicado de colgar/salir de llamada (centralizado en el botón "Salir" del [`Header.tsx`](file:///d:/Apps/xstreamx/src/components/common/Header.tsx)).
-  * Eliminación del botón redundante de cambio de avatar en vivo dentro de la sala.
-* **Limpieza de Tarjetas de Participantes ([`ParticipantCard.tsx`](file:///d:/Apps/xstreamx/src/components/room/ParticipantCard.tsx)):**
-  * Eliminación de las etiquetas/badges flotantes de modo dinámico (*Lip Sync / Gestos / Parafernalia*), dejando limpia la vista de los modelos 3D con restricciones de dimensión máxima adaptables al viewport.
+### 20.3. Diseño Totalmente Responsivo para Móviles y Pantallas Pequeñas
+* **Ajuste de Scroll y Centrado Vertical ([`RoomView.tsx`](file:///d:/Apps/xstreamx/src/components/room/RoomView.tsx)):**
+  * Se sustituyó el centrado estático con `justify-center` en el contenedor con `overflow-y-auto` por `my-auto` en la grilla interna. Esto resuelve el corte de avatares superiores cuando el contenido desborda la altura del viewport móvil.
+  * Se agregó un listener de cambio de tamaño (`resize`) para recalcular el límite de `cardSize` en rotación de pantalla o redimensionamiento (`Math.min(prev, Math.floor(window.innerWidth - 24))`).
+  * En dispositivos móviles (`window.innerWidth < 640`), el visor flotante de tracking PIP inicia oculto por defecto para no obstruir el lienzo principal de los avatares.
+* **Scroll Táctil Nativo en Tarjetas de Avatar ([`ParticipantCard.tsx`](file:///d:/Apps/xstreamx/src/components/room/ParticipantCard.tsx)):**
+  * Se configuró `touchAction: 'pan-y'` en lugar de `'none'`, permitiendo que el usuario se desplace verticalmente por la sala tocando cualquier parte de la pantalla táctil sin que el evento de arrastre intercepte o congele el scroll.
+  * La funcionalidad de arrastre libre (*drag*) se restringe a eventos de ratón (`e.pointerType !== 'touch'`).
+* **Barra de Controles Compacta y Segura ([`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx)):**
+  * Altura optimizada a `h-16 sm:h-20` con padding seguro para muesca inferior (`pb-[max(0.25rem,env(safe-area-inset-bottom))]`).
+  * Botones escalados a `p-2 sm:p-3.5` con iconos de `w-4 h-4 sm:w-5 sm:h-5` y espaciados de `gap-1.5 sm:gap-3`, permitiendo que todos los controles de sala quepan en el ancho estándar de cualquier teléfono móvil (360px a 414px) sin desbordamiento horizontal.
+  * Menús emergentes (Modo de Animación y Gestos) centrados de forma fija (`fixed sm:absolute bottom-20 left-3 right-3`) en móviles, garantizando que nunca se corten en los extremos laterales de la pantalla.
+* **Cabecera Optimizada para Móvil ([`Header.tsx`](file:///d:/Apps/xstreamx/src/components/common/Header.tsx)):**
+  * Altura reducida a `h-12 sm:h-16`, espaciado compacto para el slider de tamaño y adaptación de tipografías y botones para preservar el espacio en pantallas pequeñas.
+
+---
+
+## 21. Centrado Preciso de Avatares 3D y Visualización Acústica de Alta Precisión
+
+### 21.1. Centrado Tridimensional y Purga de Nodos Huérfanos en Modelos GLTF
+* **Aislamiento de Jerarquías en Modelos Compuestos ([`threeCharacterBuilder.ts`](file:///d:/Apps/xstreamx/src/components/avatars/threeCharacterBuilder.ts)):**
+  * Se identificó que archivos GLTF complejos (como `mipipi.glb`) contenían mallas secundarias residuales fuera de escala y posición (nodos `Body` y `Stalk` con coordenadas en $X = -34.86$ e $Y = 12.03$), provocando que `Box3().setFromObject(model)` calculara un centro desfasado hacia la izquierda y proyectara el avatar real hacia el borde derecho de la tarjeta.
+  * Se implementó purga preventiva de mallas huérfanas antes del cálculo de límites y se forzó la neutralización de posición, rotación y escala previa a la llamada `model.updateMatrixWorld(true)`.
+  * La misma neutralización estricta de matriz se estandarizó en `buildFaceCapCharacter`, `buildLincolnCharacter`, `buildObamaCharacter`, `buildBidenCharacter` y `buildTrumpCharacter`.
+* **Aislamiento de Features entre Pares Remotos ([`RoomView.tsx`](file:///d:/Apps/xstreamx/src/components/room/RoomView.tsx) y [`ParticipantCard.tsx`](file:///d:/Apps/xstreamx/src/components/room/ParticipantCard.tsx)):**
+  * Se eliminó el fallback que asignaba `localFeatures` a los participantes remotos cuando sus datos de red aún no habían llegado (`peerFeaturesMap.get(participant.id) || DEFAULT_NEUTRAL_FEATURES`).
+  * Al no mezclar las coordenadas de giro de cabeza del usuario local con el avatar del usuario remoto, se evita que los avatares remotos adopten el ángulo o la compensación de cámara del emisor, permaneciendo centrados en posición neutra.
+  * Cuando un participante remoto desactiva su cámara (`isCameraActive: false`), su avatar se ancla a `DEFAULT_NEUTRAL_FEATURES`, manteniendo únicamente la reactividad de labios (*lip-sync*) mediante `audioVolume`.
+
+### 21.2. Motor de Detección de Voz y Ecualizador Dinámico de Alta Precisión
+* **Calibración del Umbral de Audio (*Noise Gate*) ([`audioService.ts`](file:///d:/Apps/xstreamx/src/services/audioService.ts)):**
+  * Se ajustó el umbral `NOISE_GATE` de un valor excesivo de `0.032` a `0.008`, permitiendo que el habla natural y suave en navegadores de escritorio y portátiles se detecte con total precisión sin exigir tonos de voz elevados.
+  * La curva de respuesta no lineal se ajustó a exponente 1.1 y rango pico de 0.16, logrando una dinámica suave y continua de 0 a 1.
+* **Ecualizador Acústico Dinámico (*AudioWaveform.tsx*) ([`AudioWaveform.tsx`](file:///d:/Apps/xstreamx/src/components/common/AudioWaveform.tsx)):**
+  * Se sustituyó la onda senoidal estática y las líneas punteadas por un visualizador de espectro acústico en barras redondeadas con soporte High-DPI (`window.devicePixelRatio`).
+  * Implementa física de respuesta rápida: ataque veloz ($0.60$) y decaimiento suave ($0.18$), con modulación armónica que simula resonancia vocal orgánica.
+  * Estado de silencio en reposo con micro-respiración sutil en color pizarra (`#64748b`) que confirma que el micrófono está activo y a la escucha.
+  * Estado silenciado (*Mute*) limpio y minimalista con barra suave en carmín/rosa (`#f43f5e`), erradicando puntos dispersos.
+
+### 21.3. Reubicación del Selector Dinámico (Lip Sync) y Jerarquía Superior de Z-Index
+* **Reorganización de Controles en Sala ([`CallControls.tsx`](file:///d:/Apps/xstreamx/src/components/room/CallControls.tsx)):**
+  * El botón selector de **Modo Dinámico / Lip Sync** fue reubicado desde el bloque central hacia el grupo de herramientas de la derecha, posicionándose inmediatamente antes del botón **Video** (*Home Theater*), dejando el bloque central exclusivamente para controles fisiológicos directos (`Micrófono`, `Cámara` y `Menú de Gestos`).
+* **Elevación de Z-Index para Menús y Popovers Desplegables:**
+  * La barra de controles eleva reactivamente su contexto de apilamiento a `z-[60]` cuando el menú de modos o de gestos se encuentra abierto (`z-30` en estado de reposo).
+  * Los backdrops de captura de clic se asignan a `z-[70]` y los contenedores flotantes desplegables a `z-[80]`, asegurando que queden en el plano superior visible por encima de tarjetas de avatar arrastrables (`z-40`), reproductores de video flotantes (`HomeTheaterWindow`, `z-40`) y visores PIP (`CameraPreviewPip`, `z-40`).
+  * El menú desplegable del modo Lip Sync se alinea en el extremo derecho (`sm:right-0 sm:left-auto sm:translate-x-0`), evitando que desborde el margen derecho de la ventana.
 

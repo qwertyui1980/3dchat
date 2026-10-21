@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Shield, Mic, MicOff, X, Maximize2, GripHorizontal } from 'lucide-react';
-import { User, FaceFeatures, DynamicTrackingMode } from '../../types';
+import { User, FaceFeatures, DynamicTrackingMode, DEFAULT_NEUTRAL_FEATURES } from '../../types';
 import { AvatarCanvas } from '../avatars/AvatarCanvas';
 import { AudioWaveform } from '../common/AudioWaveform';
 import { normalizeTrackingMode } from '../../services/face3d/dynamicModeHelper';
@@ -45,6 +45,8 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
   });
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    // On mobile touch devices, prioritize native vertical scrolling
+    if (e.pointerType === 'touch') return;
     // Only allow drag if not clicking buttons or interactive elements
     if ((e.target as HTMLElement).closest('button, input, a')) return;
 
@@ -78,13 +80,20 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
   };
 
   const activeMode = normalizeTrackingMode(isSelf ? (trackingMode || 'parafernalia') : (user.trackingMode || 'parafernalia'));
-  const isSpeaking = (features.audioVolume > 0.18 || false) && !user.isMuted && activeMode !== 'gestures';
+  const isSpeaking = (features.audioVolume > 0.14 || false) && !user.isMuted && activeMode !== 'gestures';
   const effectiveFeatures = React.useMemo(() => {
-    if (user.isMuted || activeMode === 'gestures') {
-      return { ...features, audioVolume: 0 };
+    let f = features;
+    if (!isSelf && !user.isCameraActive) {
+      // Remote peer with camera inactive stays centered at neutral resting pose
+      f = {
+        ...DEFAULT_NEUTRAL_FEATURES,
+        audioVolume: user.isMuted || activeMode === 'gestures' ? 0 : features.audioVolume,
+      };
+    } else if (user.isMuted || activeMode === 'gestures') {
+      f = { ...f, audioVolume: 0 };
     }
-    return features;
-  }, [features, user.isMuted, activeMode]);
+    return f;
+  }, [features, user.isMuted, user.isCameraActive, isSelf, activeMode]);
 
   // Request remote 3D model automatically if participant is using a custom avatar not yet in local storage
   React.useEffect(() => {
@@ -101,15 +110,17 @@ export const ParticipantCard: React.FC<ParticipantCardProps> = ({
       onPointerCancel={handlePointerUp}
       style={{
         transform: `translate3d(${offset.x}px, ${offset.y}px, 0)`,
-        touchAction: 'none',
+        touchAction: 'pan-y',
         width: `${cardSize}px`,
         height: `${cardSize}px`,
-        maxWidth: 'calc(100vw - 1.5rem)',
-        maxHeight: 'calc(100dvh - 11rem)',
+        maxWidth: 'calc(100vw - 1rem)',
+        maxHeight: 'calc(100dvh - 8.5rem)',
         aspectRatio: '1 / 1',
       }}
       className={`group relative shrink-0 rounded-2xl bg-[#08080c] border transition-[shadow,border-color] duration-200 overflow-hidden shadow-2xl select-none ${
-        isDragging ? 'z-40 ring-2 ring-yellow-400 shadow-yellow-950/60 cursor-grabbing' : 'cursor-grab'
+        isDragging
+          ? 'z-40 ring-2 ring-yellow-400 shadow-yellow-950/60 cursor-grabbing'
+          : 'cursor-default sm:cursor-grab'
       } ${
         isFocusSpeaker
           ? 'border-yellow-400 ring-2 ring-yellow-400/40 shadow-lg shadow-yellow-500/20'
